@@ -3,6 +3,7 @@ import 'dart:developer' as dev;
 import 'package:arrow_swe/arrow_swe.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:swisseph/swisseph.dart';
+import 'package:web/web.dart' as web;
 
 import 'swe_compute.dart';
 
@@ -24,7 +25,10 @@ SwissEph openSwissEph(String? ephePath) {
 
 Future<void> initSweEphePath() async {
   dev.log('swe: loading WASM module', name: 'IO');
-  final swe = await SwissEph.load();
+  final base = web.document.baseURI;
+  final sweUrl = Uri.parse(base).resolve('swisseph.js').toString();
+  dev.log('swe: loading from $sweUrl', name: 'IO');
+  final swe = await SwissEph.load(sweUrl);
   for (final asset in _epheAssets) {
     final name = asset.split('/').last;
     final data = await rootBundle.load(asset);

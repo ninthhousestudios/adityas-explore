@@ -30,6 +30,7 @@ dependencies:
       ref: 0b3f3015a7ff93f69a97862c69755c24d0b053a2
       path: arrow/calc
   swisseph: ^0.5.1
+  web: ^1.1.0
   path_provider: ^2.1.4
   shared_preferences: ^2.3.4
   file_picker: ^8.1.6
