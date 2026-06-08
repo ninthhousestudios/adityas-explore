@@ -39,7 +39,8 @@ Future<Map<(int, String), BeingContent>> loadBeingContent() async {
 
     try {
       final text = await rootBundle.loadString('assets/text/$adityaName.txt');
-      for (final (type, content) in _parseSections(text)) {
+      final sections = _parseSections(text);
+      for (final (type, content) in sections) {
         result[(sign, type)] = content;
       }
     } catch (_) {}

@@ -2,10 +2,10 @@ import 'dart:developer' as dev;
 
 import 'package:arrow_core/arrow_core.dart' as arrow;
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:web/web.dart' as html;
+
+import 'navigate.dart' if (dart.library.js_interop) 'navigate_web.dart';
 
 import 'astro/chart_calculator.dart';
 import 'astro/ephemeris_service.dart';
@@ -199,11 +199,7 @@ class _ExplorePage extends StatelessWidget {
         leading: Padding(
           padding: const EdgeInsets.only(left: 4),
           child: TextButton.icon(
-            onPressed: () {
-              if (kIsWeb) {
-                html.window.location.href = '/adityas-live/';
-              }
-            },
+            onPressed: () => navigateToUrl('/adityas-live/'),
             icon: const Icon(Icons.arrow_back, size: 18),
             label: const Text('Home'),
             style: TextButton.styleFrom(
