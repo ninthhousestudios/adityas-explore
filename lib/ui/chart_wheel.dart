@@ -22,6 +22,7 @@ class _ChartWheelState extends State<ChartWheel> {
   PlacedCusp? _hoveredCusp;
   int? _hoveredSign;
   PlacedPlanet? _selectedPlanet;
+  ({String name, String type, String planet})? _selectedBeing;
 
   late int _ascSign;
   late List<PlacedPlanet> _planets;
@@ -91,7 +92,9 @@ class _ChartWheelState extends State<ChartWheel> {
           inSignDeg: p.longitude.inSignLongitude,
           angle: angles[i],
           horaBeing: p.horaBeing.name,
+          horaBeingType: p.horaBeing.type.name,
           trimsamsaBeing: p.trimsamsaBeing.name,
+          trimsamsaBeingType: p.trimsamsaBeing.type.name,
           isRetrograde: p.isRetrograde,
         ));
       }
@@ -124,6 +127,7 @@ class _ChartWheelState extends State<ChartWheel> {
           width: side,
           height: side,
           child: Stack(
+            clipBehavior: Clip.none,
             children: [
               // Geometric skeleton.
               Positioned.fill(
@@ -148,8 +152,56 @@ class _ChartWheelState extends State<ChartWheel> {
               // Center info overlay.
               if (_hoveredPlanet != null || _hoveredCusp != null || _hoveredSign != null)
                 _buildCenterInfo(half, center, color),
+              // Hora beings panel (top-left).
+              if (_planets.isNotEmpty)
+                Positioned(
+                  left: 0,
+                  top: 0,
+                  child: _buildBeingPanel(
+                    title: 'Hora',
+                    entries: _planets.map((p) => (
+                      planet: p.bodyName,
+                      type: p.horaBeingType ?? '',
+                      name: p.horaBeing ?? '',
+                    )).toList(),
+                    onTap: (e) => setState(() {
+                      _selectedBeing = e;
+                      _selectedPlanet = null;
+                    }),
+                    color: color,
+                    backdropColor: backdropColor,
+                    half: half,
+                  ),
+                ),
+              // Trimsamsa beings panel (top-right).
+              if (_planets.isNotEmpty)
+                Positioned(
+                  right: 0,
+                  top: 0,
+                  child: _buildBeingPanel(
+                    title: 'Trimsamsa',
+                    entries: _planets.map((p) => (
+                      planet: p.bodyName,
+                      type: p.trimsamsaBeingType ?? '',
+                      name: p.trimsamsaBeing ?? '',
+                    )).toList(),
+                    onTap: (e) {
+                      final planet = _planets.firstWhere(
+                        (p) => p.bodyName == e.planet,
+                      );
+                      setState(() {
+                        _selectedPlanet = planet;
+                        _selectedBeing = null;
+                      });
+                    },
+                    color: color,
+                    backdropColor: backdropColor,
+                    half: half,
+                  ),
+                ),
               // Being card overlay.
-              if (_selectedPlanet != null) _buildBeingOverlay(color, isDark),
+              if (_selectedPlanet != null || _selectedBeing != null)
+                _buildBeingOverlay(color, isDark),
             ],
           ),
         );
@@ -214,7 +266,10 @@ class _ChartWheelState extends State<ChartWheel> {
         }),
         onExit: (_) => setState(() => _hoveredPlanet = null),
         child: GestureDetector(
-          onTap: () => setState(() => _selectedPlanet = planet),
+          onTap: () => setState(() {
+            _selectedPlanet = planet;
+            _selectedBeing = null;
+          }),
           child: SizedBox(
             width: glyphSize,
             height: glyphSize,
@@ -300,10 +355,90 @@ class _ChartWheelState extends State<ChartWheel> {
     );
   }
 
+  Widget _buildBeingPanel({
+    required String title,
+    required List<({String planet, String type, String name})> entries,
+    required void Function(({String name, String type, String planet})) onTap,
+    required Color color,
+    required Color backdropColor,
+    required double half,
+  }) {
+    final fontSize = half * 0.032;
+    final dimColor = color.withValues(alpha: 0.6);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: backdropColor,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              color: color,
+              fontSize: fontSize * 1.1,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 4),
+          for (final e in entries)
+            GestureDetector(
+              onTap: () => onTap((name: e.name, type: e.type, planet: e.planet)),
+              behavior: HitTestBehavior.opaque,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _capitalize(e.planet),
+                      style: TextStyle(color: dimColor, fontSize: fontSize),
+                    ),
+                    Text(
+                      '  ${_capitalize(e.type)}',
+                      style: TextStyle(color: dimColor, fontSize: fontSize),
+                    ),
+                    Text(
+                      '  ${e.name}',
+                      style: TextStyle(color: color, fontSize: fontSize),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildBeingOverlay(Color color, bool isDark) {
-    final planet = _selectedPlanet!;
-    final signName = adityaSigns[planet.sign]?.name ?? '?';
     final cardBg = isDark ? const Color(0xF0151015) : const Color(0xF0F5F1EA);
+
+    final String cardTitle;
+    final List<Widget> infoRows;
+
+    if (_selectedPlanet case final planet?) {
+      final signName = adityaSigns[planet.sign]?.name ?? '?';
+      cardTitle = _capitalize(planet.bodyName);
+      infoRows = [
+        _infoRow('Position', '${planet.longitudeLabel} $signName', color),
+        _infoRow('Hora', planet.horaBeing ?? '—', color),
+        _infoRow('Trimsamsa', planet.trimsamsaBeing ?? '—', color),
+        if (planet.isRetrograde) _infoRow('Motion', 'Retrograde', color),
+      ];
+    } else if (_selectedBeing case final being?) {
+      cardTitle = being.name;
+      infoRows = [
+        _infoRow('Type', _capitalize(being.type), color),
+        _infoRow('Planet', _capitalize(being.planet), color),
+      ];
+    } else {
+      return const SizedBox.shrink();
+    }
 
     return Positioned.fill(
       child: Center(
@@ -322,7 +457,7 @@ class _ChartWheelState extends State<ChartWheel> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    _capitalize(planet.bodyName),
+                    cardTitle,
                     style: TextStyle(
                       color: color,
                       fontSize: 20,
@@ -330,8 +465,10 @@ class _ChartWheelState extends State<ChartWheel> {
                     ),
                   ),
                   IconButton(
-                    onPressed: () =>
-                        setState(() => _selectedPlanet = null),
+                    onPressed: () => setState(() {
+                      _selectedPlanet = null;
+                      _selectedBeing = null;
+                    }),
                     icon: Icon(Icons.close, color: color, size: 20),
                   ),
                 ],
@@ -351,11 +488,7 @@ class _ChartWheelState extends State<ChartWheel> {
                 ),
               ),
               const SizedBox(height: 16),
-              _infoRow('Position', '${planet.longitudeLabel} $signName', color),
-              _infoRow('Hora', planet.horaBeing ?? '—', color),
-              _infoRow('Trimsamsa', planet.trimsamsaBeing ?? '—', color),
-              if (planet.isRetrograde)
-                _infoRow('Motion', 'Retrograde', color),
+              ...infoRows,
             ],
           ),
         ),

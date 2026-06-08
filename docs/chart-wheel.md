@@ -80,7 +80,10 @@ python3 tools/extract_glyphs.py
 
 - **Hover planet** → center circle shows: name, in-sign longitude, horaBeing, trimsamsaBeing
 - **Hover cusp** → center circle shows: cusp number, in-sign longitude
-- **Tap planet** → being card (scaffolded; no overlay/backdrop, just the card)
+- **Hover sign glyph** → center circle shows: Aditya name
+- **Tap planet** → being card overlay (planet position, hora, trimsamsa, retrograde)
+- **Hora panel** (top-left) → lists planet / type / being name; tap opens a being card
+- **Trimsamsa panel** (top-right) → lists planet / type / being name; tap opens planet card
 
 ## Theme
 

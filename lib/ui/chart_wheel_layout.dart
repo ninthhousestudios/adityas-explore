@@ -116,7 +116,9 @@ class PlacedPlanet {
   final double inSignDeg;
   final double angle;
   final String? horaBeing;
+  final String? horaBeingType;
   final String? trimsamsaBeing;
+  final String? trimsamsaBeingType;
   final bool isRetrograde;
 
   const PlacedPlanet({
@@ -125,7 +127,9 @@ class PlacedPlanet {
     required this.inSignDeg,
     required this.angle,
     this.horaBeing,
+    this.horaBeingType,
     this.trimsamsaBeing,
+    this.trimsamsaBeingType,
     this.isRetrograde = false,
   });
 
