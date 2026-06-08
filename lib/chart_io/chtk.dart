@@ -70,7 +70,7 @@ class ChtkFormat {
 
     return ChartData(
       name: name,
-      dateTime: DateTime(year, month, day, hour, minute, second),
+      dateTime: DateTime.utc(year, month, day, hour, minute, second),
       birthLocation: GeoLocation(
         city: city,
         country: country,

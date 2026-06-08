@@ -38,7 +38,7 @@ class TomlChartFormat {
       }
       final dp = date.split('-');
       final tp = time.split(':');
-      localDt = DateTime(
+      localDt = DateTime.utc(
         int.parse(dp[0]),
         int.parse(dp[1]),
         int.parse(dp[2]),
