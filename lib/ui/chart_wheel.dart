@@ -170,7 +170,7 @@ class _ChartWheelState extends State<ChartWheel> {
                 top: 0,
                 width: panelWidth,
                 child: _buildBeingPanel(
-                  title: 'Hora',
+                  title: 'Soul\'s Domain',
                   entries: _planets.map((p) => (
                     planet: p.bodyName,
                     type: p.horaBeingType ?? '',
@@ -191,7 +191,7 @@ class _ChartWheelState extends State<ChartWheel> {
                 top: 0,
                 width: panelWidth,
                 child: _buildBeingPanel(
-                  title: 'Trimsamsa',
+                  title: 'Soul\'s Emissary',
                   entries: _planets.map((p) => (
                     planet: p.bodyName,
                     type: p.trimsamsaBeingType ?? '',
@@ -633,13 +633,15 @@ class _ChartWheelState extends State<ChartWheel> {
                           ),
                         if (content != null) ...[
                           const SizedBox(height: 16),
-                          Text(
-                            content.subtitle,
-                            style: TextStyle(
-                              color: isDark ? const Color(0xFFD4A855) : color,
-                              fontSize: 16,
-                              fontStyle: FontStyle.italic,
-                              fontWeight: isDark ? null : FontWeight.bold,
+                          Center(
+                            child: Text(
+                              content.subtitle,
+                              style: TextStyle(
+                                color: isDark ? const Color(0xFFD4A855) : color,
+                                fontSize: 16,
+                                fontStyle: FontStyle.italic,
+                                fontWeight: isDark ? null : FontWeight.bold,
+                              ),
                             ),
                           ),
                           const SizedBox(height: 12),

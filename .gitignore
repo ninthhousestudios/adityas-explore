@@ -13,6 +13,7 @@
 migrate_working_dir/
 .claude/
 opencode.json
+docs/build-and-deploy-to-zola.md
 
 # IntelliJ related
 *.iml
