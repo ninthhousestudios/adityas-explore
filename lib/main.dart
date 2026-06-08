@@ -132,6 +132,7 @@ class _ExploreAppState extends State<ExploreApp> {
 
     return MaterialApp(
       title: 'The Adityas — Explore',
+      debugShowCheckedModeBanner: false,
       theme: _useLight ? lightTheme() : immersiveTheme(),
       home: _ExplorePage(
         useLight: _useLight,
@@ -191,6 +192,7 @@ class _ExplorePage extends StatelessWidget {
           PopupMenuButton<String>(
             icon: const Icon(Icons.settings),
             tooltip: 'Settings',
+            position: PopupMenuPosition.under,
             onSelected: (value) {
               if (value == 'open_chart') onOpenChart();
             },

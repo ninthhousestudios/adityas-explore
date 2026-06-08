@@ -12,6 +12,7 @@
 .swiftpm/
 migrate_working_dir/
 .claude/
+opencode.json
 
 # IntelliJ related
 *.iml

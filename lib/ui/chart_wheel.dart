@@ -20,6 +20,7 @@ class ChartWheel extends StatefulWidget {
 class _ChartWheelState extends State<ChartWheel> {
   PlacedPlanet? _hoveredPlanet;
   PlacedCusp? _hoveredCusp;
+  int? _hoveredSign;
   PlacedPlanet? _selectedPlanet;
 
   late int _ascSign;
@@ -103,6 +104,9 @@ class _ChartWheelState extends State<ChartWheel> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final color = isDark ? Colors.white : Colors.black;
+    final backdropColor = isDark
+        ? Colors.black.withValues(alpha: 0.5)
+        : Colors.white.withValues(alpha: 0.5);
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -126,6 +130,7 @@ class _ChartWheelState extends State<ChartWheel> {
                 child: CustomPaint(
                   painter: ChartWheelPainter(
                     color: color,
+                    backdropColor: backdropColor,
                     ascSign: _ascSign,
                     cusps: _cusps,
                   ),
@@ -141,7 +146,7 @@ class _ChartWheelState extends State<ChartWheel> {
               for (final cusp in _cusps)
                 _buildCuspHitRegion(cusp, half, center, color),
               // Center info overlay.
-              if (_hoveredPlanet != null || _hoveredCusp != null)
+              if (_hoveredPlanet != null || _hoveredCusp != null || _hoveredSign != null)
                 _buildCenterInfo(half, center, color),
               // Being card overlay.
               if (_selectedPlanet != null) _buildBeingOverlay(color, isDark),
@@ -167,12 +172,20 @@ class _ChartWheelState extends State<ChartWheel> {
     return Positioned(
       left: pos.dx - glyphSize / 2,
       top: pos.dy - glyphSize / 2,
-      child: SizedBox(
-        width: glyphSize,
-        height: glyphSize,
-        child: SvgPicture.asset(
-          data.glyph,
-          colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
+      child: MouseRegion(
+        onEnter: (_) => setState(() {
+          _hoveredSign = sign;
+          _hoveredPlanet = null;
+          _hoveredCusp = null;
+        }),
+        onExit: (_) => setState(() => _hoveredSign = null),
+        child: SizedBox(
+          width: glyphSize,
+          height: glyphSize,
+          child: SvgPicture.asset(
+            data.glyph,
+            colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
+          ),
         ),
       ),
     );
@@ -258,6 +271,8 @@ class _ChartWheelState extends State<ChartWheel> {
         'Cusp ${romanNumeral(c.house)}',
         '${c.longitudeLabel} $signName',
       ];
+    } else if (_hoveredSign case final s?) {
+      lines = [adityaSigns[s]?.name ?? '?'];
     } else {
       return const SizedBox.shrink();
     }

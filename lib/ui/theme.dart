@@ -16,9 +16,14 @@ ThemeData immersiveTheme() {
       bodyLarge: TextStyle(color: Colors.white),
       bodyMedium: TextStyle(color: Colors.white70),
     ),
-    popupMenuTheme: const PopupMenuThemeData(
-      color: Color(0xDD1A1520),
-      textStyle: TextStyle(color: Colors.white),
+    popupMenuTheme: PopupMenuThemeData(
+      color: const Color(0xDD1A1520),
+      textStyle: const TextStyle(color: Colors.white),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+      ),
+      elevation: 8,
     ),
     colorScheme: ColorScheme.fromSeed(
       seedColor: const Color(0xFF6B4E9B),
@@ -37,8 +42,13 @@ ThemeData lightTheme() {
       elevation: 1,
     ),
     iconTheme: const IconThemeData(color: Colors.black54),
-    popupMenuTheme: const PopupMenuThemeData(
+    popupMenuTheme: PopupMenuThemeData(
       color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.black.withValues(alpha: 0.08)),
+      ),
+      elevation: 8,
     ),
     colorScheme: ColorScheme.fromSeed(
       seedColor: const Color(0xFF6B4E9B),

@@ -7,7 +7,7 @@ const outerRingInner = 0.82;
 const planetRingOuter = 0.82;
 const planetRingInner = 0.56;
 const houseRingOuter = 0.56;
-const houseRingInner = 0.36;
+const houseRingInner = 0.46;
 
 double signMidRadius(double halfSize) =>
     halfSize * (outerRingOuter + outerRingInner) / 2;

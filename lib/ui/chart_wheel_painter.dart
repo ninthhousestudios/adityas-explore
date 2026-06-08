@@ -7,11 +7,13 @@ import 'chart_wheel_layout.dart';
 
 class ChartWheelPainter extends CustomPainter {
   final Color color;
+  final Color backdropColor;
   final int ascSign;
   final List<PlacedCusp> cusps;
 
   ChartWheelPainter({
     required this.color,
+    required this.backdropColor,
     required this.ascSign,
     required this.cusps,
   });
@@ -20,6 +22,13 @@ class ChartWheelPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
     final half = min(size.width, size.height) / 2;
+
+    // Semi-transparent backdrop so chart pops over background imagery.
+    canvas.drawCircle(
+      center,
+      half * outerRingOuter,
+      Paint()..color = backdropColor,
+    );
 
     final ringPaint = Paint()
       ..color = color.withValues(alpha: 0.5)
@@ -57,40 +66,22 @@ class ChartWheelPainter extends CustomPainter {
   void _drawHouseLabels(Canvas canvas, Offset center, double half) {
     final textColor = color.withValues(alpha: 0.6);
     final cuspColor = color.withValues(alpha: 0.5);
+    final arabicRadius = (houseRingOuter + houseRingInner) / 2 + 0.025;
+    final romanRadius = (houseRingOuter + houseRingInner) / 2 - 0.025;
 
     // Arabic whole-sign house numbers at sign midpoints.
     for (var i = 0; i < 12; i++) {
       final sign = ((ascSign - 1 + i) % 12) + 1;
       final houseNum = i + 1;
       final angle = signMidAngle(sign, ascSign);
-      final pos = polarToCartesian(
-        angle,
-        half * (houseRingOuter - 0.03),
-        center,
-      );
-      _drawText(
-        canvas,
-        '$houseNum',
-        pos,
-        textColor,
-        half * 0.04,
-      );
+      final pos = polarToCartesian(angle, half * arabicRadius, center);
+      _drawText(canvas, '$houseNum', pos, textColor, half * 0.04);
     }
 
     // Roman numerals at actual cusp degree positions.
     for (final cusp in cusps) {
-      final pos = polarToCartesian(
-        cusp.angle,
-        half * (houseRingInner + 0.05),
-        center,
-      );
-      _drawText(
-        canvas,
-        romanNumeral(cusp.house),
-        pos,
-        cuspColor,
-        half * 0.032,
-      );
+      final pos = polarToCartesian(cusp.angle, half * romanRadius, center);
+      _drawText(canvas, romanNumeral(cusp.house), pos, cuspColor, half * 0.032);
     }
   }
 
@@ -114,6 +105,7 @@ class ChartWheelPainter extends CustomPainter {
   @override
   bool shouldRepaint(ChartWheelPainter oldDelegate) =>
       color != oldDelegate.color ||
+      backdropColor != oldDelegate.backdropColor ||
       ascSign != oldDelegate.ascSign ||
       cusps != oldDelegate.cusps;
 }
