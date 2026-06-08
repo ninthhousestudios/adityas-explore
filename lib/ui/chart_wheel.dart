@@ -241,12 +241,23 @@ class _ChartWheelState extends State<ChartWheel> {
           _hoveredCusp = null;
         }),
         onExit: (_) => setState(() => _hoveredSign = null),
-        child: SizedBox(
-          width: glyphSize,
-          height: glyphSize,
-          child: SvgPicture.asset(
-            data.glyph,
-            colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
+        child: GestureDetector(
+          onTap: () => setState(() {
+            _selectedBeing = (
+              name: data.name,
+              type: 'aditya',
+              planet: '',
+              sign: sign,
+            );
+            _selectedPlanet = null;
+          }),
+          child: SizedBox(
+            width: glyphSize,
+            height: glyphSize,
+            child: SvgPicture.asset(
+              data.glyph,
+              colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
+            ),
           ),
         ),
       ),
@@ -512,7 +523,11 @@ class _ChartWheelState extends State<ChartWheel> {
     final imagePath = beingImagePath(beingSign, beingType);
     final emblemPath = beingEmblemPath(beingType);
     final glyphPath = adityaGlyphPath(beingSign);
-    final planetGlyph = planetGlyphs[planetName];
+    final planetGlyph = planetName.isNotEmpty ? planetGlyphs[planetName] : null;
+    final headerGlyph = planetGlyph ?? glyphPath;
+    final headerTitle = planetName.isNotEmpty
+        ? _capitalize(planetName)
+        : adityaName(beingSign) ?? '';
 
     void close() => setState(() {
       _selectedPlanet = null;
@@ -548,9 +563,9 @@ class _ChartWheelState extends State<ChartWheel> {
                       children: [
                         Row(
                           children: [
-                            if (planetGlyph != null) ...[
+                            if (headerGlyph != null) ...[
                               SvgPicture.asset(
-                                planetGlyph,
+                                headerGlyph,
                                 width: 28,
                                 height: 28,
                                 colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
@@ -559,7 +574,7 @@ class _ChartWheelState extends State<ChartWheel> {
                             ],
                             Expanded(
                               child: Text(
-                                _capitalize(planetName),
+                                headerTitle,
                                 style: TextStyle(
                                   color: color,
                                   fontSize: 20,
