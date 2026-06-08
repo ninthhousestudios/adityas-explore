@@ -5,9 +5,9 @@ import 'dart:ui';
 const outerRingOuter = 1.0;
 const outerRingInner = 0.82;
 const planetRingOuter = 0.82;
-const planetRingInner = 0.56;
-const houseRingOuter = 0.56;
-const houseRingInner = 0.46;
+const planetRingInner = 0.46;
+const houseRingOuter = 0.46;
+const houseRingInner = 0.36;
 
 double signMidRadius(double halfSize) =>
     halfSize * (outerRingOuter + outerRingInner) / 2;
@@ -43,70 +43,108 @@ Offset polarToCartesian(double angle, double radius, Offset center) {
   );
 }
 
-/// Resolve planet placement within a sign to prevent overlaps
-/// and keep glyphs inside sign boundaries.
-List<double> resolvePlanetAngles({
-  required List<double> inSignDegrees,
-  required int sign,
+/// Force-directed planet placement. Planets can spread both radially
+/// and angularly within the planet band, staying inside their sign
+/// sector with padding from boundary lines.
+/// Ported from gandiva/renderers/western_wheel.py.
+List<({double angle, double radiusFraction})> resolvePlanetPositions({
+  required List<({int sign, double inSignDeg})> planets,
   required int ascSign,
-  required double glyphAngularSize,
+  required double half,
+  required double glyphSize,
 }) {
-  if (inSignDegrees.isEmpty) return [];
+  if (planets.isEmpty) return [];
 
-  final signStart = signStartAngle(sign, ascSign);
-  final signSpan = pi / 6; // 30°
-  final halfGlyph = glyphAngularSize / 2;
+  final cx = half;
+  final cy = half;
+  final rMid = half * (planetRingOuter + planetRingInner) / 2;
+  final pad = glyphSize / 2 + 4;
+  final rMin = half * planetRingInner + pad;
+  final rMax = half * planetRingOuter - pad;
+  final minDist = glyphSize * 0.95;
+  final marginDeg = pad / (2 * pi * ((rMin + rMax) / 2)) * 360;
 
-  // Counterclockwise: sign goes from signStart (high angle) to signStart - signSpan (low angle).
-  final rangeMax = signStart - halfGlyph;
-  final rangeMin = signStart - signSpan + halfGlyph;
+  // [x, y, sign, trueInSignDeg]
+  final items = List.generate(planets.length, (i) {
+    final p = planets[i];
+    final a = degreeToAngle(p.sign, p.inSignDeg, ascSign);
+    return [
+      cx + rMid * cos(a) + (i % 3 - 1) * 0.5,
+      cy + rMid * sin(a) + (i ~/ 3 % 3 - 1) * 0.5,
+      p.sign.toDouble(),
+      p.inSignDeg,
+    ];
+  });
 
-  if (inSignDegrees.length == 1) {
-    final raw = degreeToAngle(sign, inSignDegrees[0], ascSign);
-    return [raw.clamp(rangeMin, rangeMax)];
+  for (var iter = 0; iter < 200; iter++) {
+    var moved = false;
+
+    for (var i = 0; i < items.length; i++) {
+      for (var j = i + 1; j < items.length; j++) {
+        final dx = items[j][0] - items[i][0];
+        final dy = items[j][1] - items[i][1];
+        final dist = sqrt(dx * dx + dy * dy);
+        if (dist < minDist) {
+          double nx, ny;
+          if (dist < 0.01) {
+            final a = (i - j) * pi / max(items.length, 1);
+            nx = cos(a);
+            ny = sin(a);
+          } else {
+            nx = dx / dist;
+            ny = dy / dist;
+          }
+          final push = (minDist - dist) / 2 + 0.3;
+          items[i][0] -= nx * push;
+          items[i][1] -= ny * push;
+          items[j][0] += nx * push;
+          items[j][1] += ny * push;
+          moved = true;
+        }
+      }
+    }
+
+    for (final item in items) {
+      final dxC = item[0] - cx;
+      final dyC = item[1] - cy;
+      final r = sqrt(dxC * dxC + dyC * dyC);
+      if (r < 1) continue;
+
+      final targetR = r + (rMid - r) * 0.02;
+      final clampedR = targetR.clamp(rMin, rMax);
+
+      final signNum = item[2].toInt();
+      final trueDeg = item[3];
+      final signStart = signStartAngle(signNum, ascSign);
+
+      // Recover current in-sign degree from screen position.
+      var angleDiff = signStart - atan2(dyC, dxC);
+      while (angleDiff > pi) {
+        angleDiff -= 2 * pi;
+      }
+      while (angleDiff < -pi) {
+        angleDiff += 2 * pi;
+      }
+      final currentDeg = angleDiff * 180 / pi;
+
+      final drift = currentDeg - trueDeg;
+      final springDeg = currentDeg - drift * 0.008;
+      final clampedDeg = springDeg.clamp(marginDeg, 30 - marginDeg);
+
+      final clampedAngle = degreeToAngle(signNum, clampedDeg, ascSign);
+      item[0] = cx + clampedR * cos(clampedAngle);
+      item[1] = cy + clampedR * sin(clampedAngle);
+    }
+
+    if (!moved) break;
   }
 
-  // Index + sort by degree ascending (= angle descending).
-  final indexed =
-      List.generate(inSignDegrees.length, (i) => (i, inSignDegrees[i]));
-  indexed.sort((a, b) => a.$2.compareTo(b.$2));
-
-  // Try natural placement with boundary clamping.
-  final natural = indexed.map((e) {
-    final raw = degreeToAngle(sign, e.$2, ascSign);
-    return raw.clamp(rangeMin, rangeMax);
+  return items.map((item) {
+    final dxC = item[0] - cx;
+    final dyC = item[1] - cy;
+    final r = sqrt(dxC * dxC + dyC * dyC);
+    return (angle: atan2(dyC, dxC), radiusFraction: r / half);
   }).toList();
-
-  // natural is in descending angle order (low degree = high angle).
-  // Sort ascending for overlap check.
-  final ascending = List.of(natural)..sort();
-  if (_noOverlaps(ascending, glyphAngularSize)) {
-    final result = List<double>.filled(inSignDegrees.length, 0);
-    for (var i = 0; i < indexed.length; i++) {
-      result[indexed[i].$1] = natural[i];
-    }
-    return result;
-  }
-
-  // Even spread across the sign, preserving degree order.
-  // Lowest degree gets highest angle (rangeMax), highest degree gets rangeMin.
-  final count = indexed.length;
-  final step = count > 1 ? (rangeMax - rangeMin) / (count - 1) : 0.0;
-
-  final result = List<double>.filled(inSignDegrees.length, 0);
-  for (var i = 0; i < count; i++) {
-    result[indexed[i].$1] = rangeMax - i * step;
-  }
-  return result;
-}
-
-bool _noOverlaps(List<double> sortedAngles, double minSeparation) {
-  for (var i = 1; i < sortedAngles.length; i++) {
-    if ((sortedAngles[i] - sortedAngles[i - 1]).abs() < minSeparation) {
-      return false;
-    }
-  }
-  return true;
 }
 
 /// Data for a placed planet on the wheel.
@@ -115,6 +153,7 @@ class PlacedPlanet {
   final int sign;
   final double inSignDeg;
   final double angle;
+  final double radiusFraction;
   final String? horaBeing;
   final String? horaBeingType;
   final String? trimsamsaBeing;
@@ -126,6 +165,7 @@ class PlacedPlanet {
     required this.sign,
     required this.inSignDeg,
     required this.angle,
+    required this.radiusFraction,
     this.horaBeing,
     this.horaBeingType,
     this.trimsamsaBeing,

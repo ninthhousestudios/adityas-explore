@@ -58,49 +58,38 @@ class _ChartWheelState extends State<ChartWheel> {
     });
   }
 
-  List<PlacedPlanet> _buildPlanets(double glyphAngularSize) {
+  List<PlacedPlanet> _buildPlanets(double half, double glyphSize) {
     final grahas = widget.chart.grahas;
 
-    // Group by sign.
-    final bySign = <int, List<(int, arrow.Planet)>>{};
-    for (var i = 0; i < grahas.length; i++) {
-      final p = grahas[i];
-      if (!defaultGrahas.contains(p.body.name)) continue;
-      final sign = p.longitude.sign;
-      (bySign[sign] ??= []).add((i, p));
+    final filtered = <arrow.Planet>[];
+    for (final p in grahas) {
+      if (defaultGrahas.contains(p.body.name)) filtered.add(p);
     }
 
-    final result = <PlacedPlanet>[];
+    final positions = resolvePlanetPositions(
+      planets: filtered
+          .map((p) => (sign: p.longitude.sign, inSignDeg: p.longitude.inSignLongitude))
+          .toList(),
+      ascSign: _ascSign,
+      half: half,
+      glyphSize: glyphSize,
+    );
 
-    for (final entry in bySign.entries) {
-      final sign = entry.key;
-      final planets = entry.value;
-      final degrees = planets.map((e) => e.$2.longitude.inSignLongitude).toList();
-
-      final angles = resolvePlanetAngles(
-        inSignDegrees: degrees,
-        sign: sign,
-        ascSign: _ascSign,
-        glyphAngularSize: glyphAngularSize,
+    return List.generate(filtered.length, (i) {
+      final p = filtered[i];
+      return PlacedPlanet(
+        bodyName: p.body.name,
+        sign: p.longitude.sign,
+        inSignDeg: p.longitude.inSignLongitude,
+        angle: positions[i].angle,
+        radiusFraction: positions[i].radiusFraction,
+        horaBeing: p.horaBeing.name,
+        horaBeingType: p.horaBeing.type.name,
+        trimsamsaBeing: p.trimsamsaBeing.name,
+        trimsamsaBeingType: p.trimsamsaBeing.type.name,
+        isRetrograde: p.isRetrograde,
       );
-
-      for (var i = 0; i < planets.length; i++) {
-        final (_, p) = planets[i];
-        result.add(PlacedPlanet(
-          bodyName: p.body.name,
-          sign: sign,
-          inSignDeg: p.longitude.inSignLongitude,
-          angle: angles[i],
-          horaBeing: p.horaBeing.name,
-          horaBeingType: p.horaBeing.type.name,
-          trimsamsaBeing: p.trimsamsaBeing.name,
-          trimsamsaBeingType: p.trimsamsaBeing.type.name,
-          isRetrograde: p.isRetrograde,
-        ));
-      }
-    }
-
-    return result;
+    });
   }
 
   @override
@@ -116,20 +105,18 @@ class _ChartWheelState extends State<ChartWheel> {
         final side = min(constraints.maxWidth, constraints.maxHeight);
         final half = side / 2;
         final center = Offset(half, half);
+        final panelMargin = (constraints.maxWidth - side) / 2;
 
         final planetGlyphSize = half * 0.065;
-        final glyphAngularSize = planetGlyphSize / (half * planetMidRadius(1));
 
         // Compute planet positions based on current size.
-        _planets = _buildPlanets(glyphAngularSize);
+        _planets = _buildPlanets(half, planetGlyphSize);
 
-        return SizedBox(
+        final wheel = SizedBox(
           width: side,
           height: side,
           child: Stack(
-            clipBehavior: Clip.none,
             children: [
-              // Geometric skeleton.
               Positioned.fill(
                 child: CustomPaint(
                   painter: ChartWheelPainter(
@@ -140,68 +127,79 @@ class _ChartWheelState extends State<ChartWheel> {
                   ),
                 ),
               ),
-              // Sign glyphs in outer ring.
               for (var s = 1; s <= 12; s++)
                 _buildSignGlyph(s, half, center, color),
-              // Planet glyphs.
               for (final planet in _planets)
                 _buildPlanetGlyph(planet, half, center, color, planetGlyphSize),
-              // Cusp hit regions.
               for (final cusp in _cusps)
                 _buildCuspHitRegion(cusp, half, center, color),
-              // Center info overlay.
-              if (_hoveredPlanet != null || _hoveredCusp != null || _hoveredSign != null)
-                _buildCenterInfo(half, center, color),
-              // Hora beings panel (top-left).
-              if (_planets.isNotEmpty)
-                Positioned(
-                  left: 0,
-                  top: 0,
-                  child: _buildBeingPanel(
-                    title: 'Hora',
-                    entries: _planets.map((p) => (
-                      planet: p.bodyName,
-                      type: p.horaBeingType ?? '',
-                      name: p.horaBeing ?? '',
-                    )).toList(),
-                    onTap: (e) => setState(() {
-                      _selectedBeing = e;
-                      _selectedPlanet = null;
-                    }),
-                    color: color,
-                    backdropColor: backdropColor,
-                    half: half,
-                  ),
-                ),
-              // Trimsamsa beings panel (top-right).
-              if (_planets.isNotEmpty)
-                Positioned(
-                  right: 0,
-                  top: 0,
-                  child: _buildBeingPanel(
-                    title: 'Trimsamsa',
-                    entries: _planets.map((p) => (
-                      planet: p.bodyName,
-                      type: p.trimsamsaBeingType ?? '',
-                      name: p.trimsamsaBeing ?? '',
-                    )).toList(),
-                    onTap: (e) {
-                      final planet = _planets.firstWhere(
-                        (p) => p.bodyName == e.planet,
-                      );
-                      setState(() {
-                        _selectedPlanet = planet;
-                        _selectedBeing = null;
-                      });
-                    },
-                    color: color,
-                    backdropColor: backdropColor,
-                    half: half,
-                  ),
-                ),
-              // Being card overlay.
+              _buildCenterInfo(half, center, color),
               if (_selectedPlanet != null || _selectedBeing != null)
                 _buildBeingOverlay(color, isDark),
+            ],
+          ),
+        );
+
+        if (_planets.isEmpty || panelMargin < 80) return wheel;
+
+        final panelWidth = panelMargin - 16;
+        return SizedBox(
+          width: constraints.maxWidth,
+          height: side,
+          child: Stack(
+            children: [
+              Positioned(
+                left: panelMargin,
+                top: 0,
+                width: side,
+                height: side,
+                child: wheel,
+              ),
+              Positioned(
+                left: 8,
+                top: 0,
+                width: panelWidth,
+                child: _buildBeingPanel(
+                  title: 'Hora',
+                  entries: _planets.map((p) => (
+                    planet: p.bodyName,
+                    type: p.horaBeingType ?? '',
+                    name: p.horaBeing ?? '',
+                  )).toList(),
+                  onTap: (e) => setState(() {
+                    _selectedBeing = e;
+                    _selectedPlanet = null;
+                  }),
+                  color: color,
+                  backdropColor: backdropColor,
+                  half: half,
+                ),
+              ),
+              Positioned(
+                right: 8,
+                top: 0,
+                width: panelWidth,
+                child: _buildBeingPanel(
+                  title: 'Trimsamsa',
+                  entries: _planets.map((p) => (
+                    planet: p.bodyName,
+                    type: p.trimsamsaBeingType ?? '',
+                    name: p.trimsamsaBeing ?? '',
+                  )).toList(),
+                  onTap: (e) {
+                    final planet = _planets.firstWhere(
+                      (p) => p.bodyName == e.planet,
+                    );
+                    setState(() {
+                      _selectedPlanet = planet;
+                      _selectedBeing = null;
+                    });
+                  },
+                  color: color,
+                  backdropColor: backdropColor,
+                  half: half,
+                ),
+              ),
             ],
           ),
         );
@@ -250,7 +248,7 @@ class _ChartWheelState extends State<ChartWheel> {
     Color color,
     double glyphSize,
   ) {
-    final radius = planetMidRadius(half);
+    final radius = planet.radiusFraction * half;
     final pos = polarToCartesian(planet.angle, radius, center);
     final asset = planetGlyphs[planet.bodyName];
 
@@ -267,8 +265,14 @@ class _ChartWheelState extends State<ChartWheel> {
         onExit: (_) => setState(() => _hoveredPlanet = null),
         child: GestureDetector(
           onTap: () => setState(() {
-            _selectedPlanet = planet;
-            _selectedBeing = null;
+            if (_hoveredPlanet?.bodyName == planet.bodyName) {
+              _selectedPlanet = planet;
+              _selectedBeing = null;
+            } else {
+              _hoveredPlanet = planet;
+              _hoveredCusp = null;
+              _hoveredSign = null;
+            }
           }),
           child: SizedBox(
             width: glyphSize,
@@ -312,6 +316,7 @@ class _ChartWheelState extends State<ChartWheel> {
     final fontSize = half * 0.038;
 
     List<String> lines;
+    var showHint = false;
     if (_hoveredPlanet case final p?) {
       final signName = adityaSigns[p.sign]?.name ?? '?';
       lines = [
@@ -320,6 +325,7 @@ class _ChartWheelState extends State<ChartWheel> {
         'Hora: ${p.horaBeing ?? '—'}',
         'Trimsamsa: ${p.trimsamsaBeing ?? '—'}',
       ];
+      showHint = true;
     } else if (_hoveredCusp case final c?) {
       final signName = adityaSigns[c.sign]?.name ?? '?';
       lines = [
@@ -329,7 +335,7 @@ class _ChartWheelState extends State<ChartWheel> {
     } else if (_hoveredSign case final s?) {
       lines = [adityaSigns[s]?.name ?? '?'];
     } else {
-      return const SizedBox.shrink();
+      lines = [];
     }
 
     return Positioned(
@@ -342,12 +348,36 @@ class _ChartWheelState extends State<ChartWheel> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              for (final line in lines)
+              if (lines.isEmpty)
                 Text(
-                  line,
-                  style: TextStyle(color: color, fontSize: fontSize),
+                  'Tap a planet to learn\nwhich being it activates',
+                  style: TextStyle(
+                    color: color.withValues(alpha: 0.35),
+                    fontSize: fontSize * 0.9,
+                    fontStyle: FontStyle.italic,
+                  ),
                   textAlign: TextAlign.center,
-                ),
+                )
+              else ...[
+                for (final line in lines)
+                  Text(
+                    line,
+                    style: TextStyle(color: color, fontSize: fontSize),
+                    textAlign: TextAlign.center,
+                  ),
+                if (showHint) ...[
+                  SizedBox(height: fontSize * 0.5),
+                  Text(
+                    'tap to find out more',
+                    style: TextStyle(
+                      color: color.withValues(alpha: 0.4),
+                      fontSize: fontSize * 0.8,
+                      fontStyle: FontStyle.italic,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ],
             ],
           ),
         ),
@@ -382,6 +412,14 @@ class _ChartWheelState extends State<ChartWheel> {
               color: color,
               fontSize: fontSize * 1.1,
               fontWeight: FontWeight.bold,
+            ),
+          ),
+          Text(
+            'click to find out more',
+            style: TextStyle(
+              color: dimColor,
+              fontSize: fontSize * 0.8,
+              fontStyle: FontStyle.italic,
             ),
           ),
           const SizedBox(height: 4),
@@ -431,10 +469,10 @@ class _ChartWheelState extends State<ChartWheel> {
         if (planet.isRetrograde) _infoRow('Motion', 'Retrograde', color),
       ];
     } else if (_selectedBeing case final being?) {
-      cardTitle = being.name;
+      cardTitle = _capitalize(being.planet);
       infoRows = [
         _infoRow('Type', _capitalize(being.type), color),
-        _infoRow('Planet', _capitalize(being.planet), color),
+        _infoRow('Being', being.name, color),
       ];
     } else {
       return const SizedBox.shrink();
