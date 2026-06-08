@@ -521,7 +521,6 @@ class _ChartWheelState extends State<ChartWheel> {
 
     final content = _beingContent?[(beingSign, beingType)];
     final imagePath = beingImagePath(beingSign, beingType);
-    final emblemPath = beingEmblemPath(beingType);
     final glyphPath = adityaGlyphPath(beingSign);
     final planetGlyph = planetName.isNotEmpty ? planetGlyphs[planetName] : null;
     final headerGlyph = planetGlyph ?? glyphPath;
@@ -542,7 +541,7 @@ class _ChartWheelState extends State<ChartWheel> {
           child: GestureDetector(
             onTap: () {},
             child: Container(
-              constraints: const BoxConstraints(maxWidth: 360),
+              constraints: const BoxConstraints(maxWidth: 460),
               margin: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: cardBg,
@@ -559,7 +558,7 @@ class _ChartWheelState extends State<ChartWheel> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+                        padding: const EdgeInsets.fromLTRB(44, 24, 44, 0),
                         child: Row(
                           children: [
                             if (headerGlyph != null) ...[
@@ -593,7 +592,7 @@ class _ChartWheelState extends State<ChartWheel> {
                       const SizedBox(height: 12),
                       Flexible(
                         child: SingleChildScrollView(
-                          padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                          padding: const EdgeInsets.fromLTRB(44, 0, 44, 24),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisSize: MainAxisSize.min,
@@ -624,43 +623,23 @@ class _ChartWheelState extends State<ChartWheel> {
                           ),
                         const SizedBox(height: 16),
                         if (glyphPath != null)
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Image.asset(
-                                emblemPath,
-                                width: 28,
-                                height: 28,
-                                errorBuilder: (_, _, _) =>
-                                    const SizedBox(width: 28, height: 28),
-                              ),
-                              Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 8),
-                                child: Text(
-                                  'in',
-                                  style: TextStyle(
-                                    color: dimColor,
-                                    fontSize: 14,
-                                    fontStyle: FontStyle.italic,
-                                  ),
-                                ),
-                              ),
-                              SvgPicture.asset(
-                                glyphPath,
-                                width: 28,
-                                height: 28,
-                                colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
-                              ),
-                            ],
+                          Center(
+                            child: SvgPicture.asset(
+                              glyphPath,
+                              width: 28,
+                              height: 28,
+                              colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
+                            ),
                           ),
                         if (content != null) ...[
                           const SizedBox(height: 16),
                           Text(
                             content.subtitle,
                             style: TextStyle(
-                              color: color.withValues(alpha: 0.8),
+                              color: isDark ? const Color(0xFFD4A855) : color,
                               fontSize: 16,
                               fontStyle: FontStyle.italic,
+                              fontWeight: isDark ? null : FontWeight.bold,
                             ),
                           ),
                           const SizedBox(height: 12),
@@ -678,7 +657,7 @@ class _ChartWheelState extends State<ChartWheel> {
                               child: Text(
                                 'Reflection',
                                 style: TextStyle(
-                                  color: color,
+                                  color: isDark ? const Color(0xFFD4A855) : color,
                                   fontSize: 16,
                                   fontWeight: FontWeight.bold,
                                 ),

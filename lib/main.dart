@@ -246,6 +246,7 @@ class _ExplorePage extends StatelessWidget {
             position: PopupMenuPosition.under,
             onSelected: (value) {
               if (value == 'open_chart') onOpenChart();
+              if (value == 'about') _showAbout(context);
             },
             itemBuilder: (context) => [
               const PopupMenuItem(
@@ -255,6 +256,16 @@ class _ExplorePage extends StatelessWidget {
                     Icon(Icons.folder_open, size: 20),
                     SizedBox(width: 12),
                     Text('Open Chart'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'about',
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, size: 20),
+                    SizedBox(width: 12),
+                    Text('About'),
                   ],
                 ),
               ),
@@ -276,6 +287,79 @@ class _ExplorePage extends StatelessWidget {
         ),
         content,
       ],
+    );
+  }
+
+  void _showAbout(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final color = isDark ? Colors.white : Colors.black;
+    final cardBg = isDark ? const Color(0xF0151015) : const Color(0xF0F5F1EA);
+
+    showDialog(
+      context: context,
+      builder: (context) => Center(
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 400),
+          margin: const EdgeInsets.all(32),
+          padding: const EdgeInsets.all(32),
+          decoration: BoxDecoration(
+            color: cardBg,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: color.withValues(alpha: 0.3)),
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    const Spacer(),
+                    Text(
+                      'About',
+                      style: TextStyle(
+                        color: color,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Expanded(
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: IconButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          icon: Icon(Icons.close, color: color, size: 20),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'This is free-as-in-freedom software, licensed under the AGPL-3.0.',
+                  style: TextStyle(
+                    color: color.withValues(alpha: 0.85),
+                    fontSize: 14,
+                    height: 1.5,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                SelectableText(
+                  'https://github.com/ninthhousestudios/adityas-explore',
+                  style: TextStyle(
+                    color: isDark ? const Color(0xFFD4A855) : Colors.blue[800],
+                    fontSize: 13,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 

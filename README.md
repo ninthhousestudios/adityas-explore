@@ -1,17 +1,21 @@
-# explore
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 
-A new Flutter project.
+# Adityas Explore
 
-## Getting Started
+Interactive birth chart explorer for the Aditya system — a non-standard Vedic
+framework derived from the Srimad Bhagavatam. Renders a circular chart wheel
+with Aditya sign glyphs, planet positions, Campanus house cusps, and
+tap-to-reveal being cards (Hora and Trimsamsa).
 
-This project is a starting point for a Flutter application.
+Built with Flutter (desktop + web). The Arrow calculation engine runs
+client-side (Dart/WASM for web, native FFI for desktop).
 
-A few resources to get you started if this is your first Flutter project:
+## Running
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+```
+flutter run -d chrome    # web
+flutter run -d linux     # desktop
+```
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Load a `.chtk` or `.toml` chart file from the settings menu.
+
