@@ -119,7 +119,21 @@ String _trimBlock(List<String> lines) {
   while (copy.isNotEmpty && copy.last.trim().isEmpty) {
     copy.removeLast();
   }
-  return copy.join('\n');
+  final paragraphs = <String>[];
+  final current = StringBuffer();
+  for (final line in copy) {
+    if (line.trim().isEmpty) {
+      if (current.isNotEmpty) {
+        paragraphs.add(current.toString());
+        current.clear();
+      }
+    } else {
+      if (current.isNotEmpty) current.write(' ');
+      current.write(line.trim());
+    }
+  }
+  if (current.isNotEmpty) paragraphs.add(current.toString());
+  return paragraphs.join('\n\n');
 }
 
 const _beingImages = <(int, String), String>{
