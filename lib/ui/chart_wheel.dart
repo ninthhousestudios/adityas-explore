@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import 'aditya_data.dart';
+import 'being_content.dart';
 import 'chart_wheel_layout.dart';
 import 'chart_wheel_painter.dart';
 
@@ -22,7 +23,8 @@ class _ChartWheelState extends State<ChartWheel> {
   PlacedCusp? _hoveredCusp;
   int? _hoveredSign;
   PlacedPlanet? _selectedPlanet;
-  ({String name, String type, String planet})? _selectedBeing;
+  ({String name, String type, String planet, int sign})? _selectedBeing;
+  Map<(int, String), BeingContent>? _beingContent;
 
   late int _ascSign;
   late List<PlacedPlanet> _planets;
@@ -32,6 +34,12 @@ class _ChartWheelState extends State<ChartWheel> {
   void initState() {
     super.initState();
     _computeLayout();
+    _loadContent();
+  }
+
+  Future<void> _loadContent() async {
+    final content = await loadBeingContent();
+    if (mounted) setState(() => _beingContent = content);
   }
 
   @override
@@ -85,8 +93,10 @@ class _ChartWheelState extends State<ChartWheel> {
         radiusFraction: positions[i].radiusFraction,
         horaBeing: p.horaBeing.name,
         horaBeingType: p.horaBeing.type.name,
+        horaBeingSign: p.horaBeing.signNumber,
         trimsamsaBeing: p.trimsamsaBeing.name,
         trimsamsaBeingType: p.trimsamsaBeing.type.name,
+        trimsamsaBeingSign: p.trimsamsaBeing.signNumber,
         isRetrograde: p.isRetrograde,
       );
     });
@@ -165,6 +175,7 @@ class _ChartWheelState extends State<ChartWheel> {
                     planet: p.bodyName,
                     type: p.horaBeingType ?? '',
                     name: p.horaBeing ?? '',
+                    sign: p.horaBeingSign ?? 0,
                   )).toList(),
                   onTap: (e) => setState(() {
                     _selectedBeing = e;
@@ -185,6 +196,7 @@ class _ChartWheelState extends State<ChartWheel> {
                     planet: p.bodyName,
                     type: p.trimsamsaBeingType ?? '',
                     name: p.trimsamsaBeing ?? '',
+                    sign: p.trimsamsaBeingSign ?? 0,
                   )).toList(),
                   onTap: (e) {
                     final planet = _planets.firstWhere(
@@ -387,8 +399,8 @@ class _ChartWheelState extends State<ChartWheel> {
 
   Widget _buildBeingPanel({
     required String title,
-    required List<({String planet, String type, String name})> entries,
-    required void Function(({String name, String type, String planet})) onTap,
+    required List<({String planet, String type, String name, int sign})> entries,
+    required void Function(({String name, String type, String planet, int sign})) onTap,
     required Color color,
     required Color backdropColor,
     required double half,
@@ -425,7 +437,7 @@ class _ChartWheelState extends State<ChartWheel> {
           const SizedBox(height: 4),
           for (final e in entries)
             GestureDetector(
-              onTap: () => onTap((name: e.name, type: e.type, planet: e.planet)),
+              onTap: () => onTap((name: e.name, type: e.type, planet: e.planet, sign: e.sign)),
               behavior: HitTestBehavior.opaque,
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 2),
@@ -455,21 +467,39 @@ class _ChartWheelState extends State<ChartWheel> {
 
   Widget _buildBeingOverlay(Color color, bool isDark) {
     final cardBg = isDark ? const Color(0xF0151015) : const Color(0xF0F5F1EA);
+    final dimColor = color.withValues(alpha: 0.6);
 
-    final String cardTitle;
-    final List<Widget> infoRows;
+    int beingSign;
+    String beingType;
+    String planetName;
+    List<Widget> infoRows;
 
     if (_selectedPlanet case final planet?) {
+      planetName = planet.bodyName;
+      beingSign = planet.trimsamsaBeingSign ?? 0;
+      beingType = planet.trimsamsaBeingType ?? '';
       final signName = adityaSigns[planet.sign]?.name ?? '?';
-      cardTitle = _capitalize(planet.bodyName);
       infoRows = [
         _infoRow('Position', '${planet.longitudeLabel} $signName', color),
-        _infoRow('Hora', planet.horaBeing ?? '—', color),
+        _tappableInfoRow(
+          'Hora', planet.horaBeing ?? '—', color,
+          () => setState(() {
+            _selectedBeing = (
+              name: planet.horaBeing ?? '',
+              type: planet.horaBeingType ?? '',
+              planet: planet.bodyName,
+              sign: planet.horaBeingSign ?? 0,
+            );
+            _selectedPlanet = null;
+          }),
+        ),
         _infoRow('Trimsamsa', planet.trimsamsaBeing ?? '—', color),
         if (planet.isRetrograde) _infoRow('Motion', 'Retrograde', color),
       ];
     } else if (_selectedBeing case final being?) {
-      cardTitle = _capitalize(being.planet);
+      planetName = being.planet;
+      beingSign = being.sign;
+      beingType = being.type;
       infoRows = [
         _infoRow('Type', _capitalize(being.type), color),
         _infoRow('Being', being.name, color),
@@ -478,57 +508,202 @@ class _ChartWheelState extends State<ChartWheel> {
       return const SizedBox.shrink();
     }
 
+    final content = _beingContent?[(beingSign, beingType)];
+    final imagePath = beingImagePath(beingSign, beingType);
+    final emblemPath = beingEmblemPath(beingType);
+    final glyphPath = adityaGlyphPath(beingSign);
+    final planetGlyph = planetGlyphs[planetName];
+
+    void close() => setState(() {
+      _selectedPlanet = null;
+      _selectedBeing = null;
+    });
+
     return Positioned.fill(
-      child: Center(
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 320),
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: cardBg,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: color.withValues(alpha: 0.3)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    cardTitle,
-                    style: TextStyle(
-                      color: color,
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
+      child: GestureDetector(
+        onTap: close,
+        behavior: HitTestBehavior.opaque,
+        child: Center(
+          child: GestureDetector(
+            onTap: () {},
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 360),
+              margin: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: cardBg,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: color.withValues(alpha: 0.3)),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(context).size.height * 0.85,
+                  ),
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          children: [
+                            if (planetGlyph != null) ...[
+                              SvgPicture.asset(
+                                planetGlyph,
+                                width: 28,
+                                height: 28,
+                                colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
+                              ),
+                              const SizedBox(width: 8),
+                            ],
+                            Expanded(
+                              child: Text(
+                                _capitalize(planetName),
+                                style: TextStyle(
+                                  color: color,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: close,
+                              icon: Icon(Icons.close, color: color, size: 20),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        ...infoRows,
+                        const SizedBox(height: 16),
+                        if (imagePath.isNotEmpty)
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: Image.asset(
+                              imagePath,
+                              width: double.infinity,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, _, _) => Container(
+                                height: 160,
+                                decoration: BoxDecoration(
+                                  color: color.withValues(alpha: 0.05),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    'Image not found',
+                                    style: TextStyle(color: dimColor),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        const SizedBox(height: 16),
+                        if (glyphPath != null)
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Image.asset(
+                                emblemPath,
+                                width: 28,
+                                height: 28,
+                                errorBuilder: (_, _, _) =>
+                                    const SizedBox(width: 28, height: 28),
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 8),
+                                child: Text(
+                                  'in',
+                                  style: TextStyle(
+                                    color: dimColor,
+                                    fontSize: 14,
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                ),
+                              ),
+                              SvgPicture.asset(
+                                glyphPath,
+                                width: 28,
+                                height: 28,
+                                colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
+                              ),
+                            ],
+                          ),
+                        if (content != null) ...[
+                          const SizedBox(height: 16),
+                          Text(
+                            content.subtitle,
+                            style: TextStyle(
+                              color: color.withValues(alpha: 0.8),
+                              fontSize: 16,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            content.description,
+                            style: TextStyle(
+                              color: color.withValues(alpha: 0.85),
+                              fontSize: 14,
+                              height: 1.5,
+                            ),
+                          ),
+                          if (content.reflections.isNotEmpty) ...[
+                            const SizedBox(height: 20),
+                            Center(
+                              child: Text(
+                                'Reflection',
+                                style: TextStyle(
+                                  color: color,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              content.reflections,
+                              style: TextStyle(
+                                color: color.withValues(alpha: 0.85),
+                                fontSize: 14,
+                                height: 1.5,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ],
                     ),
                   ),
-                  IconButton(
-                    onPressed: () => setState(() {
-                      _selectedPlanet = null;
-                      _selectedBeing = null;
-                    }),
-                    icon: Icon(Icons.close, color: color, size: 20),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Container(
-                height: 160,
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.05),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Center(
-                  child: Text(
-                    'Being image',
-                    style: TextStyle(color: color.withValues(alpha: 0.3)),
-                  ),
                 ),
               ),
-              const SizedBox(height: 16),
-              ...infoRows,
-            ],
+            ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _tappableInfoRow(String label, String value, Color color, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(label, style: TextStyle(color: color.withValues(alpha: 0.6), fontSize: 14)),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(value, style: TextStyle(color: color, fontSize: 14)),
+                const SizedBox(width: 4),
+                Icon(Icons.arrow_forward, color: color.withValues(alpha: 0.4), size: 14),
+              ],
+            ),
+          ],
         ),
       ),
     );

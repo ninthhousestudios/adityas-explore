@@ -48,6 +48,9 @@ flutter:
   uses-material-design: true
   assets:
     - assets/images/
+    - assets/images/beings/
+    - assets/images/emblems/
     - assets/ephe/
     - assets/glyphs/
     - assets/glyphs/planets/
+    - assets/text/

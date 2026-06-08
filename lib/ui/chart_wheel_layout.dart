@@ -156,8 +156,10 @@ class PlacedPlanet {
   final double radiusFraction;
   final String? horaBeing;
   final String? horaBeingType;
+  final int? horaBeingSign;
   final String? trimsamsaBeing;
   final String? trimsamsaBeingType;
+  final int? trimsamsaBeingSign;
   final bool isRetrograde;
 
   const PlacedPlanet({
@@ -168,8 +170,10 @@ class PlacedPlanet {
     required this.radiusFraction,
     this.horaBeing,
     this.horaBeingType,
+    this.horaBeingSign,
     this.trimsamsaBeing,
     this.trimsamsaBeingType,
+    this.trimsamsaBeingSign,
     this.isRetrograde = false,
   });
 
