@@ -26,6 +26,7 @@ class ExploreApp extends StatefulWidget {
 
 class _ExploreAppState extends State<ExploreApp> {
   bool _useLight = false;
+  double _zoom = 1.0;
   bool _booted = false;
   String? _bootError;
 
@@ -36,6 +37,10 @@ class _ExploreAppState extends State<ExploreApp> {
   ChartData? _chartData;
   arrow.Chart? _chart;
   bool _calculating = false;
+
+  static const _zoomMin = 0.6;
+  static const _zoomMax = 1.8;
+  static const _zoomStep = 0.1;
 
   @override
   void initState() {
@@ -54,6 +59,7 @@ class _ExploreAppState extends State<ExploreApp> {
       _ephemerisService = await createEphemerisService(currentSweEphePath);
       _calculator = ChartCalculator(_ephemerisService);
       _useLight = _prefs.getBool('useLight') ?? false;
+      _zoom = _prefs.getDouble('zoom') ?? 1.0;
       setState(() => _booted = true);
       dev.log('Boot complete', name: 'APP');
     } catch (e, s) {
@@ -65,6 +71,18 @@ class _ExploreAppState extends State<ExploreApp> {
   void _toggleTheme() {
     setState(() => _useLight = !_useLight);
     _prefs.setBool('useLight', _useLight);
+  }
+
+  void _zoomIn() {
+    if (_zoom >= _zoomMax) return;
+    setState(() => _zoom = (_zoom + _zoomStep).clamp(_zoomMin, _zoomMax));
+    _prefs.setDouble('zoom', _zoom);
+  }
+
+  void _zoomOut() {
+    if (_zoom <= _zoomMin) return;
+    setState(() => _zoom = (_zoom - _zoomStep).clamp(_zoomMin, _zoomMax));
+    _prefs.setDouble('zoom', _zoom);
   }
 
   Future<void> _openChart() async {
@@ -137,6 +155,9 @@ class _ExploreAppState extends State<ExploreApp> {
       home: _ExplorePage(
         useLight: _useLight,
         onToggleTheme: _toggleTheme,
+        zoom: _zoom,
+        onZoomIn: _zoomIn,
+        onZoomOut: _zoomOut,
         onOpenChart: _openChart,
         chartData: _chartData,
         chart: _chart,
@@ -149,6 +170,9 @@ class _ExploreAppState extends State<ExploreApp> {
 class _ExplorePage extends StatelessWidget {
   final bool useLight;
   final VoidCallback onToggleTheme;
+  final double zoom;
+  final VoidCallback onZoomIn;
+  final VoidCallback onZoomOut;
   final VoidCallback onOpenChart;
   final ChartData? chartData;
   final arrow.Chart? chart;
@@ -157,6 +181,9 @@ class _ExplorePage extends StatelessWidget {
   const _ExplorePage({
     required this.useLight,
     required this.onToggleTheme,
+    required this.zoom,
+    required this.onZoomIn,
+    required this.onZoomOut,
     required this.onOpenChart,
     required this.chartData,
     required this.chart,
@@ -184,6 +211,30 @@ class _ExplorePage extends StatelessWidget {
         title: chartData != null ? Text(chartData!.name) : null,
         centerTitle: true,
         actions: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                onPressed: onZoomOut,
+                icon: const Icon(Icons.remove, size: 18),
+                tooltip: 'Zoom out',
+                visualDensity: VisualDensity.compact,
+              ),
+              Text(
+                '${(zoom * 100).round()}%',
+                style: TextStyle(
+                  color: Theme.of(context).appBarTheme.foregroundColor,
+                  fontSize: 13,
+                ),
+              ),
+              IconButton(
+                onPressed: onZoomIn,
+                icon: const Icon(Icons.add, size: 18),
+                tooltip: 'Zoom in',
+                visualDensity: VisualDensity.compact,
+              ),
+            ],
+          ),
           IconButton(
             onPressed: onToggleTheme,
             icon: Icon(useLight ? Icons.dark_mode : Icons.light_mode),
@@ -249,7 +300,10 @@ class _ExplorePage extends StatelessWidget {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: ChartWheel(chart: chart!),
+        child: Transform.scale(
+          scale: zoom,
+          child: ChartWheel(chart: chart!),
+        ),
       ),
     );
   }
