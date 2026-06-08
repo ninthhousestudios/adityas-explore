@@ -144,7 +144,7 @@ class _ChartWheelState extends State<ChartWheel> {
               if (_hoveredPlanet != null || _hoveredCusp != null)
                 _buildCenterInfo(half, center, color),
               // Being card overlay.
-              if (_selectedPlanet != null) _buildBeingOverlay(color),
+              if (_selectedPlanet != null) _buildBeingOverlay(color, isDark),
             ],
           ),
         );
@@ -285,72 +285,63 @@ class _ChartWheelState extends State<ChartWheel> {
     );
   }
 
-  Widget _buildBeingOverlay(Color color) {
+  Widget _buildBeingOverlay(Color color, bool isDark) {
     final planet = _selectedPlanet!;
     final signName = adityaSigns[planet.sign]?.name ?? '?';
+    final cardBg = isDark ? const Color(0xF0151015) : const Color(0xF0F5F1EA);
 
     return Positioned.fill(
-      child: GestureDetector(
-        onTap: () => setState(() => _selectedPlanet = null),
+      child: Center(
         child: Container(
-          color: Colors.black.withValues(alpha: 0.7),
-          child: Center(
-            child: GestureDetector(
-              onTap: () {},
-              child: Container(
-                constraints: const BoxConstraints(maxWidth: 320),
-                padding: const EdgeInsets.all(24),
+          constraints: const BoxConstraints(maxWidth: 320),
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: cardBg,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: color.withValues(alpha: 0.3)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    _capitalize(planet.bodyName),
+                    style: TextStyle(
+                      color: color,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () =>
+                        setState(() => _selectedPlanet = null),
+                    icon: Icon(Icons.close, color: color, size: 20),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Container(
+                height: 160,
                 decoration: BoxDecoration(
-                  color: Colors.black87,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: color.withValues(alpha: 0.3)),
+                  color: color.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          _capitalize(planet.bodyName),
-                          style: TextStyle(
-                            color: color,
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        IconButton(
-                          onPressed: () =>
-                              setState(() => _selectedPlanet = null),
-                          icon: Icon(Icons.close, color: color, size: 20),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    // Placeholder for being image.
-                    Container(
-                      height: 160,
-                      decoration: BoxDecoration(
-                        color: color.withValues(alpha: 0.05),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Center(
-                        child: Text(
-                          'Being image',
-                          style: TextStyle(color: color.withValues(alpha: 0.3)),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    _infoRow('Position', '${planet.longitudeLabel} $signName', color),
-                    _infoRow('Hora', planet.horaBeing ?? '—', color),
-                    _infoRow('Trimsamsa', planet.trimsamsaBeing ?? '—', color),
-                    if (planet.isRetrograde)
-                      _infoRow('Motion', 'Retrograde', color),
-                  ],
+                child: Center(
+                  child: Text(
+                    'Being image',
+                    style: TextStyle(color: color.withValues(alpha: 0.3)),
+                  ),
                 ),
               ),
-            ),
+              const SizedBox(height: 16),
+              _infoRow('Position', '${planet.longitudeLabel} $signName', color),
+              _infoRow('Hora', planet.horaBeing ?? '—', color),
+              _infoRow('Trimsamsa', planet.trimsamsaBeing ?? '—', color),
+              if (planet.isRetrograde)
+                _infoRow('Motion', 'Retrograde', color),
+            ],
           ),
         ),
       ),

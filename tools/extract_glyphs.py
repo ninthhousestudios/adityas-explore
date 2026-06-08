@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Extract planet glyph SVG path data from gandiva/glyphs.py into standalone SVG files.
-Each glyph gets a computed viewBox from path bounding-box estimation.
+Each glyph gets a square viewBox computed from path bounding-box estimation.
 """
 
 import math
@@ -15,7 +15,7 @@ from gandiva.glyphs import PLANET_GLYPHS
 
 def estimate_path_bounds(path_d: str, start_x: float = 0, start_y: float = 0):
     """
-    Rough bounding-box estimation by tracking cursor through relative SVG path commands.
+    Bounding-box estimation by tracking cursor through relative SVG path commands.
     Handles: m, l, c, a, z and implicit lineto after m.
     """
     min_x, min_y = start_x, start_y
@@ -24,7 +24,6 @@ def estimate_path_bounds(path_d: str, start_x: float = 0, start_y: float = 0):
 
     num_re = re.compile(r"[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?")
 
-    i = 0
     tokens = path_d.strip()
     cmd = "l"  # default after m
 
@@ -48,7 +47,6 @@ def estimate_path_bounds(path_d: str, start_x: float = 0, start_y: float = 0):
             pos += 1
             continue
 
-        # Collect numbers from current position
         nums = []
         temp_pos = pos
         while temp_pos < len(tokens):
@@ -56,10 +54,8 @@ def estimate_path_bounds(path_d: str, start_x: float = 0, start_y: float = 0):
             if m:
                 nums.append(float(m.group()))
                 temp_pos = m.end()
-                # skip separators
                 while temp_pos < len(tokens) and tokens[temp_pos] in " ,\t\n\r":
                     temp_pos += 1
-                # stop if we hit a letter
                 if temp_pos < len(tokens) and tokens[temp_pos].isalpha():
                     break
             else:
@@ -72,7 +68,6 @@ def estimate_path_bounds(path_d: str, start_x: float = 0, start_y: float = 0):
         pos = temp_pos
 
         if cmd == "m":
-            # First pair is moveto, rest are implicit lineto
             idx = 0
             if len(nums) >= 2:
                 cx += nums[0]
@@ -119,11 +114,8 @@ def estimate_path_bounds(path_d: str, start_x: float = 0, start_y: float = 0):
         elif cmd == "c":
             idx = 0
             while idx + 5 < len(nums):
-                # control point 1
                 update(cx + nums[idx], cy + nums[idx + 1])
-                # control point 2
                 update(cx + nums[idx + 2], cy + nums[idx + 3])
-                # endpoint
                 cx += nums[idx + 4]
                 cy += nums[idx + 5]
                 update(cx, cy)
@@ -144,22 +136,20 @@ def estimate_path_bounds(path_d: str, start_x: float = 0, start_y: float = 0):
             while idx + 6 < len(nums):
                 rx = abs(nums[idx])
                 ry = abs(nums[idx + 1])
-                # arc endpoint
                 ex = cx + nums[idx + 5]
                 ey = cy + nums[idx + 6]
-                # conservative: extend bounds by radii around both endpoints
-                update(cx - rx, cy - ry)
-                update(cx + rx, cy + ry)
-                update(ex - rx, ey - ry)
-                update(ex + rx, ey + ry)
+                # Extend bounds by radius from chord midpoint (tighter than both-endpoints).
+                mx = (cx + ex) / 2
+                my = (cy + ey) / 2
+                update(mx - rx, my - ry)
+                update(mx + rx, my + ry)
                 cx = ex
                 cy = ey
                 idx += 7
 
-        elif cmd == "z" or cmd == "Z":
+        elif cmd in ("z", "Z"):
             pass
         else:
-            # unknown command, skip all nums
             pass
 
     return min_x, min_y, max_x, max_y
@@ -184,15 +174,22 @@ def glyph_to_svg(name: str, glyph: dict) -> str:
         path_elements.append((path_d, start_x, start_y))
 
     pad = 2.0
-    vx = all_min_x - pad
-    vy = all_min_y - pad
-    vw = (all_max_x - all_min_x) + pad * 2
-    vh = (all_max_y - all_min_y) + pad * 2
+    raw_w = (all_max_x - all_min_x) + pad * 2
+    raw_h = (all_max_y - all_min_y) + pad * 2
+
+    # Square viewBox centered on the glyph.
+    dim = max(raw_w, raw_h)
+    center_x = (all_min_x + all_max_x) / 2
+    center_y = (all_min_y + all_max_y) / 2
+    vx = center_x - dim / 2
+    vy = center_y - dim / 2
+
+    sw = dim * 0.065
 
     lines = [
         f'<svg xmlns="http://www.w3.org/2000/svg" '
-        f'viewBox="{vx:.2f} {vy:.2f} {vw:.2f} {vh:.2f}" '
-        f'fill="none" stroke="#e0d8c8" stroke-width="1.5" '
+        f'viewBox="{vx:.2f} {vy:.2f} {dim:.2f} {dim:.2f}" '
+        f'fill="none" stroke="#e0d8c8" stroke-width="{sw:.2f}" '
         f'stroke-linecap="round" stroke-linejoin="round">',
     ]
     for path_d, sx, sy in path_elements:
@@ -228,7 +225,7 @@ def main():
         path = os.path.join(out_dir, f"{filename}.svg")
         with open(path, "w") as f:
             f.write(svg)
-        print(f"  {filename}.svg")
+        print(f"  {filename}.svg  {svg.split('viewBox=')[1].split('\"')[1]}")
 
     print(f"\nWrote {len(PLANET_GLYPHS)} glyphs to {out_dir}")
 

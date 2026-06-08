@@ -17,24 +17,23 @@ double houseMidRadius(double halfSize) =>
     halfSize * (houseRingOuter + houseRingInner) / 2;
 
 /// Screen angle (radians) where a sign's 0° boundary starts.
-/// Sign with ascSign is centered at π (9 o'clock).
+/// Signs increase counterclockwise. The 0° edge of a sign is its
+/// clockwise boundary (higher screen angle).
 double signStartAngle(int signNumber, int ascSign) {
   final offset = signNumber - ascSign;
-  // Each sign spans 2π/12 = π/6 radians.
-  // Sign ascSign starts at π - π/12 (so its midpoint is at π).
-  return pi - pi / 12 + offset * (pi / 6);
+  return pi + pi / 12 - offset * (pi / 6);
 }
 
-/// Screen angle for a specific ecliptic position.
+/// Screen angle for a specific ecliptic position within a sign.
+/// Degrees increase counterclockwise (decreasing screen angle).
 double degreeToAngle(int sign, double inSignDeg, int ascSign) {
   final signStart = signStartAngle(sign, ascSign);
-  // 30° of sign maps to π/6 radians. Degrees increase clockwise.
-  return signStart + inSignDeg / 30.0 * (pi / 6);
+  return signStart - inSignDeg / 30.0 * (pi / 6);
 }
 
 /// Midpoint angle for a given sign.
 double signMidAngle(int signNumber, int ascSign) {
-  return signStartAngle(signNumber, ascSign) + pi / 12;
+  return signStartAngle(signNumber, ascSign) - pi / 12;
 }
 
 Offset polarToCartesian(double angle, double radius, Offset center) {
@@ -44,8 +43,8 @@ Offset polarToCartesian(double angle, double radius, Offset center) {
   );
 }
 
-/// Resolve planet placement within a sign to prevent overlaps.
-/// Returns list of resolved angles, maintaining input order.
+/// Resolve planet placement within a sign to prevent overlaps
+/// and keep glyphs inside sign boundaries.
 List<double> resolvePlanetAngles({
   required List<double> inSignDegrees,
   required int sign,
@@ -53,25 +52,35 @@ List<double> resolvePlanetAngles({
   required double glyphAngularSize,
 }) {
   if (inSignDegrees.isEmpty) return [];
-  if (inSignDegrees.length == 1) {
-    return [degreeToAngle(sign, inSignDegrees[0], ascSign)];
-  }
 
   final signStart = signStartAngle(sign, ascSign);
   final signSpan = pi / 6; // 30°
-  final padding = glyphAngularSize * 0.15;
+  final halfGlyph = glyphAngularSize / 2;
 
-  // Create indexed entries and sort by degree.
+  // Counterclockwise: sign goes from signStart (high angle) to signStart - signSpan (low angle).
+  final rangeMax = signStart - halfGlyph;
+  final rangeMin = signStart - signSpan + halfGlyph;
+
+  if (inSignDegrees.length == 1) {
+    final raw = degreeToAngle(sign, inSignDegrees[0], ascSign);
+    return [raw.clamp(rangeMin, rangeMax)];
+  }
+
+  // Index + sort by degree ascending (= angle descending).
   final indexed =
       List.generate(inSignDegrees.length, (i) => (i, inSignDegrees[i]));
   indexed.sort((a, b) => a.$2.compareTo(b.$2));
 
-  // Try natural placement first.
-  final natural =
-      indexed.map((e) => signStart + e.$2 / 30.0 * signSpan).toList();
+  // Try natural placement with boundary clamping.
+  final natural = indexed.map((e) {
+    final raw = degreeToAngle(sign, e.$2, ascSign);
+    return raw.clamp(rangeMin, rangeMax);
+  }).toList();
 
-  if (_noOverlaps(natural, glyphAngularSize)) {
-    // Reorder back to original indices.
+  // natural is in descending angle order (low degree = high angle).
+  // Sort ascending for overlap check.
+  final ascending = List.of(natural)..sort();
+  if (_noOverlaps(ascending, glyphAngularSize)) {
     final result = List<double>.filled(inSignDegrees.length, 0);
     for (var i = 0; i < indexed.length; i++) {
       result[indexed[i].$1] = natural[i];
@@ -79,21 +88,14 @@ List<double> resolvePlanetAngles({
     return result;
   }
 
-  // Even spread across the sign.
-  final totalNeeded = indexed.length * (glyphAngularSize + padding) - padding;
-  final startOffset = (signSpan - totalNeeded) / 2;
-  final step = glyphAngularSize + padding;
+  // Even spread across the sign, preserving degree order.
+  // Lowest degree gets highest angle (rangeMax), highest degree gets rangeMin.
+  final count = indexed.length;
+  final step = count > 1 ? (rangeMax - rangeMin) / (count - 1) : 0.0;
 
   final result = List<double>.filled(inSignDegrees.length, 0);
-  for (var i = 0; i < indexed.length; i++) {
-    final angle = signStart +
-        max(0, startOffset) +
-        i * step +
-        glyphAngularSize / 2;
-    result[indexed[i].$1] = angle.clamp(
-      signStart + glyphAngularSize / 2,
-      signStart + signSpan - glyphAngularSize / 2,
-    );
+  for (var i = 0; i < count; i++) {
+    result[indexed[i].$1] = rangeMax - i * step;
   }
   return result;
 }
