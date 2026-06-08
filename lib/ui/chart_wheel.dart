@@ -555,13 +555,12 @@ class _ChartWheelState extends State<ChartWheel> {
                   constraints: BoxConstraints(
                     maxHeight: MediaQuery.of(context).size.height * 0.85,
                   ),
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Row(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+                        child: Row(
                           children: [
                             if (headerGlyph != null) ...[
                               SvgPicture.asset(
@@ -590,8 +589,16 @@ class _ChartWheelState extends State<ChartWheel> {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 12),
-                        ...infoRows,
+                      ),
+                      const SizedBox(height: 12),
+                      Flexible(
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              ...infoRows,
                         const SizedBox(height: 16),
                         if (imagePath.isNotEmpty)
                           ClipRRect(
@@ -688,8 +695,11 @@ class _ChartWheelState extends State<ChartWheel> {
                             ),
                           ],
                         ],
-                      ],
-                    ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
