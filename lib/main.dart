@@ -300,8 +300,10 @@ class _ExplorePage extends StatelessWidget {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Transform.scale(
-          scale: zoom,
+        child: MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaler: TextScaler.linear(zoom),
+          ),
           child: ChartWheel(chart: chart!),
         ),
       ),
