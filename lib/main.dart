@@ -10,6 +10,7 @@ import 'astro/ephemeris_service.dart';
 import 'astro/swe.dart';
 import 'chart_io/chart_data.dart';
 import 'chart_io/chart_reader.dart';
+import 'ui/chart_wheel.dart';
 import 'ui/theme.dart';
 
 void main() {
@@ -243,6 +244,11 @@ class _ExplorePage extends StatelessWidget {
       return const Center(child: Text('No chart calculated'));
     }
 
-    return const SizedBox.shrink();
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: ChartWheel(chart: chart!),
+      ),
+    );
   }
 }
