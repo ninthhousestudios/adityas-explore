@@ -2,7 +2,7 @@ import 'package:arrow_core/arrow_core.dart';
 import 'package:arrow_options/arrow_options.dart';
 import 'package:flutter/foundation.dart';
 
-import '../chart_io/chart_data.dart';
+import 'package:charts_dart/charts_dart.dart';
 import 'ephemeris_service.dart';
 import 'jd.dart';
 import 'swe.dart';

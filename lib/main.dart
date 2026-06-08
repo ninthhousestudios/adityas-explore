@@ -8,8 +8,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'astro/chart_calculator.dart';
 import 'astro/ephemeris_service.dart';
 import 'astro/swe.dart';
-import 'chart_io/chart_data.dart';
-import 'chart_io/chart_reader.dart';
+import 'package:charts_dart/charts_dart.dart';
+import 'chart_reader.dart';
 import 'ui/chart_wheel.dart';
 import 'ui/theme.dart';
 
@@ -83,7 +83,7 @@ class _ExploreAppState extends State<ExploreApp> {
       }
 
       final chartData = ChartReader.read(file.name, file.bytes!);
-      debugPrint('Loaded chart: ${chartData.name}');
+      debugPrint('Loaded chart: ${chartData.name} (${file.name})');
       debugPrint('  Date: ${chartData.dateTime}');
       debugPrint('  UTC: ${chartData.utcDateTime}');
       debugPrint('  Location: ${chartData.birthLocation}');

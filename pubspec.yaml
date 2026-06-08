@@ -29,12 +29,14 @@ dependencies:
       url: https://github.com/ninthhousestudios/arjuna
       ref: 0b3f3015a7ff93f69a97862c69755c24d0b053a2
       path: arrow/calc
+  charts_dart:
+    git:
+      url: https://github.com/ninthhousestudios/charts_dart
   swisseph: ^0.5.1
   web: ^1.1.0
   path_provider: ^2.1.4
   shared_preferences: ^2.3.4
   file_picker: ^8.1.6
-  toml: ^0.18.0
   flutter_svg: ^2.0.17
 
 dev_dependencies:
