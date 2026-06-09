@@ -84,7 +84,11 @@ class _ChartWheelState extends State<ChartWheel> {
         house: cusp.house,
         sign: cusp.sign,
         inSignDeg: cusp.longitude.inSignLongitude,
-        angle: degreeToAngle(cusp.sign, cusp.longitude.inSignLongitude, _ascSign),
+        angle: degreeToAngle(
+          cusp.sign,
+          cusp.longitude.inSignLongitude,
+          _ascSign,
+        ),
       );
     });
   }
@@ -99,7 +103,12 @@ class _ChartWheelState extends State<ChartWheel> {
 
     final positions = resolvePlanetPositions(
       planets: filtered
-          .map((p) => (sign: p.longitude.sign, inSignDeg: p.longitude.inSignLongitude))
+          .map(
+            (p) => (
+              sign: p.longitude.sign,
+              inSignDeg: p.longitude.inSignLongitude,
+            ),
+          )
           .toList(),
       ascSign: _ascSign,
       half: half,
@@ -219,12 +228,7 @@ class _ChartWheelState extends State<ChartWheel> {
     );
   }
 
-  Widget _buildSignGlyph(
-    int sign,
-    double half,
-    Offset center,
-    Color color,
-  ) {
+  Widget _buildSignGlyph(int sign, double half, Offset center, Color color) {
     final angle = signMidAngle(sign, _ascSign);
     final radius = signMidRadius(half);
     final pos = polarToCartesian(angle, radius, center);
@@ -416,10 +420,12 @@ class _ChartWheelState extends State<ChartWheel> {
     final fontSize = half * 0.032;
     final dimColor = color.withValues(alpha: 0.6);
 
-    final adityaPlanets =
-        _planets.where((p) => p.horaBeingType == 'aditya').toList();
-    final nagaPlanets =
-        _planets.where((p) => p.horaBeingType == 'naga').toList();
+    final adityaPlanets = _planets
+        .where((p) => p.horaBeingType == 'aditya')
+        .toList();
+    final nagaPlanets = _planets
+        .where((p) => p.horaBeingType == 'naga')
+        .toList();
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -441,12 +447,21 @@ class _ChartWheelState extends State<ChartWheel> {
           ),
           const SizedBox(height: 8),
           if (adityaPlanets.isNotEmpty) ...[
-            Text(
-              'Aditya Stance',
-              style: TextStyle(
-                color: color,
-                fontSize: fontSize,
-                fontWeight: FontWeight.bold,
+            GestureDetector(
+              onTap: () => setState(() {
+                _selectedBeingType = 'aditya';
+                _selectedPlanet = null;
+                _selectedBeing = null;
+                _selectedPlanetInfo = null;
+              }),
+              behavior: HitTestBehavior.opaque,
+              child: Text(
+                'Aditya Stance',
+                style: TextStyle(
+                  color: color,
+                  fontSize: fontSize,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
             Text(
@@ -463,12 +478,21 @@ class _ChartWheelState extends State<ChartWheel> {
             const SizedBox(height: 8),
           ],
           if (nagaPlanets.isNotEmpty) ...[
-            Text(
-              'Naga Stance',
-              style: TextStyle(
-                color: color,
-                fontSize: fontSize,
-                fontWeight: FontWeight.bold,
+            GestureDetector(
+              onTap: () => setState(() {
+                _selectedBeingType = 'naga';
+                _selectedPlanet = null;
+                _selectedBeing = null;
+                _selectedPlanetInfo = null;
+              }),
+              behavior: HitTestBehavior.opaque,
+              child: Text(
+                'Naga Stance',
+                style: TextStyle(
+                  color: color,
+                  fontSize: fontSize,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
             Text(
@@ -633,37 +657,53 @@ class _ChartWheelState extends State<ChartWheel> {
     String planetName;
     List<Widget> infoRows;
 
+    String beingName;
+
     if (_selectedPlanet case final planet?) {
       planetName = planet.bodyName;
       beingSign = planet.trimsamsaBeingSign ?? 0;
       beingType = planet.trimsamsaBeingType ?? '';
+      beingName = planet.trimsamsaBeing ?? '';
       final signName = adityaSigns[planet.sign]?.name ?? '?';
       infoRows = [
         _infoRow('Position', '${planet.longitudeLabel} $signName', color),
         _tappableInfoRow(
-          'Hora', planet.horaBeing ?? '—', color,
+          'Type',
+          _capitalize(beingType),
+          color,
           () => setState(() {
-            _selectedBeing = (
-              name: planet.horaBeing ?? '',
-              type: planet.horaBeingType ?? '',
-              planet: planet.bodyName,
-              sign: planet.horaBeingSign ?? 0,
-            );
+            _selectedBeingType = beingType;
             _selectedPlanet = null;
-            _selectedBeingType = null;
+            _selectedBeing = null;
             _selectedPlanetInfo = null;
           }),
         ),
-        _infoRow('Trimsamsa', planet.trimsamsaBeing ?? '—', color),
+        _soulStanceRow(
+          planet.horaBeingType ?? '',
+          planet.horaBeing ?? '',
+          planet.bodyName,
+          planet.horaBeingSign ?? 0,
+          color,
+        ),
         if (planet.isRetrograde) _infoRow('Motion', 'Retrograde', color),
       ];
     } else if (_selectedBeing case final being?) {
       planetName = being.planet;
       beingSign = being.sign;
       beingType = being.type;
+      beingName = being.name;
       infoRows = [
-        _infoRow('Type', _capitalize(being.type), color),
-        _infoRow('Being', being.name, color),
+        _tappableInfoRow(
+          'Type',
+          _capitalize(being.type),
+          color,
+          () => setState(() {
+            _selectedBeingType = being.type;
+            _selectedPlanet = null;
+            _selectedBeing = null;
+            _selectedPlanetInfo = null;
+          }),
+        ),
       ];
     } else {
       return const SizedBox.shrink();
@@ -675,7 +715,9 @@ class _ChartWheelState extends State<ChartWheel> {
     final planetGlyph = planetName.isNotEmpty ? planetGlyphs[planetName] : null;
     final headerGlyph = planetGlyph ?? glyphPath;
     final headerTitle = planetName.isNotEmpty
-        ? _capitalize(planetName)
+        ? '${_capitalize(planetName)} — $beingName'
+        : beingName.isNotEmpty
+        ? beingName
         : adityaName(beingSign) ?? '';
 
     return Positioned.fill(
@@ -711,7 +753,10 @@ class _ChartWheelState extends State<ChartWheel> {
                                 headerGlyph,
                                 width: 28,
                                 height: 28,
-                                colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
+                                colorFilter: ColorFilter.mode(
+                                  color,
+                                  BlendMode.srcIn,
+                                ),
                               ),
                               const SizedBox(width: 8),
                             ],
@@ -743,84 +788,93 @@ class _ChartWheelState extends State<ChartWheel> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               ...infoRows,
-                        const SizedBox(height: 16),
-                        if (imagePath.isNotEmpty)
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: Image.asset(
-                              imagePath,
-                              width: double.infinity,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, _, _) => Container(
-                                height: 160,
-                                decoration: BoxDecoration(
-                                  color: color.withValues(alpha: 0.05),
+                              const SizedBox(height: 16),
+                              if (imagePath.isNotEmpty)
+                                ClipRRect(
                                   borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Center(
-                                  child: Text(
-                                    'Image not found',
-                                    style: TextStyle(color: dimColor),
+                                  child: Image.asset(
+                                    imagePath,
+                                    width: double.infinity,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, _, _) => Container(
+                                      height: 160,
+                                      decoration: BoxDecoration(
+                                        color: color.withValues(alpha: 0.05),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Center(
+                                        child: Text(
+                                          'Image not found',
+                                          style: TextStyle(color: dimColor),
+                                        ),
+                                      ),
+                                    ),
                                   ),
                                 ),
-                              ),
-                            ),
-                          ),
-                        const SizedBox(height: 16),
-                        if (glyphPath != null)
-                          Center(
-                            child: SvgPicture.asset(
-                              glyphPath,
-                              width: 28,
-                              height: 28,
-                              colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
-                            ),
-                          ),
-                        if (content != null) ...[
-                          const SizedBox(height: 16),
-                          Center(
-                            child: Text(
-                              content.subtitle,
-                              style: TextStyle(
-                                color: isDark ? const Color(0xFFD4A855) : color,
-                                fontSize: 16,
-                                fontStyle: FontStyle.italic,
-                                fontWeight: isDark ? null : FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            content.description,
-                            style: TextStyle(
-                              color: color.withValues(alpha: 0.85),
-                              fontSize: 14,
-                              height: 1.5,
-                            ),
-                          ),
-                          if (content.reflections.isNotEmpty) ...[
-                            const SizedBox(height: 20),
-                            Center(
-                              child: Text(
-                                'Reflection',
-                                style: TextStyle(
-                                  color: isDark ? const Color(0xFFD4A855) : color,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
+                              const SizedBox(height: 16),
+                              if (glyphPath != null)
+                                Center(
+                                  child: SvgPicture.asset(
+                                    glyphPath,
+                                    width: 28,
+                                    height: 28,
+                                    colorFilter: ColorFilter.mode(
+                                      color,
+                                      BlendMode.srcIn,
+                                    ),
+                                  ),
                                 ),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              content.reflections,
-                              style: TextStyle(
-                                color: color.withValues(alpha: 0.85),
-                                fontSize: 14,
-                                height: 1.5,
-                              ),
-                            ),
-                          ],
-                        ],
+                              if (content != null) ...[
+                                const SizedBox(height: 16),
+                                Center(
+                                  child: Text(
+                                    content.subtitle,
+                                    style: TextStyle(
+                                      color: isDark
+                                          ? const Color(0xFFD4A855)
+                                          : color,
+                                      fontSize: 16,
+                                      fontStyle: FontStyle.italic,
+                                      fontWeight: isDark
+                                          ? null
+                                          : FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                Text(
+                                  content.description,
+                                  style: TextStyle(
+                                    color: color.withValues(alpha: 0.85),
+                                    fontSize: 14,
+                                    height: 1.5,
+                                  ),
+                                ),
+                                if (content.reflections.isNotEmpty) ...[
+                                  const SizedBox(height: 20),
+                                  Center(
+                                    child: Text(
+                                      'Reflection',
+                                      style: TextStyle(
+                                        color: isDark
+                                            ? const Color(0xFFD4A855)
+                                            : color,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    content.reflections,
+                                    style: TextStyle(
+                                      color: color.withValues(alpha: 0.85),
+                                      fontSize: 14,
+                                      height: 1.5,
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ],
                           ),
                         ),
@@ -992,7 +1046,9 @@ class _ChartWheelState extends State<ChartWheel> {
                                 width: 28,
                                 height: 28,
                                 colorFilter: ColorFilter.mode(
-                                    color, BlendMode.srcIn),
+                                  color,
+                                  BlendMode.srcIn,
+                                ),
                               ),
                               const SizedBox(width: 8),
                             ],
@@ -1057,7 +1113,12 @@ class _ChartWheelState extends State<ChartWheel> {
     );
   }
 
-  Widget _tappableInfoRow(String label, String value, Color color, VoidCallback onTap) {
+  Widget _tappableInfoRow(
+    String label,
+    String value,
+    Color color,
+    VoidCallback onTap,
+  ) {
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
@@ -1066,17 +1127,89 @@ class _ChartWheelState extends State<ChartWheel> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(label, style: TextStyle(color: color.withValues(alpha: 0.6), fontSize: 14)),
+            Text(
+              label,
+              style: TextStyle(
+                color: color.withValues(alpha: 0.6),
+                fontSize: 14,
+              ),
+            ),
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(value, style: TextStyle(color: color, fontSize: 14)),
                 const SizedBox(width: 4),
-                Icon(Icons.arrow_forward, color: color.withValues(alpha: 0.4), size: 14),
+                Icon(
+                  Icons.arrow_forward,
+                  color: color.withValues(alpha: 0.4),
+                  size: 14,
+                ),
               ],
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _soulStanceRow(
+    String horaType,
+    String horaName,
+    String planetName,
+    int horaSign,
+    Color color,
+  ) {
+    final dimColor = color.withValues(alpha: 0.6);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text('Soul Stance', style: TextStyle(color: dimColor, fontSize: 14)),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              GestureDetector(
+                onTap: () => setState(() {
+                  _selectedBeingType = horaType;
+                  _selectedPlanet = null;
+                  _selectedBeing = null;
+                  _selectedPlanetInfo = null;
+                }),
+                behavior: HitTestBehavior.opaque,
+                child: Text(
+                  _capitalize(horaType),
+                  style: TextStyle(color: color, fontSize: 14),
+                ),
+              ),
+              Text(' — ', style: TextStyle(color: dimColor, fontSize: 14)),
+              GestureDetector(
+                onTap: () => setState(() {
+                  _selectedBeing = (
+                    name: horaName,
+                    type: horaType,
+                    planet: planetName,
+                    sign: horaSign,
+                  );
+                  _selectedPlanet = null;
+                  _selectedBeingType = null;
+                  _selectedPlanetInfo = null;
+                }),
+                behavior: HitTestBehavior.opaque,
+                child: Text(
+                  horaName,
+                  style: TextStyle(color: color, fontSize: 14),
+                ),
+              ),
+              const SizedBox(width: 4),
+              Icon(
+                Icons.arrow_forward,
+                color: color.withValues(alpha: 0.4),
+                size: 14,
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -1087,7 +1220,10 @@ class _ChartWheelState extends State<ChartWheel> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: TextStyle(color: color.withValues(alpha: 0.6), fontSize: 14)),
+          Text(
+            label,
+            style: TextStyle(color: color.withValues(alpha: 0.6), fontSize: 14),
+          ),
           Text(value, style: TextStyle(color: color, fontSize: 14)),
         ],
       ),

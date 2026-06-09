@@ -1,0 +1,36 @@
+[file]
+"chart wheel" = "lib/ui/chart_wheel.dart"
+"wheel painter" = "lib/ui/chart_wheel_painter.dart"
+"wheel layout" = "lib/ui/chart_wheel_layout.dart"
+"being content" = "lib/ui/being_content.dart"
+"being type content" = "lib/ui/being_type_content.dart"
+"planet content" = "lib/ui/planet_content.dart"
+"aditya data" = "lib/ui/aditya_data.dart"
+"app entry" = "lib/main.dart"
+
+[symbol]
+# popup cards / overlays
+"being detail card" = "_buildBeingOverlay"
+"being type card" = "_buildBeingTypeOverlay"
+"planet card" = "_buildPlanetOverlay"
+
+# side panels
+"soul stances panel" = "_buildSoulStancesPanel"
+"beings panel" = "_buildBeingsPanel"
+"stance row" = "_buildStanceRow"
+
+# wheel internals
+"center info" = "_buildCenterInfo"
+"sign glyph" = "_buildSignGlyph"
+"planet glyph" = "_buildPlanetGlyph"
+
+# content loading
+"load beings" = "loadBeingContent"
+"load being types" = "loadBeingTypeContent"
+"load planets" = "loadPlanetContent"
+
+# data maps
+"planet glyphs" = "planetGlyphs"
+"aditya signs" = "adityaSigns"
+"default grahas" = "defaultGrahas"
+"being images" = "_beingImages"
