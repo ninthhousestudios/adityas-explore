@@ -50,6 +50,7 @@ flutter:
     - assets/images/
     - assets/images/beings/
     - assets/images/emblems/
+    - assets/images/planets/
     - assets/ephe/
     - assets/glyphs/
     - assets/glyphs/planets/

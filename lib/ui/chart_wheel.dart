@@ -6,8 +6,10 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import 'aditya_data.dart';
 import 'being_content.dart';
+import 'being_type_content.dart';
 import 'chart_wheel_layout.dart';
 import 'chart_wheel_painter.dart';
+import 'planet_content.dart';
 
 class ChartWheel extends StatefulWidget {
   final arrow.Chart chart;
@@ -24,7 +26,11 @@ class _ChartWheelState extends State<ChartWheel> {
   int? _hoveredSign;
   PlacedPlanet? _selectedPlanet;
   ({String name, String type, String planet, int sign})? _selectedBeing;
+  String? _selectedBeingType;
+  String? _selectedPlanetInfo;
   Map<(int, String), BeingContent>? _beingContent;
+  Map<String, BeingTypeContent>? _beingTypeContent;
+  Map<String, PlanetContent>? _planetContent;
 
   late int _ascSign;
   late List<PlacedPlanet> _planets;
@@ -38,9 +44,26 @@ class _ChartWheelState extends State<ChartWheel> {
   }
 
   Future<void> _loadContent() async {
-    final content = await loadBeingContent();
-    if (mounted) setState(() => _beingContent = content);
+    final results = await Future.wait([
+      loadBeingContent(),
+      loadBeingTypeContent(),
+      loadPlanetContent(),
+    ]);
+    if (mounted) {
+      setState(() {
+        _beingContent = results[0] as Map<(int, String), BeingContent>;
+        _beingTypeContent = results[1] as Map<String, BeingTypeContent>;
+        _planetContent = results[2] as Map<String, PlanetContent>;
+      });
+    }
   }
+
+  void _closeOverlay() => setState(() {
+    _selectedPlanet = null;
+    _selectedBeing = null;
+    _selectedBeingType = null;
+    _selectedPlanetInfo = null;
+  });
 
   @override
   void didUpdateWidget(ChartWheel oldWidget) {
@@ -146,6 +169,10 @@ class _ChartWheelState extends State<ChartWheel> {
               _buildCenterInfo(half, center, color),
               if (_selectedPlanet != null || _selectedBeing != null)
                 _buildBeingOverlay(color, isDark),
+              if (_selectedBeingType != null)
+                _buildBeingTypeOverlay(color, isDark),
+              if (_selectedPlanetInfo != null)
+                _buildPlanetOverlay(color, isDark),
             ],
           ),
         );
@@ -169,18 +196,7 @@ class _ChartWheelState extends State<ChartWheel> {
                 left: 8,
                 top: 0,
                 width: panelWidth,
-                child: _buildBeingPanel(
-                  title: 'Soul\'s Domain',
-                  entries: _planets.map((p) => (
-                    planet: p.bodyName,
-                    type: p.horaBeingType ?? '',
-                    name: p.horaBeing ?? '',
-                    sign: p.horaBeingSign ?? 0,
-                  )).toList(),
-                  onTap: (e) => setState(() {
-                    _selectedBeing = e;
-                    _selectedPlanet = null;
-                  }),
+                child: _buildSoulStancesPanel(
                   color: color,
                   backdropColor: backdropColor,
                   half: half,
@@ -190,23 +206,7 @@ class _ChartWheelState extends State<ChartWheel> {
                 right: 8,
                 top: 0,
                 width: panelWidth,
-                child: _buildBeingPanel(
-                  title: 'Soul\'s Emissary',
-                  entries: _planets.map((p) => (
-                    planet: p.bodyName,
-                    type: p.trimsamsaBeingType ?? '',
-                    name: p.trimsamsaBeing ?? '',
-                    sign: p.trimsamsaBeingSign ?? 0,
-                  )).toList(),
-                  onTap: (e) {
-                    final planet = _planets.firstWhere(
-                      (p) => p.bodyName == e.planet,
-                    );
-                    setState(() {
-                      _selectedPlanet = planet;
-                      _selectedBeing = null;
-                    });
-                  },
+                child: _buildBeingsPanel(
                   color: color,
                   backdropColor: backdropColor,
                   half: half,
@@ -408,10 +408,135 @@ class _ChartWheelState extends State<ChartWheel> {
     );
   }
 
-  Widget _buildBeingPanel({
-    required String title,
-    required List<({String planet, String type, String name, int sign})> entries,
-    required void Function(({String name, String type, String planet, int sign})) onTap,
+  Widget _buildSoulStancesPanel({
+    required Color color,
+    required Color backdropColor,
+    required double half,
+  }) {
+    final fontSize = half * 0.032;
+    final dimColor = color.withValues(alpha: 0.6);
+
+    final adityaPlanets =
+        _planets.where((p) => p.horaBeingType == 'aditya').toList();
+    final nagaPlanets =
+        _planets.where((p) => p.horaBeingType == 'naga').toList();
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: backdropColor,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'Soul Stances of Your Planets',
+            style: TextStyle(
+              color: color,
+              fontSize: fontSize * 1.1,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (adityaPlanets.isNotEmpty) ...[
+            Text(
+              'Aditya Stance',
+              style: TextStyle(
+                color: color,
+                fontSize: fontSize,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            Text(
+              'These planets call you to express your love in the world.',
+              style: TextStyle(
+                color: dimColor,
+                fontSize: fontSize * 0.8,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+            const SizedBox(height: 2),
+            for (final p in adityaPlanets)
+              _buildStanceRow(p, fontSize, color, dimColor),
+            const SizedBox(height: 8),
+          ],
+          if (nagaPlanets.isNotEmpty) ...[
+            Text(
+              'Naga Stance',
+              style: TextStyle(
+                color: color,
+                fontSize: fontSize,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            Text(
+              'These planets call you to dig deep into yourself.',
+              style: TextStyle(
+                color: dimColor,
+                fontSize: fontSize * 0.8,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+            const SizedBox(height: 2),
+            for (final p in nagaPlanets)
+              _buildStanceRow(p, fontSize, color, dimColor),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStanceRow(
+    PlacedPlanet p,
+    double fontSize,
+    Color color,
+    Color dimColor,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          GestureDetector(
+            onTap: () => setState(() {
+              _selectedPlanetInfo = p.bodyName;
+              _selectedPlanet = null;
+              _selectedBeing = null;
+              _selectedBeingType = null;
+            }),
+            behavior: HitTestBehavior.opaque,
+            child: Text(
+              _capitalize(p.bodyName),
+              style: TextStyle(color: dimColor, fontSize: fontSize),
+            ),
+          ),
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: () => setState(() {
+              _selectedBeing = (
+                name: p.horaBeing ?? '',
+                type: p.horaBeingType ?? '',
+                planet: p.bodyName,
+                sign: p.horaBeingSign ?? 0,
+              );
+              _selectedPlanet = null;
+              _selectedBeingType = null;
+              _selectedPlanetInfo = null;
+            }),
+            behavior: HitTestBehavior.opaque,
+            child: Text(
+              p.horaBeing ?? '',
+              style: TextStyle(color: color, fontSize: fontSize),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBeingsPanel({
     required Color color,
     required Color backdropColor,
     required double half,
@@ -430,7 +555,7 @@ class _ChartWheelState extends State<ChartWheel> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            title,
+            'Your Beings',
             style: TextStyle(
               color: color,
               fontSize: fontSize * 1.1,
@@ -446,29 +571,52 @@ class _ChartWheelState extends State<ChartWheel> {
             ),
           ),
           const SizedBox(height: 4),
-          for (final e in entries)
-            GestureDetector(
-              onTap: () => onTap((name: e.name, type: e.type, planet: e.planet, sign: e.sign)),
-              behavior: HitTestBehavior.opaque,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      _capitalize(e.planet),
+          for (final p in _planets)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  GestureDetector(
+                    onTap: () => setState(() {
+                      _selectedPlanetInfo = p.bodyName;
+                      _selectedPlanet = null;
+                      _selectedBeing = null;
+                      _selectedBeingType = null;
+                    }),
+                    behavior: HitTestBehavior.opaque,
+                    child: Text(
+                      _capitalize(p.bodyName),
                       style: TextStyle(color: dimColor, fontSize: fontSize),
                     ),
-                    Text(
-                      '  ${_capitalize(e.type)}',
+                  ),
+                  GestureDetector(
+                    onTap: () => setState(() {
+                      _selectedBeingType = p.trimsamsaBeingType;
+                      _selectedPlanet = null;
+                      _selectedBeing = null;
+                      _selectedPlanetInfo = null;
+                    }),
+                    behavior: HitTestBehavior.opaque,
+                    child: Text(
+                      '  ${_capitalize(p.trimsamsaBeingType ?? '')}',
                       style: TextStyle(color: dimColor, fontSize: fontSize),
                     ),
-                    Text(
-                      '  ${e.name}',
+                  ),
+                  GestureDetector(
+                    onTap: () => setState(() {
+                      _selectedPlanet = p;
+                      _selectedBeing = null;
+                      _selectedBeingType = null;
+                      _selectedPlanetInfo = null;
+                    }),
+                    behavior: HitTestBehavior.opaque,
+                    child: Text(
+                      '  ${p.trimsamsaBeing ?? ''}',
                       style: TextStyle(color: color, fontSize: fontSize),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
         ],
@@ -502,6 +650,8 @@ class _ChartWheelState extends State<ChartWheel> {
               sign: planet.horaBeingSign ?? 0,
             );
             _selectedPlanet = null;
+            _selectedBeingType = null;
+            _selectedPlanetInfo = null;
           }),
         ),
         _infoRow('Trimsamsa', planet.trimsamsaBeing ?? '—', color),
@@ -528,14 +678,9 @@ class _ChartWheelState extends State<ChartWheel> {
         ? _capitalize(planetName)
         : adityaName(beingSign) ?? '';
 
-    void close() => setState(() {
-      _selectedPlanet = null;
-      _selectedBeing = null;
-    });
-
     return Positioned.fill(
       child: GestureDetector(
-        onTap: close,
+        onTap: _closeOverlay,
         behavior: HitTestBehavior.opaque,
         child: Center(
           child: GestureDetector(
@@ -581,7 +726,7 @@ class _ChartWheelState extends State<ChartWheel> {
                               ),
                             ),
                             IconButton(
-                              onPressed: close,
+                              onPressed: _closeOverlay,
                               icon: Icon(Icons.close, color: color, size: 20),
                               padding: EdgeInsets.zero,
                               constraints: const BoxConstraints(),
@@ -676,6 +821,227 @@ class _ChartWheelState extends State<ChartWheel> {
                             ),
                           ],
                         ],
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBeingTypeOverlay(Color color, bool isDark) {
+    final type = _selectedBeingType;
+    if (type == null) return const SizedBox.shrink();
+
+    final content = _beingTypeContent?[type];
+    if (content == null) return const SizedBox.shrink();
+
+    final cardBg = isDark ? const Color(0xF0151015) : const Color(0xF0F5F1EA);
+    final emblemPath = beingTypeEmblemPath(type);
+
+    return Positioned.fill(
+      child: GestureDetector(
+        onTap: _closeOverlay,
+        behavior: HitTestBehavior.opaque,
+        child: Center(
+          child: GestureDetector(
+            onTap: () {},
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 460),
+              margin: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: cardBg,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: color.withValues(alpha: 0.3)),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(context).size.height * 0.85,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(44, 24, 44, 0),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                '${content.type} — ${content.role}',
+                                style: TextStyle(
+                                  color: color,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: _closeOverlay,
+                              icon: Icon(Icons.close, color: color, size: 20),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Flexible(
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.fromLTRB(44, 0, 44, 24),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                content.subtitle,
+                                style: TextStyle(
+                                  color: isDark
+                                      ? const Color(0xFFD4A855)
+                                      : color,
+                                  fontSize: 16,
+                                  fontStyle: FontStyle.italic,
+                                  fontWeight: isDark ? null : FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: Image.asset(
+                                  emblemPath,
+                                  width: double.infinity,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, _, _) =>
+                                      const SizedBox.shrink(),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                content.description,
+                                style: TextStyle(
+                                  color: color.withValues(alpha: 0.85),
+                                  fontSize: 14,
+                                  height: 1.5,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPlanetOverlay(Color color, bool isDark) {
+    final planetName = _selectedPlanetInfo;
+    if (planetName == null) return const SizedBox.shrink();
+
+    final content = _planetContent?[planetName];
+    if (content == null) return const SizedBox.shrink();
+
+    final cardBg = isDark ? const Color(0xF0151015) : const Color(0xF0F5F1EA);
+    final glyphPath = planetGlyphs[planetName];
+    final imagePath = planetImagePath(planetName);
+
+    return Positioned.fill(
+      child: GestureDetector(
+        onTap: _closeOverlay,
+        behavior: HitTestBehavior.opaque,
+        child: Center(
+          child: GestureDetector(
+            onTap: () {},
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 460),
+              margin: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: cardBg,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: color.withValues(alpha: 0.3)),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(context).size.height * 0.85,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(44, 24, 44, 0),
+                        child: Row(
+                          children: [
+                            if (glyphPath != null) ...[
+                              SvgPicture.asset(
+                                glyphPath,
+                                width: 28,
+                                height: 28,
+                                colorFilter: ColorFilter.mode(
+                                    color, BlendMode.srcIn),
+                              ),
+                              const SizedBox(width: 8),
+                            ],
+                            Expanded(
+                              child: Text(
+                                content.name,
+                                style: TextStyle(
+                                  color: color,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: _closeOverlay,
+                              icon: Icon(Icons.close, color: color, size: 20),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Flexible(
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.fromLTRB(44, 0, 44, 24),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                content.description,
+                                style: TextStyle(
+                                  color: color.withValues(alpha: 0.85),
+                                  fontSize: 14,
+                                  height: 1.5,
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: Image.asset(
+                                  imagePath,
+                                  width: double.infinity,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, _, _) =>
+                                      const SizedBox.shrink(),
+                                ),
+                              ),
                             ],
                           ),
                         ),
