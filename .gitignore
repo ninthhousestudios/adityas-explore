@@ -14,6 +14,9 @@ migrate_working_dir/
 .claude/
 opencode.json
 docs/build-and-deploy-to-zola.md
+docs/uxui-for-cards-sharing-physical.md
+assets/images/
+assets/text
 
 # IntelliJ related
 *.iml
