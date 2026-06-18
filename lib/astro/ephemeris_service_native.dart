@@ -17,10 +17,13 @@ class IsolateEphemerisService implements EphemerisService {
 
   static Future<IsolateEphemerisService> spawn(String? ephePath) async {
     final bootstrapPort = ReceivePort();
-    await Isolate.spawn(
-        worker.sweWorkerEntry, [bootstrapPort.sendPort, ephePath]);
-    final reply =
-        await bootstrapPort.first.timeout(const Duration(seconds: 10));
+    await Isolate.spawn(worker.sweWorkerEntry, [
+      bootstrapPort.sendPort,
+      ephePath,
+    ]);
+    final reply = await bootstrapPort.first.timeout(
+      const Duration(seconds: 10),
+    );
     final port = reply as SendPort;
     dev.log('swe: worker isolate ready', name: 'IO');
     return IsolateEphemerisService._(port);

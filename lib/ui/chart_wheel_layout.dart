@@ -206,8 +206,19 @@ class PlacedCusp {
 }
 
 const _romanNumerals = [
-  '', 'I', 'II', 'III', 'IV', 'V', 'VI',
-  'VII', 'VIII', 'IX', 'X', 'XI', 'XII',
+  '',
+  'I',
+  'II',
+  'III',
+  'IV',
+  'V',
+  'VI',
+  'VII',
+  'VIII',
+  'IX',
+  'X',
+  'XI',
+  'XII',
 ];
 
 String romanNumeral(int n) => _romanNumerals[n.clamp(0, 12)];

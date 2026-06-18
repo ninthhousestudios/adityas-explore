@@ -15,8 +15,11 @@ migrate_working_dir/
 opencode.json
 docs/build-and-deploy-to-zola.md
 docs/uxui-for-cards-sharing-physical.md
+docs/google-apis.md
+docs/push-explore.md
 assets/images/
 assets/text
+.wrangler/
 
 # IntelliJ related
 *.iml

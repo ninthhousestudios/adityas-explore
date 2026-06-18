@@ -60,7 +60,12 @@ List<(String, BeingContent)> _parseSections(String text) {
       continue;
     }
 
-    final parts = lines[i].substring(4).trim().split('|').map((s) => s.trim()).toList();
+    final parts = lines[i]
+        .substring(4)
+        .trim()
+        .split('|')
+        .map((s) => s.trim())
+        .toList();
     if (parts.length < 2) {
       i++;
       continue;

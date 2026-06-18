@@ -28,12 +28,13 @@ Future<String?> _extractEpheAssets() async {
   final dir = Directory('${docs.path}/ephe');
   await dir.create(recursive: true);
   final manifest = await AssetManifest.loadFromAssetBundle(rootBundle);
-  final assets = manifest
-      .listAssets()
-      .where((asset) => asset.startsWith(_epheAssetDir))
-      .where(_isEpheArtifact)
-      .toList()
-    ..sort();
+  final assets =
+      manifest
+          .listAssets()
+          .where((asset) => asset.startsWith(_epheAssetDir))
+          .where(_isEpheArtifact)
+          .toList()
+        ..sort();
   for (final asset in assets) {
     final name = asset.split('/').last;
     final file = File('${dir.path}/$name');
@@ -78,8 +79,8 @@ SwissEph _loadNativeLibrary() {
   final bareName = Platform.isWindows
       ? 'swisseph.dll'
       : Platform.isLinux
-          ? 'libswisseph.so'
-          : 'libswisseph.dylib';
+      ? 'libswisseph.so'
+      : 'libswisseph.dylib';
   try {
     return SwissEph(bareName);
   } catch (_) {}

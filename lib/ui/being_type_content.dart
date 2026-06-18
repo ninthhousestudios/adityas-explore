@@ -18,8 +18,9 @@ String beingTypeEmblemPath(String type) =>
     'assets/images/emblems/${type}s.webp';
 
 Future<Map<String, BeingTypeContent>> loadBeingTypeContent() async {
-  final text =
-      await rootBundle.loadString('assets/text/being-descriptions.txt');
+  final text = await rootBundle.loadString(
+    'assets/text/being-descriptions.txt',
+  );
   return _parseBeingTypes(text);
 }
 

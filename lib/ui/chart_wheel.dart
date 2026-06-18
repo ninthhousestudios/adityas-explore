@@ -11,6 +11,11 @@ import 'chart_wheel_layout.dart';
 import 'chart_wheel_painter.dart';
 import 'planet_content.dart';
 
+extension CapitalizeString on String {
+  String toCapitalized() =>
+      isNotEmpty ? '${this[0].toUpperCase()}${substring(1)}' : '';
+}
+
 class ChartWheel extends StatefulWidget {
   final arrow.Chart chart;
 
@@ -349,8 +354,8 @@ class _ChartWheelState extends State<ChartWheel> {
       lines = [
         _capitalize(p.bodyName),
         "${p.longitudeLabel} $signName${p.isRetrograde ? ' (R)' : ''}",
-        'Hora: ${p.horaBeing ?? '—'}',
-        'Trimsamsa: ${p.trimsamsaBeing ?? '—'}',
+        'Soul Stance: ${(p.horaBeingType ?? '').toCapitalized()} • ${p.horaBeing ?? '—'}',
+        'Being: ${p.trimsamsaBeing ?? '—'}',
       ];
       showHint = true;
     } else if (_hoveredCusp case final c?) {

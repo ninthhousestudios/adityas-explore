@@ -124,9 +124,9 @@ class _ExploreAppState extends State<ExploreApp> {
       debugPrint('Error opening chart: $e\n$s');
       setState(() => _calculating = false);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     }
   }
@@ -135,18 +135,14 @@ class _ExploreAppState extends State<ExploreApp> {
   Widget build(BuildContext context) {
     if (_bootError != null) {
       return MaterialApp(
-        home: Scaffold(
-          body: Center(child: Text('Boot error: $_bootError')),
-        ),
+        home: Scaffold(body: Center(child: Text('Boot error: $_bootError'))),
       );
     }
 
     if (!_booted) {
       return MaterialApp(
         theme: immersiveTheme(),
-        home: const Scaffold(
-          body: Center(child: CircularProgressIndicator()),
-        ),
+        home: const Scaffold(body: Center(child: CircularProgressIndicator())),
       );
     }
 
@@ -385,9 +381,9 @@ class _ExplorePage extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: MediaQuery(
-          data: MediaQuery.of(context).copyWith(
-            textScaler: TextScaler.linear(zoom),
-          ),
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: TextScaler.linear(zoom)),
           child: ChartWheel(chart: chart!),
         ),
       ),

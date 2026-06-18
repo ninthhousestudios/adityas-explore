@@ -4,18 +4,16 @@ class PlanetContent {
   final String name;
   final String description;
 
-  const PlanetContent({
-    required this.name,
-    required this.description,
-  });
+  const PlanetContent({required this.name, required this.description});
 }
 
 String planetImagePath(String name) =>
     'assets/images/planets/${name.toLowerCase()}.webp';
 
 Future<Map<String, PlanetContent>> loadPlanetContent() async {
-  final text =
-      await rootBundle.loadString('assets/text/planet-descriptions.txt');
+  final text = await rootBundle.loadString(
+    'assets/text/planet-descriptions.txt',
+  );
   return _parsePlanets(text);
 }
 
