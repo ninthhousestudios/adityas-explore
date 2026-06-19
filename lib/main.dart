@@ -195,7 +195,7 @@ class _ExplorePage extends StatelessWidget {
         leading: Padding(
           padding: const EdgeInsets.only(left: 4),
           child: TextButton.icon(
-            onPressed: () => navigateToUrl('/adityas-live/'),
+            onPressed: () => navigateToUrl('/'),
             icon: const Icon(Icons.arrow_back, size: 18),
             label: const Text('Home'),
             style: TextButton.styleFrom(

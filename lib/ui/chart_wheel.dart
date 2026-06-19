@@ -382,7 +382,7 @@ class _ChartWheelState extends State<ChartWheel> {
             children: [
               if (lines.isEmpty)
                 Text(
-                  'Tap a planet to learn\nwhich being it activates',
+                  'Tap any glyph or name to learn more',
                   style: TextStyle(
                     color: color.withValues(alpha: 0.35),
                     fontSize: fontSize * 0.9,
