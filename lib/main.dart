@@ -171,15 +171,33 @@ class _ExploreAppState extends State<ExploreApp> {
       debugPrint('  Location: ${chartData.birthLocation}');
       debugPrint('  UTC offset: ${chartData.utcOffsetHours}h');
 
+      final precision = switch (chartData.roddenRating) {
+        'C' => TimePrecision.general,
+        'X' => TimePrecision.unknown,
+        _ => TimePrecision.exact,
+      };
+      final period = precision == TimePrecision.general
+          ? BirthPeriod.fromHour(chartData.dateTime.hour)
+          : null;
+
       setState(() {
         _chartData = chartData;
         _chart = null;
+        _uncertainty = null;
         _calculating = true;
       });
 
       final chart = await _calculator.calculate(chartData);
+      final uncertainty = await computeBeingUncertainty(
+        calculator: _calculator,
+        chartData: chartData,
+        primaryChart: chart,
+        precision: precision,
+        period: period,
+      );
       setState(() {
         _chart = chart;
+        _uncertainty = uncertainty;
         _calculating = false;
       });
     } catch (e, s) {

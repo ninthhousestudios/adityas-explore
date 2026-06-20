@@ -27,6 +27,13 @@ enum BirthPeriod {
   final int hour;
 
   TimeOfDay get midpoint => TimeOfDay(hour: hour, minute: 0);
+
+  static BirthPeriod fromHour(int hour) {
+    if (hour >= 6 && hour < 12) return morning;
+    if (hour >= 12 && hour < 18) return afternoon;
+    if (hour >= 18) return evening;
+    return night;
+  }
 }
 
 class BirthForm extends StatefulWidget {
