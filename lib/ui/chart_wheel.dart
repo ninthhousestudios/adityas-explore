@@ -876,7 +876,17 @@ class _ChartWheelState extends State<ChartWheel> {
                               ),
                               const SizedBox(width: 8),
                             ] else if (glyphPath != null) ...[
-                              Image.asset(glyphPath, width: 28, height: 28),
+                              ColorFiltered(
+                                colorFilter: ColorFilter.mode(
+                                  color,
+                                  BlendMode.srcIn,
+                                ),
+                                child: Image.asset(
+                                  glyphPath,
+                                  width: 28,
+                                  height: 28,
+                                ),
+                              ),
                               const SizedBox(width: 8),
                             ],
                             Expanded(
@@ -933,10 +943,16 @@ class _ChartWheelState extends State<ChartWheel> {
                               const SizedBox(height: 16),
                               if (glyphPath != null)
                                 Center(
-                                  child: Image.asset(
-                                    glyphPath,
-                                    width: 56,
-                                    height: 56,
+                                  child: ColorFiltered(
+                                    colorFilter: ColorFilter.mode(
+                                      color,
+                                      BlendMode.srcIn,
+                                    ),
+                                    child: Image.asset(
+                                      glyphPath,
+                                      width: 56,
+                                      height: 56,
+                                    ),
                                   ),
                                 ),
                               if (content != null) ...[
