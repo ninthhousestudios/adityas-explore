@@ -12,6 +12,10 @@ class ChartReader {
       final content = String.fromCharCodes(bytes);
       return TomlChartFormat.parseString(content, fileName: fileName);
     }
+    if (ext.endsWith('.jhd')) {
+      final content = String.fromCharCodes(bytes);
+      return JhdFormat.parseString(content, fileName: fileName);
+    }
     throw UnsupportedError('Unknown chart format: $fileName');
   }
 }

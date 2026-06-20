@@ -91,7 +91,7 @@ class _ExploreAppState extends State<ExploreApp> {
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['toml', 'chtk'],
+        allowedExtensions: ['toml', 'chtk', 'jhd'],
         withData: true,
       );
       if (result == null || result.files.isEmpty) return;

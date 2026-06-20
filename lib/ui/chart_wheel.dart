@@ -28,7 +28,7 @@ class ChartWheel extends StatefulWidget {
 class _ChartWheelState extends State<ChartWheel> {
   PlacedPlanet? _hoveredPlanet;
   PlacedCusp? _hoveredCusp;
-  int? _hoveredSign;
+
   PlacedPlanet? _selectedPlanet;
   ({String name, String type, String planet, int sign})? _selectedBeing;
   String? _selectedBeingType;
@@ -163,6 +163,7 @@ class _ChartWheelState extends State<ChartWheel> {
           width: side,
           height: side,
           child: Stack(
+            clipBehavior: Clip.none,
             children: [
               Positioned.fill(
                 child: CustomPaint(
@@ -198,6 +199,7 @@ class _ChartWheelState extends State<ChartWheel> {
           width: constraints.maxWidth,
           height: side,
           child: Stack(
+            clipBehavior: Clip.none,
             children: [
               Positioned(
                 left: panelMargin,
@@ -236,36 +238,84 @@ class _ChartWheelState extends State<ChartWheel> {
   Widget _buildSignGlyph(int sign, double half, Offset center, Color color) {
     final angle = signMidAngle(sign, _ascSign);
     final radius = signMidRadius(half);
-    final pos = polarToCartesian(angle, radius, center);
-    final glyphSize = half * 0.10;
     final data = adityaSigns[sign]!;
+    final name = data.name.toUpperCase();
+    final fontSize = half * 0.052;
+    final naturalSpacing = fontSize * 0.85 / radius;
+    final maxSpan = 0.85 * pi / 6;
+    final totalNatural = name.length > 1
+        ? (name.length - 1) * naturalSpacing
+        : 0.0;
+    final spacing = name.length > 1
+        ? (totalNatural > maxSpan
+              ? maxSpan / (name.length - 1)
+              : naturalSpacing)
+        : 0.0;
+    final totalSpan = (name.length - 1) * spacing;
+    final startAngle = angle - totalSpan / 2;
 
+    void onTap() => setState(() {
+      _selectedBeing = (
+        name: data.name,
+        type: 'aditya',
+        planet: '',
+        sign: sign,
+      );
+      _selectedPlanet = null;
+    });
+
+    return Positioned.fill(
+      child: Stack(
+        children: [
+          for (var i = 0; i < name.length; i++)
+            _buildArcLetter(
+              name[i],
+              startAngle + i * spacing,
+              radius,
+              center,
+              color,
+              fontSize,
+              onTap,
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildArcLetter(
+    String letter,
+    double angle,
+    double radius,
+    Offset center,
+    Color color,
+    double fontSize,
+    VoidCallback onTap,
+  ) {
+    final pos = polarToCartesian(angle, radius, center);
+    final boxSize = fontSize * 1.2;
     return Positioned(
-      left: pos.dx - glyphSize / 2,
-      top: pos.dy - glyphSize / 2,
+      left: pos.dx - boxSize / 2,
+      top: pos.dy - boxSize / 2,
       child: MouseRegion(
-        onEnter: (_) => setState(() {
-          _hoveredSign = sign;
-          _hoveredPlanet = null;
-          _hoveredCusp = null;
-        }),
-        onExit: (_) => setState(() => _hoveredSign = null),
+        cursor: SystemMouseCursors.click,
         child: GestureDetector(
-          onTap: () => setState(() {
-            _selectedBeing = (
-              name: data.name,
-              type: 'aditya',
-              planet: '',
-              sign: sign,
-            );
-            _selectedPlanet = null;
-          }),
-          child: SizedBox(
-            width: glyphSize,
-            height: glyphSize,
-            child: SvgPicture.asset(
-              data.glyph,
-              colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          child: Transform.rotate(
+            angle: angle + pi / 2,
+            child: SizedBox(
+              width: boxSize,
+              height: boxSize,
+              child: Center(
+                child: Text(
+                  letter,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: fontSize,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
             ),
           ),
         ),
@@ -303,7 +353,6 @@ class _ChartWheelState extends State<ChartWheel> {
             } else {
               _hoveredPlanet = planet;
               _hoveredCusp = null;
-              _hoveredSign = null;
             }
           }),
           child: SizedBox(
@@ -364,8 +413,6 @@ class _ChartWheelState extends State<ChartWheel> {
         'Cusp ${romanNumeral(c.house)}',
         '${c.longitudeLabel} $signName',
       ];
-    } else if (_hoveredSign case final s?) {
-      lines = [adityaSigns[s]?.name ?? '?'];
     } else {
       lines = [];
     }
@@ -716,9 +763,9 @@ class _ChartWheelState extends State<ChartWheel> {
 
     final content = _beingContent?[(beingSign, beingType)];
     final imagePath = beingImagePath(beingSign, beingType);
-    final glyphPath = adityaGlyphPath(beingSign);
+    final glyphPath = beingTypeGlyphPath(beingType);
     final planetGlyph = planetName.isNotEmpty ? planetGlyphs[planetName] : null;
-    final headerGlyph = planetGlyph ?? glyphPath;
+    final headerGlyph = planetGlyph ?? beingTypeGlyphPath(beingType);
     final headerTitle = planetName.isNotEmpty
         ? '${_capitalize(planetName)} — $beingName'
         : beingName.isNotEmpty
@@ -821,8 +868,8 @@ class _ChartWheelState extends State<ChartWheel> {
                                 Center(
                                   child: SvgPicture.asset(
                                     glyphPath,
-                                    width: 28,
-                                    height: 28,
+                                    width: 56,
+                                    height: 56,
                                     colorFilter: ColorFilter.mode(
                                       color,
                                       BlendMode.srcIn,

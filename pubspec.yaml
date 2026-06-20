@@ -53,5 +53,6 @@ flutter:
     - assets/images/planets/
     - assets/ephe/
     - assets/glyphs/
+    - assets/glyphs/beings/
     - assets/glyphs/planets/
     - assets/text/
