@@ -830,7 +830,6 @@ class _ChartWheelState extends State<ChartWheel> {
     final imagePath = beingImagePath(beingSign, beingType);
     final glyphPath = beingTypeGlyphPath(beingType);
     final planetGlyph = planetName.isNotEmpty ? planetGlyphs[planetName] : null;
-    final headerGlyph = planetGlyph ?? beingTypeGlyphPath(beingType);
     final headerTitle = planetName.isNotEmpty
         ? '${_capitalize(planetName)} — $beingName'
         : beingName.isNotEmpty
@@ -865,9 +864,9 @@ class _ChartWheelState extends State<ChartWheel> {
                         padding: const EdgeInsets.fromLTRB(44, 24, 44, 0),
                         child: Row(
                           children: [
-                            if (headerGlyph != null) ...[
+                            if (planetGlyph != null) ...[
                               SvgPicture.asset(
-                                headerGlyph,
+                                planetGlyph,
                                 width: 28,
                                 height: 28,
                                 colorFilter: ColorFilter.mode(
@@ -875,6 +874,9 @@ class _ChartWheelState extends State<ChartWheel> {
                                   BlendMode.srcIn,
                                 ),
                               ),
+                              const SizedBox(width: 8),
+                            ] else if (glyphPath != null) ...[
+                              Image.asset(glyphPath, width: 28, height: 28),
                               const SizedBox(width: 8),
                             ],
                             Expanded(
@@ -931,14 +933,10 @@ class _ChartWheelState extends State<ChartWheel> {
                               const SizedBox(height: 16),
                               if (glyphPath != null)
                                 Center(
-                                  child: SvgPicture.asset(
+                                  child: Image.asset(
                                     glyphPath,
                                     width: 56,
                                     height: 56,
-                                    colorFilter: ColorFilter.mode(
-                                      color,
-                                      BlendMode.srcIn,
-                                    ),
                                   ),
                                 ),
                               if (content != null) ...[

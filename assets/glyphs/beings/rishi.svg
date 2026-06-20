@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
-  <g transform="translate(100,100)">
-    <polygon points="0,-55 10,-18 48,-35 22,-5 50,25 12,15 0,55 -12,15 -50,25 -22,-5 -48,-35 -10,-18" fill="#D4A853" fill-opacity="0.25" stroke="#D4A853" stroke-width="4" opacity="0.85"/>
-    <circle cx="0" cy="0" r="16" fill="#D4A853" fill-opacity="0.2" stroke="#D4A853" stroke-width="3" opacity="0.85"/>
-    <circle cx="0" cy="0" r="6" fill="#D4A853" opacity="0.9"/>
-  </g>
-</svg>
