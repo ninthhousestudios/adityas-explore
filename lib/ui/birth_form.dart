@@ -432,9 +432,17 @@ class _BirthFormState extends State<BirthForm> {
   }
 
   int? _birthDateAsUnixSeconds() {
-    if (_birthDate == null) return null;
+    if (_birthDate == null || _birthTime == null) return null;
     final d = _birthDate!;
-    return DateTime.utc(d.year, d.month, d.day).millisecondsSinceEpoch ~/ 1000;
+    final t = _birthTime!;
+    return DateTime.utc(
+          d.year,
+          d.month,
+          d.day,
+          t.hour,
+          t.minute,
+        ).millisecondsSinceEpoch ~/
+        1000;
   }
 
   Future<void> _resolvePlace(PlaceAutocompleteResult place) async {
@@ -701,7 +709,11 @@ class _BirthFormState extends State<BirthForm> {
                 onPressed:
                     _locationQueryController.text.trim().isNotEmpty &&
                         !_searching &&
-                        !_resolving
+                        !_resolving &&
+                        _birthDate != null &&
+                        _birthTime != null &&
+                        _dateError == null &&
+                        _timeError == null
                     ? _searchLocation
                     : null,
                 style: TextButton.styleFrom(
