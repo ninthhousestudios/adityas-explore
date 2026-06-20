@@ -1,5 +1,15 @@
+import 'dart:js_interop';
 import 'dart:typed_data';
 
-Future<void> writeBytesToPath(String path, Uint8List bytes) async {
-  // On web, FilePicker.saveFile handles the download via the bytes param.
+import 'package:web/web.dart' as html;
+
+Future<bool> saveFileBytes(String fileName, Uint8List bytes) async {
+  final blob = html.Blob([bytes.toJS].toJS);
+  final url = html.URL.createObjectURL(blob);
+  html.HTMLAnchorElement()
+    ..href = url
+    ..download = fileName
+    ..click();
+  html.URL.revokeObjectURL(url);
+  return true;
 }

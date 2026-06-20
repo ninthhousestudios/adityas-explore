@@ -1,7 +1,6 @@
 import 'dart:convert';
 
 import 'package:charts_dart/charts_dart.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -125,17 +124,9 @@ class _BirthFormState extends State<BirthForm> {
       final bytes = Uint8List.fromList(utf8.encode(toml));
       final safeName = chartData.name.replaceAll(RegExp(r'[^\w\-.]'), '_');
 
-      final result = await FilePicker.platform.saveFile(
-        dialogTitle: 'Save chart',
-        fileName: '$safeName.toml',
-        bytes: bytes,
-      );
+      final saved = await saveFileBytes('$safeName.toml', bytes);
 
-      if (result != null) {
-        await writeBytesToPath(result, bytes);
-      }
-
-      if (result != null && mounted) {
+      if (saved && mounted) {
         setState(() => _chartSaved = true);
         Future.delayed(const Duration(seconds: 3), () {
           if (mounted) setState(() => _chartSaved = false);
@@ -329,7 +320,7 @@ class _BirthFormState extends State<BirthForm> {
                   const SizedBox(height: 16),
                   _buildTextField(
                     controller: _timeController,
-                    label: 'Time of Birth (HH:MM)',
+                    label: 'Time of Birth (HH:MM AM/PM)',
                     color: color,
                     onChanged: _onTimeTextChanged,
                     suffix: IconButton(
