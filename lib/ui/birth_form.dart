@@ -3,6 +3,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../file_util.dart' if (dart.library.js_interop) '../file_util_web.dart';
 import '../navigate.dart' if (dart.library.js_interop) '../navigate_web.dart';
 
 enum TimePrecision { exact, rough, unknown }
@@ -80,7 +81,9 @@ class _BirthFormState extends State<BirthForm> {
   ChartData _buildChartData() {
     final date = _birthDate!;
     final time = _birthTime!;
-    final localDateTime = DateTime(
+    // Use DateTime.utc to prevent dateTimeToJdUt's .toUtc() from
+    // applying the system timezone a second time on top of our manual offset.
+    final localDateTime = DateTime.utc(
       date.year,
       date.month,
       date.day,
@@ -124,6 +127,10 @@ class _BirthFormState extends State<BirthForm> {
       fileName: '$safeName.toml',
       bytes: bytes,
     );
+
+    if (result != null) {
+      await writeBytesToPath(result, bytes);
+    }
 
     if (result != null && mounted) {
       setState(() => _chartSaved = true);
@@ -297,7 +304,7 @@ class _BirthFormState extends State<BirthForm> {
                     controller: _dateController,
                     label: 'Date of Birth',
                     color: color,
-                    hint: 'M/D/YYYY',
+                    hint: 'MM/DD/YYYY',
                     onChanged: _onDateTextChanged,
                     suffix: IconButton(
                       onPressed: _pickDate,
@@ -314,7 +321,7 @@ class _BirthFormState extends State<BirthForm> {
                     controller: _timeController,
                     label: 'Time of Birth',
                     color: color,
-                    hint: 'H:MM AM/PM',
+                    hint: 'HH:MM',
                     onChanged: _onTimeTextChanged,
                     suffix: IconButton(
                       onPressed: _pickTime,
@@ -533,7 +540,7 @@ class _BirthFormState extends State<BirthForm> {
                     Expanded(
                       child: _buildTextField(
                         controller: _latController,
-                        label: 'Latitude',
+                        label: 'Latitude (N+, S−)',
                         color: color,
                         hint: 'e.g. 48.8566',
                         keyboardType: const TextInputType.numberWithOptions(
@@ -547,7 +554,7 @@ class _BirthFormState extends State<BirthForm> {
                     Expanded(
                       child: _buildTextField(
                         controller: _lonController,
-                        label: 'Longitude',
+                        label: 'Longitude (E+, W−)',
                         color: color,
                         hint: 'e.g. 2.3522',
                         keyboardType: const TextInputType.numberWithOptions(
@@ -606,12 +613,6 @@ class _BirthFormState extends State<BirthForm> {
                 _buildLink(
                   'timeanddate.com/worldclock/converter',
                   'https://www.timeanddate.com/worldclock/converter.html',
-                  mutedColor,
-                ),
-                const SizedBox(height: 2),
-                _buildLink(
-                  'timeanddate.com/worldclock',
-                  'https://www.timeanddate.com/worldclock/',
                   mutedColor,
                 ),
               ],

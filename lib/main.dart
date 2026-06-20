@@ -88,6 +88,14 @@ class _ExploreAppState extends State<ExploreApp> {
     _prefs.setDouble('zoom', _zoom);
   }
 
+  void _newChart() {
+    setState(() {
+      _chartData = null;
+      _chart = null;
+      _calculating = false;
+    });
+  }
+
   Future<void> _submitChart(ChartData chartData) async {
     try {
       setState(() {
@@ -182,6 +190,7 @@ class _ExploreAppState extends State<ExploreApp> {
         onZoomIn: _zoomIn,
         onZoomOut: _zoomOut,
         onOpenChart: _openChart,
+        onNewChart: _newChart,
         onSubmitChart: _submitChart,
         chartData: _chartData,
         chart: _chart,
@@ -198,6 +207,7 @@ class _ExplorePage extends StatelessWidget {
   final VoidCallback onZoomIn;
   final VoidCallback onZoomOut;
   final VoidCallback onOpenChart;
+  final VoidCallback onNewChart;
   final void Function(ChartData) onSubmitChart;
   final ChartData? chartData;
   final arrow.Chart? chart;
@@ -210,6 +220,7 @@ class _ExplorePage extends StatelessWidget {
     required this.onZoomIn,
     required this.onZoomOut,
     required this.onOpenChart,
+    required this.onNewChart,
     required this.onSubmitChart,
     required this.chartData,
     required this.chart,
@@ -235,6 +246,15 @@ class _ExplorePage extends StatelessWidget {
         title: chartData != null ? Text(chartData!.name) : null,
         centerTitle: true,
         actions: [
+          if (chartData != null)
+            TextButton.icon(
+              onPressed: onNewChart,
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('New Chart'),
+              style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).appBarTheme.foregroundColor,
+              ),
+            ),
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
