@@ -1,11 +1,14 @@
+import 'dart:convert';
 import 'dart:developer' as dev;
 
 import 'package:arrow_core/arrow_core.dart' as arrow;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'navigate.dart' if (dart.library.js_interop) 'navigate_web.dart';
+import 'file_util.dart' if (dart.library.js_interop) 'file_util_web.dart';
 
 import 'astro/chart_calculator.dart';
 import 'astro/ephemeris_service.dart';
@@ -94,6 +97,16 @@ class _ExploreAppState extends State<ExploreApp> {
       _chart = null;
       _calculating = false;
     });
+  }
+
+  Future<void> _saveChart() async {
+    final chartData = _chartData;
+    if (chartData == null) return;
+
+    final toml = TomlChartFormat.encode(chartData);
+    final bytes = Uint8List.fromList(utf8.encode(toml));
+    final safeName = chartData.name.replaceAll(RegExp(r'[^\w\-.]'), '_');
+    await saveFileBytes('$safeName.toml', bytes);
   }
 
   Future<void> _submitChart(ChartData chartData) async {
@@ -191,6 +204,7 @@ class _ExploreAppState extends State<ExploreApp> {
         onZoomOut: _zoomOut,
         onOpenChart: _openChart,
         onNewChart: _newChart,
+        onSaveChart: _saveChart,
         onSubmitChart: _submitChart,
         chartData: _chartData,
         chart: _chart,
@@ -208,6 +222,7 @@ class _ExplorePage extends StatelessWidget {
   final VoidCallback onZoomOut;
   final VoidCallback onOpenChart;
   final VoidCallback onNewChart;
+  final VoidCallback onSaveChart;
   final void Function(ChartData) onSubmitChart;
   final ChartData? chartData;
   final arrow.Chart? chart;
@@ -221,6 +236,7 @@ class _ExplorePage extends StatelessWidget {
     required this.onZoomOut,
     required this.onOpenChart,
     required this.onNewChart,
+    required this.onSaveChart,
     required this.onSubmitChart,
     required this.chartData,
     required this.chart,
@@ -289,10 +305,22 @@ class _ExplorePage extends StatelessWidget {
             tooltip: 'Settings',
             position: PopupMenuPosition.under,
             onSelected: (value) {
+              if (value == 'save_chart') onSaveChart();
               if (value == 'open_chart') onOpenChart();
               if (value == 'about') _showAbout(context);
             },
             itemBuilder: (context) => [
+              if (chartData != null)
+                const PopupMenuItem(
+                  value: 'save_chart',
+                  child: Row(
+                    children: [
+                      Icon(Icons.save_alt, size: 20),
+                      SizedBox(width: 12),
+                      Text('Save Chart'),
+                    ],
+                  ),
+                ),
               const PopupMenuItem(
                 value: 'open_chart',
                 child: Row(
