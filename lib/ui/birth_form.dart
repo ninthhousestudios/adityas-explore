@@ -4,6 +4,7 @@ import 'package:charts_dart/charts_dart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../api/places_service.dart';
 import '../file_util.dart' if (dart.library.js_interop) '../file_util_web.dart';
 import '../navigate.dart' if (dart.library.js_interop) '../navigate_web.dart';
 
@@ -42,8 +43,10 @@ class _BirthFormState extends State<BirthForm> {
   bool _advancedExpanded = false;
   bool _chartSaved = false;
 
-  // Location search state — deferred until API is wired
+  final _placesService = PlacesService();
+  List<PlaceAutocompleteResult> _searchResults = [];
   bool _searching = false;
+  bool _resolving = false;
   String? _searchError;
 
   String? _dateError;
@@ -397,17 +400,82 @@ class _BirthFormState extends State<BirthForm> {
     setState(() {
       _searching = true;
       _searchError = null;
+      _searchResults = [];
     });
 
-    // TODO: Wire to api.84beings.com/v1/places/autocomplete
-    // For now, show a placeholder message.
-    await Future.delayed(const Duration(milliseconds: 300));
-
-    if (mounted) {
+    try {
+      final results = await _placesService.autocomplete(query);
+      if (!mounted) return;
+      setState(() {
+        _searching = false;
+        _searchResults = results;
+        if (results.isEmpty) {
+          _searchError = 'No results found. Try a different search term.';
+        }
+      });
+    } on PlacesApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _searching = false;
+        _searchError = e.message;
+      });
+    } catch (e) {
+      if (!mounted) return;
       setState(() {
         _searching = false;
         _searchError =
-            'Location search is not yet available. '
+            'Could not reach the server. '
+            'Please enter coordinates and timezone manually below.';
+        if (!_advancedExpanded) _advancedExpanded = true;
+      });
+    }
+  }
+
+  int? _birthDateAsUnixSeconds() {
+    if (_birthDate == null) return null;
+    final d = _birthDate!;
+    return DateTime.utc(d.year, d.month, d.day).millisecondsSinceEpoch ~/ 1000;
+  }
+
+  Future<void> _resolvePlace(PlaceAutocompleteResult place) async {
+    setState(() {
+      _resolving = true;
+      _searchError = null;
+      _searchResults = [];
+      _locationQueryController.text = place.description;
+    });
+
+    try {
+      final result = await _placesService.resolve(
+        place.placeId,
+        timestamp: _birthDateAsUnixSeconds(),
+      );
+      if (!mounted) return;
+      setState(() {
+        _resolving = false;
+        _latController.text = result.lat.toString();
+        _lonController.text = result.lon.toString();
+        _tzController.text = result.utcOffsetHours.toString();
+        _dstController.text = result.dstOffsetHours.toString();
+        _locationQueryController.text = result.formattedAddress;
+        _latError = null;
+        _lonError = null;
+        _tzError = null;
+        _dstError = null;
+        if (_advancedExpanded) _advancedExpanded = false;
+      });
+    } on PlacesApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _resolving = false;
+        _searchError = e.message;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _resolving = false;
+        _searchError =
+            'Could not resolve location. '
             'Please enter coordinates and timezone manually below.';
         if (!_advancedExpanded) _advancedExpanded = true;
       });
@@ -495,6 +563,28 @@ class _BirthFormState extends State<BirthForm> {
                         fontSize: 12,
                         height: 1.4,
                       ),
+                    ),
+                  ],
+                  if (_searchResults.isNotEmpty)
+                    _buildSearchResults(color, mutedColor, accentColor),
+                  if (_resolving) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: mutedColor,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Looking up coordinates…',
+                          style: TextStyle(color: mutedColor, fontSize: 12),
+                        ),
+                      ],
                     ),
                   ],
                   const SizedBox(height: 24),
@@ -610,7 +700,8 @@ class _BirthFormState extends State<BirthForm> {
               child: TextButton(
                 onPressed:
                     _locationQueryController.text.trim().isNotEmpty &&
-                        !_searching
+                        !_searching &&
+                        !_resolving
                     ? _searchLocation
                     : null,
                 style: TextButton.styleFrom(
@@ -641,6 +732,43 @@ class _BirthFormState extends State<BirthForm> {
           style: TextStyle(color: mutedColor, fontSize: 10),
         ),
       ],
+    );
+  }
+
+  Widget _buildSearchResults(Color color, Color mutedColor, Color accentColor) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Container(
+        constraints: const BoxConstraints(maxHeight: 200),
+        decoration: BoxDecoration(
+          border: Border.all(color: color.withValues(alpha: 0.15)),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: ListView.separated(
+          shrinkWrap: true,
+          padding: EdgeInsets.zero,
+          itemCount: _searchResults.length,
+          separatorBuilder: (_, __) =>
+              Divider(height: 1, color: color.withValues(alpha: 0.1)),
+          itemBuilder: (context, index) {
+            final result = _searchResults[index];
+            return InkWell(
+              onTap: () => _resolvePlace(result),
+              borderRadius: BorderRadius.circular(index == 0 ? 8 : 0),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                child: Text(
+                  result.description,
+                  style: TextStyle(color: color, fontSize: 13),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
     );
   }
 
