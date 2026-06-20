@@ -30,7 +30,12 @@ enum BirthPeriod {
 }
 
 class BirthForm extends StatefulWidget {
-  final void Function(ChartData chartData) onSubmit;
+  final void Function(
+    ChartData chartData,
+    TimePrecision precision,
+    BirthPeriod? period,
+  )
+  onSubmit;
   final VoidCallback onOpenChart;
 
   const BirthForm({
@@ -166,12 +171,21 @@ class _BirthFormState extends State<BirthForm> {
       ),
       utcOffsetHours: utcOffset,
       dstOffsetHours: dstOffset,
+      roddenRating: switch (_timePrecision) {
+        TimePrecision.exact => 'A',
+        TimePrecision.general => 'C',
+        TimePrecision.unknown => 'X',
+      },
     );
   }
 
   void _submit() {
     if (!_canSubmit) return;
-    widget.onSubmit(_buildChartData());
+    widget.onSubmit(
+      _buildChartData(),
+      _timePrecision,
+      _timePrecision == TimePrecision.general ? _selectedPeriod : null,
+    );
   }
 
   Future<void> _saveChart() async {

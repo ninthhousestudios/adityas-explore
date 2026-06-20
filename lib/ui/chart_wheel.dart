@@ -4,6 +4,7 @@ import 'package:arrow_core/arrow_core.dart' as arrow;
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../astro/being_uncertainty.dart';
 import 'aditya_data.dart';
 import 'being_content.dart';
 import 'being_type_content.dart';
@@ -18,8 +19,9 @@ extension CapitalizeString on String {
 
 class ChartWheel extends StatefulWidget {
   final arrow.Chart chart;
+  final BeingUncertainty? uncertainty;
 
-  const ChartWheel({super.key, required this.chart});
+  const ChartWheel({super.key, required this.chart, this.uncertainty});
 
   @override
   State<ChartWheel> createState() => _ChartWheelState();
@@ -33,6 +35,7 @@ class _ChartWheelState extends State<ChartWheel> {
   ({String name, String type, String planet, int sign})? _selectedBeing;
   String? _selectedBeingType;
   String? _selectedPlanetInfo;
+  String? _uncertainPlanetName;
   Map<(int, String), BeingContent>? _beingContent;
   Map<String, BeingTypeContent>? _beingTypeContent;
   Map<String, PlanetContent>? _planetContent;
@@ -68,6 +71,7 @@ class _ChartWheelState extends State<ChartWheel> {
     _selectedBeing = null;
     _selectedBeingType = null;
     _selectedPlanetInfo = null;
+    _uncertainPlanetName = null;
   });
 
   @override
@@ -188,6 +192,8 @@ class _ChartWheelState extends State<ChartWheel> {
                 _buildBeingTypeOverlay(color, isDark),
               if (_selectedPlanetInfo != null)
                 _buildPlanetOverlay(color, isDark),
+              if (_uncertainPlanetName != null)
+                _buildUncertaintyChooser(color, isDark),
             ],
           ),
         );
@@ -348,8 +354,18 @@ class _ChartWheelState extends State<ChartWheel> {
         child: GestureDetector(
           onTap: () => setState(() {
             if (_hoveredPlanet?.bodyName == planet.bodyName) {
-              _selectedPlanet = planet;
+              final uncertain =
+                  widget.uncertainty?.isUncertain(planet.bodyName) ?? false;
+              if (uncertain) {
+                _uncertainPlanetName = planet.bodyName;
+                _selectedPlanet = null;
+              } else {
+                _selectedPlanet = planet;
+                _uncertainPlanetName = null;
+              }
               _selectedBeing = null;
+              _selectedBeingType = null;
+              _selectedPlanetInfo = null;
             } else {
               _hoveredPlanet = planet;
               _hoveredCusp = null;
@@ -358,9 +374,27 @@ class _ChartWheelState extends State<ChartWheel> {
           child: SizedBox(
             width: glyphSize,
             height: glyphSize,
-            child: SvgPicture.asset(
-              asset,
-              colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                SvgPicture.asset(
+                  asset,
+                  colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
+                ),
+                if (widget.uncertainty?.isUncertain(planet.bodyName) ?? false)
+                  Positioned(
+                    right: -glyphSize * 0.3,
+                    bottom: -glyphSize * 0.15,
+                    child: Text(
+                      '~',
+                      style: TextStyle(
+                        color: color.withValues(alpha: 0.7),
+                        fontSize: glyphSize * 0.5,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
         ),
@@ -590,20 +624,29 @@ class _ChartWheelState extends State<ChartWheel> {
           ),
           const SizedBox(width: 8),
           GestureDetector(
-            onTap: () => setState(() {
-              _selectedBeing = (
-                name: p.horaBeing ?? '',
-                type: p.horaBeingType ?? '',
-                planet: p.bodyName,
-                sign: p.horaBeingSign ?? 0,
-              );
-              _selectedPlanet = null;
-              _selectedBeingType = null;
-              _selectedPlanetInfo = null;
-            }),
+            onTap: () {
+              final uncertain =
+                  widget.uncertainty?.isUncertain(p.bodyName) ?? false;
+              setState(() {
+                if (uncertain) {
+                  _uncertainPlanetName = p.bodyName;
+                  _selectedPlanet = null;
+                } else {
+                  _selectedBeing = (
+                    name: p.horaBeing ?? '',
+                    type: p.horaBeingType ?? '',
+                    planet: p.bodyName,
+                    sign: p.horaBeingSign ?? 0,
+                  );
+                }
+                _selectedBeingType = null;
+                _selectedPlanetInfo = null;
+              });
+            },
             behavior: HitTestBehavior.opaque,
             child: Text(
-              p.horaBeing ?? '',
+              '${p.horaBeing ?? ''}'
+              '${(widget.uncertainty?.isUncertain(p.bodyName) ?? false) ? ' ~' : ''}',
               style: TextStyle(color: color, fontSize: fontSize),
             ),
           ),
@@ -680,15 +723,26 @@ class _ChartWheelState extends State<ChartWheel> {
                     ),
                   ),
                   GestureDetector(
-                    onTap: () => setState(() {
-                      _selectedPlanet = p;
-                      _selectedBeing = null;
-                      _selectedBeingType = null;
-                      _selectedPlanetInfo = null;
-                    }),
+                    onTap: () {
+                      final uncertain =
+                          widget.uncertainty?.isUncertain(p.bodyName) ?? false;
+                      setState(() {
+                        if (uncertain) {
+                          _uncertainPlanetName = p.bodyName;
+                          _selectedPlanet = null;
+                        } else {
+                          _selectedPlanet = p;
+                          _uncertainPlanetName = null;
+                        }
+                        _selectedBeing = null;
+                        _selectedBeingType = null;
+                        _selectedPlanetInfo = null;
+                      });
+                    },
                     behavior: HitTestBehavior.opaque,
                     child: Text(
-                      '  ${p.trimsamsaBeing ?? ''}',
+                      '  ${p.trimsamsaBeing ?? ''}'
+                      '${(widget.uncertainty?.isUncertain(p.bodyName) ?? false) ? ' ~' : ''}',
                       style: TextStyle(color: color, fontSize: fontSize),
                     ),
                   ),
@@ -934,6 +988,118 @@ class _ChartWheelState extends State<ChartWheel> {
                     ],
                   ),
                 ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUncertaintyChooser(Color color, bool isDark) {
+    final planetName = _uncertainPlanetName;
+    if (planetName == null) return const SizedBox.shrink();
+
+    final options = widget.uncertainty?.optionsFor(planetName) ?? [];
+    if (options.isEmpty) return const SizedBox.shrink();
+
+    final cardBg = isDark ? const Color(0xF0151015) : const Color(0xF0F5F1EA);
+    final dimColor = color.withValues(alpha: 0.6);
+    final accentColor = isDark
+        ? const Color(0xFFD4A853)
+        : const Color(0xFF8B6F37);
+
+    return Positioned.fill(
+      child: GestureDetector(
+        onTap: _closeOverlay,
+        behavior: HitTestBehavior.opaque,
+        child: Center(
+          child: GestureDetector(
+            onTap: () {},
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 360),
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: cardBg,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: color.withValues(alpha: 0.3)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Your ${_capitalize(planetName)} being could be:',
+                        style: TextStyle(
+                          color: color,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: _closeOverlay,
+                        child: Icon(Icons.close, size: 18, color: dimColor),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  for (final option in options) ...[
+                    GestureDetector(
+                      onTap: () => setState(() {
+                        _uncertainPlanetName = null;
+                        _selectedBeing = (
+                          name: option.trimsamsaBeing,
+                          type: option.trimsamsaBeingType,
+                          planet: planetName,
+                          sign: option.trimsamsaBeingSign,
+                        );
+                        _selectedPlanet = null;
+                        _selectedBeingType = null;
+                        _selectedPlanetInfo = null;
+                      }),
+                      behavior: HitTestBehavior.opaque,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        child: Row(
+                          children: [
+                            Text(
+                              '▸  ',
+                              style: TextStyle(
+                                color: accentColor,
+                                fontSize: 14,
+                              ),
+                            ),
+                            Text(
+                              option.trimsamsaBeing,
+                              style: TextStyle(
+                                color: color,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            Text(
+                              '  ${_capitalize(option.trimsamsaBeingType)} of '
+                              '${adityaName(option.trimsamsaBeingSign) ?? '?'}',
+                              style: TextStyle(color: dimColor, fontSize: 13),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  Text(
+                    'Tap a being to learn more.',
+                    style: TextStyle(
+                      color: dimColor,
+                      fontSize: 12,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),

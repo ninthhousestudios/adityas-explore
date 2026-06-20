@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'navigate.dart' if (dart.library.js_interop) 'navigate_web.dart';
 import 'file_util.dart' if (dart.library.js_interop) 'file_util_web.dart';
 
+import 'astro/being_uncertainty.dart';
 import 'astro/chart_calculator.dart';
 import 'astro/ephemeris_service.dart';
 import 'astro/swe.dart';
@@ -42,6 +43,7 @@ class _ExploreAppState extends State<ExploreApp> {
 
   ChartData? _chartData;
   arrow.Chart? _chart;
+  BeingUncertainty? _uncertainty;
   bool _calculating = false;
 
   static const _zoomMin = 0.6;
@@ -95,6 +97,7 @@ class _ExploreAppState extends State<ExploreApp> {
     setState(() {
       _chartData = null;
       _chart = null;
+      _uncertainty = null;
       _calculating = false;
     });
   }
@@ -109,17 +112,30 @@ class _ExploreAppState extends State<ExploreApp> {
     await saveFileBytes('$safeName.toml', bytes);
   }
 
-  Future<void> _submitChart(ChartData chartData) async {
+  Future<void> _submitChart(
+    ChartData chartData,
+    TimePrecision precision,
+    BirthPeriod? period,
+  ) async {
     try {
       setState(() {
         _chartData = chartData;
         _chart = null;
+        _uncertainty = null;
         _calculating = true;
       });
 
       final chart = await _calculator.calculate(chartData);
+      final uncertainty = await computeBeingUncertainty(
+        calculator: _calculator,
+        chartData: chartData,
+        primaryChart: chart,
+        precision: precision,
+        period: period,
+      );
       setState(() {
         _chart = chart;
+        _uncertainty = uncertainty;
         _calculating = false;
       });
     } catch (e, s) {
@@ -208,6 +224,7 @@ class _ExploreAppState extends State<ExploreApp> {
         onSubmitChart: _submitChart,
         chartData: _chartData,
         chart: _chart,
+        uncertainty: _uncertainty,
         calculating: _calculating,
       ),
     );
@@ -223,9 +240,10 @@ class _ExplorePage extends StatelessWidget {
   final VoidCallback onOpenChart;
   final VoidCallback onNewChart;
   final VoidCallback onSaveChart;
-  final void Function(ChartData) onSubmitChart;
+  final void Function(ChartData, TimePrecision, BirthPeriod?) onSubmitChart;
   final ChartData? chartData;
   final arrow.Chart? chart;
+  final BeingUncertainty? uncertainty;
   final bool calculating;
 
   const _ExplorePage({
@@ -240,6 +258,7 @@ class _ExplorePage extends StatelessWidget {
     required this.onSubmitChart,
     required this.chartData,
     required this.chart,
+    required this.uncertainty,
     required this.calculating,
   });
 
@@ -455,7 +474,7 @@ class _ExplorePage extends StatelessWidget {
           data: MediaQuery.of(
             context,
           ).copyWith(textScaler: TextScaler.linear(zoom)),
-          child: ChartWheel(chart: chart!),
+          child: ChartWheel(chart: chart!, uncertainty: uncertainty),
         ),
       ),
     );
