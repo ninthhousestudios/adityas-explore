@@ -4,45 +4,48 @@ import 'package:charts_dart/charts_dart.dart';
 import '../ui/birth_form.dart' show TimePrecision, BirthPeriod;
 import 'chart_calculator.dart';
 
-class PlanetBeingOption {
-  final String horaBeing;
-  final String horaBeingType;
-  final int horaBeingSign;
-  final String trimsamsaBeing;
-  final String trimsamsaBeingType;
-  final int trimsamsaBeingSign;
+class BeingOption {
+  final String name;
+  final String type;
+  final int sign;
 
-  const PlanetBeingOption({
-    required this.horaBeing,
-    required this.horaBeingType,
-    required this.horaBeingSign,
-    required this.trimsamsaBeing,
-    required this.trimsamsaBeingType,
-    required this.trimsamsaBeingSign,
+  const BeingOption({
+    required this.name,
+    required this.type,
+    required this.sign,
   });
-
-  String get _key => '$horaBeing|$trimsamsaBeing';
 
   @override
   bool operator ==(Object other) =>
-      other is PlanetBeingOption && _key == other._key;
+      other is BeingOption && name == other.name && type == other.type;
 
   @override
-  int get hashCode => _key.hashCode;
+  int get hashCode => Object.hash(name, type);
 }
 
 class BeingUncertainty {
-  final Map<String, List<PlanetBeingOption>> planetOptions;
+  final Map<String, List<BeingOption>> trimsamsaOptions;
+  final Map<String, List<BeingOption>> horaOptions;
 
-  const BeingUncertainty(this.planetOptions);
+  const BeingUncertainty({
+    this.trimsamsaOptions = const {},
+    this.horaOptions = const {},
+  });
 
-  bool isUncertain(String planetName) =>
-      (planetOptions[planetName]?.length ?? 0) > 1;
+  bool isTrimsamsaUncertain(String planet) =>
+      (trimsamsaOptions[planet]?.length ?? 0) > 1;
 
-  List<PlanetBeingOption> optionsFor(String planetName) =>
-      planetOptions[planetName] ?? const [];
+  bool isHoraUncertain(String planet) => (horaOptions[planet]?.length ?? 0) > 1;
 
-  static const none = BeingUncertainty({});
+  bool isUncertain(String planet) =>
+      isTrimsamsaUncertain(planet) || isHoraUncertain(planet);
+
+  List<BeingOption> trimsamsaFor(String planet) =>
+      trimsamsaOptions[planet] ?? const [];
+
+  List<BeingOption> horaFor(String planet) => horaOptions[planet] ?? const [];
+
+  static const none = BeingUncertainty();
 }
 
 const _defaultGrahas = [
@@ -100,17 +103,6 @@ ChartData _withTime(ChartData original, DateTime dateTime) {
   );
 }
 
-PlanetBeingOption _extractOption(arrow.Planet planet) {
-  return PlanetBeingOption(
-    horaBeing: planet.horaBeing.name,
-    horaBeingType: planet.horaBeing.type.name,
-    horaBeingSign: planet.horaBeing.signNumber,
-    trimsamsaBeing: planet.trimsamsaBeing.name,
-    trimsamsaBeingType: planet.trimsamsaBeing.type.name,
-    trimsamsaBeingSign: planet.trimsamsaBeing.signNumber,
-  );
-}
-
 Future<BeingUncertainty> computeBeingUncertainty({
   required ChartCalculator calculator,
   required ChartData chartData,
@@ -130,23 +122,46 @@ Future<BeingUncertainty> computeBeingUncertainty({
   }
 
   final allCharts = [primaryChart, ...sampleCharts];
-  final result = <String, List<PlanetBeingOption>>{};
+  final trimsamsaResult = <String, List<BeingOption>>{};
+  final horaResult = <String, List<BeingOption>>{};
 
   for (final name in _defaultGrahas) {
-    final options = <PlanetBeingOption>{};
+    final trimsamsaSet = <BeingOption>{};
+    final horaSet = <BeingOption>{};
+
     for (final chart in allCharts) {
       final planet = chart.grahas.cast<arrow.Planet?>().firstWhere(
         (p) => p!.body.name == name,
         orElse: () => null,
       );
       if (planet != null) {
-        options.add(_extractOption(planet));
+        trimsamsaSet.add(
+          BeingOption(
+            name: planet.trimsamsaBeing.name,
+            type: planet.trimsamsaBeing.type.name,
+            sign: planet.trimsamsaBeing.signNumber,
+          ),
+        );
+        horaSet.add(
+          BeingOption(
+            name: planet.horaBeing.name,
+            type: planet.horaBeing.type.name,
+            sign: planet.horaBeing.signNumber,
+          ),
+        );
       }
     }
-    if (options.length > 1) {
-      result[name] = options.toList();
+
+    if (trimsamsaSet.length > 1) {
+      trimsamsaResult[name] = trimsamsaSet.toList();
+    }
+    if (horaSet.length > 1) {
+      horaResult[name] = horaSet.toList();
     }
   }
 
-  return BeingUncertainty(result);
+  return BeingUncertainty(
+    trimsamsaOptions: trimsamsaResult,
+    horaOptions: horaResult,
+  );
 }

@@ -27,6 +27,8 @@ class ChartWheel extends StatefulWidget {
   State<ChartWheel> createState() => _ChartWheelState();
 }
 
+enum _UncertainKind { trimsamsa, hora }
+
 class _ChartWheelState extends State<ChartWheel> {
   PlacedPlanet? _hoveredPlanet;
   PlacedCusp? _hoveredCusp;
@@ -36,6 +38,7 @@ class _ChartWheelState extends State<ChartWheel> {
   String? _selectedBeingType;
   String? _selectedPlanetInfo;
   String? _uncertainPlanetName;
+  _UncertainKind _uncertainKind = _UncertainKind.trimsamsa;
   Map<(int, String), BeingContent>? _beingContent;
   Map<String, BeingTypeContent>? _beingTypeContent;
   Map<String, PlanetContent>? _planetContent;
@@ -358,6 +361,7 @@ class _ChartWheelState extends State<ChartWheel> {
                   widget.uncertainty?.isUncertain(planet.bodyName) ?? false;
               if (uncertain) {
                 _uncertainPlanetName = planet.bodyName;
+                _uncertainKind = _UncertainKind.trimsamsa;
                 _selectedPlanet = null;
               } else {
                 _selectedPlanet = planet;
@@ -383,8 +387,8 @@ class _ChartWheelState extends State<ChartWheel> {
                 ),
                 if (widget.uncertainty?.isUncertain(planet.bodyName) ?? false)
                   Positioned(
-                    right: -glyphSize * 0.3,
-                    bottom: -glyphSize * 0.15,
+                    right: -glyphSize * 0.15,
+                    bottom: 0,
                     child: Text(
                       '~',
                       style: TextStyle(
@@ -625,11 +629,12 @@ class _ChartWheelState extends State<ChartWheel> {
           const SizedBox(width: 8),
           GestureDetector(
             onTap: () {
-              final uncertain =
-                  widget.uncertainty?.isUncertain(p.bodyName) ?? false;
+              final horaUncertain =
+                  widget.uncertainty?.isHoraUncertain(p.bodyName) ?? false;
               setState(() {
-                if (uncertain) {
+                if (horaUncertain) {
                   _uncertainPlanetName = p.bodyName;
+                  _uncertainKind = _UncertainKind.hora;
                   _selectedPlanet = null;
                 } else {
                   _selectedBeing = (
@@ -646,7 +651,7 @@ class _ChartWheelState extends State<ChartWheel> {
             behavior: HitTestBehavior.opaque,
             child: Text(
               '${p.horaBeing ?? ''}'
-              '${(widget.uncertainty?.isUncertain(p.bodyName) ?? false) ? ' ~' : ''}',
+              '${(widget.uncertainty?.isHoraUncertain(p.bodyName) ?? false) ? ' ~' : ''}',
               style: TextStyle(color: color, fontSize: fontSize),
             ),
           ),
@@ -725,10 +730,14 @@ class _ChartWheelState extends State<ChartWheel> {
                   GestureDetector(
                     onTap: () {
                       final uncertain =
-                          widget.uncertainty?.isUncertain(p.bodyName) ?? false;
+                          widget.uncertainty?.isTrimsamsaUncertain(
+                            p.bodyName,
+                          ) ??
+                          false;
                       setState(() {
                         if (uncertain) {
                           _uncertainPlanetName = p.bodyName;
+                          _uncertainKind = _UncertainKind.trimsamsa;
                           _selectedPlanet = null;
                         } else {
                           _selectedPlanet = p;
@@ -742,7 +751,7 @@ class _ChartWheelState extends State<ChartWheel> {
                     behavior: HitTestBehavior.opaque,
                     child: Text(
                       '  ${p.trimsamsaBeing ?? ''}'
-                      '${(widget.uncertainty?.isUncertain(p.bodyName) ?? false) ? ' ~' : ''}',
+                      '${(widget.uncertainty?.isTrimsamsaUncertain(p.bodyName) ?? false) ? ' ~' : ''}',
                       style: TextStyle(color: color, fontSize: fontSize),
                     ),
                   ),
@@ -1000,8 +1009,17 @@ class _ChartWheelState extends State<ChartWheel> {
     final planetName = _uncertainPlanetName;
     if (planetName == null) return const SizedBox.shrink();
 
-    final options = widget.uncertainty?.optionsFor(planetName) ?? [];
+    final uncertainty = widget.uncertainty;
+    if (uncertainty == null) return const SizedBox.shrink();
+
+    final options = _uncertainKind == _UncertainKind.hora
+        ? uncertainty.horaFor(planetName)
+        : uncertainty.trimsamsaFor(planetName);
     if (options.isEmpty) return const SizedBox.shrink();
+
+    final label = _uncertainKind == _UncertainKind.hora
+        ? 'soul stance'
+        : 'being';
 
     final cardBg = isDark ? const Color(0xF0151015) : const Color(0xF0F5F1EA);
     final dimColor = color.withValues(alpha: 0.6);
@@ -1031,12 +1049,14 @@ class _ChartWheelState extends State<ChartWheel> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        'Your ${_capitalize(planetName)} being could be:',
-                        style: TextStyle(
-                          color: color,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
+                      Flexible(
+                        child: Text(
+                          'Your ${_capitalize(planetName)} $label could be:',
+                          style: TextStyle(
+                            color: color,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                       GestureDetector(
@@ -1051,10 +1071,10 @@ class _ChartWheelState extends State<ChartWheel> {
                       onTap: () => setState(() {
                         _uncertainPlanetName = null;
                         _selectedBeing = (
-                          name: option.trimsamsaBeing,
-                          type: option.trimsamsaBeingType,
+                          name: option.name,
+                          type: option.type,
                           planet: planetName,
-                          sign: option.trimsamsaBeingSign,
+                          sign: option.sign,
                         );
                         _selectedPlanet = null;
                         _selectedBeingType = null;
@@ -1073,7 +1093,7 @@ class _ChartWheelState extends State<ChartWheel> {
                               ),
                             ),
                             Text(
-                              option.trimsamsaBeing,
+                              option.name,
                               style: TextStyle(
                                 color: color,
                                 fontSize: 14,
@@ -1081,8 +1101,8 @@ class _ChartWheelState extends State<ChartWheel> {
                               ),
                             ),
                             Text(
-                              '  ${_capitalize(option.trimsamsaBeingType)} of '
-                              '${adityaName(option.trimsamsaBeingSign) ?? '?'}',
+                              '  ${_capitalize(option.type)} of '
+                              '${adityaName(option.sign) ?? '?'}',
                               style: TextStyle(color: dimColor, fontSize: 13),
                             ),
                           ],
