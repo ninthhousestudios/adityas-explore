@@ -8,7 +8,26 @@ import '../api/places_service.dart';
 import '../file_util.dart' if (dart.library.js_interop) '../file_util_web.dart';
 import '../navigate.dart' if (dart.library.js_interop) '../navigate_web.dart';
 
-enum TimePrecision { exact, rough, unknown }
+enum TimePrecision { exact, general, unknown }
+
+enum BirthPeriod {
+  morning(label: 'Morning', range: '6:00 AM – 12:00 PM', hour: 9),
+  afternoon(label: 'Afternoon', range: '12:00 PM – 6:00 PM', hour: 15),
+  evening(label: 'Evening', range: '6:00 PM – 12:00 AM', hour: 21),
+  night(label: 'Night', range: '12:00 AM – 6:00 AM', hour: 3);
+
+  const BirthPeriod({
+    required this.label,
+    required this.range,
+    required this.hour,
+  });
+
+  final String label;
+  final String range;
+  final int hour;
+
+  TimeOfDay get midpoint => TimeOfDay(hour: hour, minute: 0);
+}
 
 class BirthForm extends StatefulWidget {
   final void Function(ChartData chartData) onSubmit;
@@ -37,8 +56,14 @@ class _BirthFormState extends State<BirthForm> {
 
   DateTime? _birthDate;
   TimeOfDay? _birthTime;
-  // ignore: unused_field — scaffolded for future chart logic (exact/rough/unknown time)
-  final TimePrecision _timePrecision = TimePrecision.exact;
+  TimePrecision _timePrecision = TimePrecision.exact;
+  BirthPeriod? _selectedPeriod;
+
+  TimeOfDay? get _effectiveBirthTime => switch (_timePrecision) {
+    TimePrecision.exact => _birthTime,
+    TimePrecision.general => _selectedPeriod?.midpoint,
+    TimePrecision.unknown => const TimeOfDay(hour: 12, minute: 0),
+  };
 
   bool _advancedExpanded = false;
   bool _chartSaved = false;
@@ -86,9 +111,9 @@ class _BirthFormState extends State<BirthForm> {
   bool get _canSubmit =>
       _nameController.text.trim().isNotEmpty &&
       _birthDate != null &&
-      _birthTime != null &&
+      _effectiveBirthTime != null &&
       _dateError == null &&
-      _timeError == null &&
+      (_timePrecision != TimePrecision.exact || _timeError == null) &&
       _hasTimezone &&
       _hasDst &&
       _tzError == null &&
@@ -116,7 +141,7 @@ class _BirthFormState extends State<BirthForm> {
 
   ChartData _buildChartData() {
     final date = _birthDate!;
-    final time = _birthTime!;
+    final time = _effectiveBirthTime!;
     // Use DateTime.utc to prevent dateTimeToJdUt's .toUtc() from
     // applying the system timezone a second time on top of our manual offset.
     final localDateTime = DateTime.utc(
@@ -432,9 +457,9 @@ class _BirthFormState extends State<BirthForm> {
   }
 
   int? _birthDateAsUnixSeconds() {
-    if (_birthDate == null || _birthTime == null) return null;
+    if (_birthDate == null || _effectiveBirthTime == null) return null;
     final d = _birthDate!;
-    final t = _birthTime!;
+    final t = _effectiveBirthTime!;
     return DateTime.utc(
           d.year,
           d.month,
@@ -544,22 +569,7 @@ class _BirthFormState extends State<BirthForm> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  _buildTextField(
-                    controller: _timeController,
-                    label: 'Time of Birth (HH:MM AM/PM)',
-                    color: color,
-                    errorText: _timeError,
-                    onChanged: _onTimeTextChanged,
-                    suffix: IconButton(
-                      onPressed: _pickTime,
-                      icon: Icon(
-                        Icons.access_time,
-                        size: 18,
-                        color: mutedColor,
-                      ),
-                      tooltip: 'Pick time',
-                    ),
-                  ),
+                  _buildTimeCertaintySection(color, mutedColor),
                   const SizedBox(height: 16),
                   _buildLocationField(color, mutedColor),
                   if (_searchError != null) ...[
@@ -687,6 +697,104 @@ class _BirthFormState extends State<BirthForm> {
     );
   }
 
+  Widget _buildTimeCertaintySection(Color color, Color mutedColor) {
+    const options = [
+      (TimePrecision.exact, 'I know the exact time'),
+      (TimePrecision.general, 'I know the general time of day'),
+      (TimePrecision.unknown, "I don't know the time"),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'How certain are you of the birth time?',
+          style: TextStyle(color: color.withValues(alpha: 0.6), fontSize: 12),
+        ),
+        const SizedBox(height: 4),
+        ...options.map(
+          (opt) => _buildRadio<TimePrecision>(
+            value: opt.$1,
+            groupValue: _timePrecision,
+            label: opt.$2,
+            color: color,
+            onChanged: (v) {
+              setState(() {
+                _timePrecision = v;
+                if (v != TimePrecision.exact) _timeError = null;
+                if (v != TimePrecision.general) _selectedPeriod = null;
+              });
+            },
+          ),
+        ),
+        if (_timePrecision == TimePrecision.exact) ...[
+          const SizedBox(height: 8),
+          _buildTextField(
+            controller: _timeController,
+            label: 'Time of Birth (HH:MM AM/PM)',
+            color: color,
+            errorText: _timeError,
+            onChanged: _onTimeTextChanged,
+            suffix: IconButton(
+              onPressed: _pickTime,
+              icon: Icon(Icons.access_time, size: 18, color: mutedColor),
+              tooltip: 'Pick time',
+            ),
+          ),
+        ],
+        if (_timePrecision == TimePrecision.general) ...[
+          const SizedBox(height: 8),
+          ...BirthPeriod.values.map(
+            (period) => _buildRadio<BirthPeriod>(
+              value: period,
+              groupValue: _selectedPeriod,
+              label: '${period.label} (${period.range})',
+              color: color,
+              onChanged: (v) => setState(() => _selectedPeriod = v),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildRadio<T>({
+    required T value,
+    required T? groupValue,
+    required String label,
+    required Color color,
+    required ValueChanged<T> onChanged,
+  }) {
+    final selected = value == groupValue;
+    return InkWell(
+      onTap: () => onChanged(value),
+      borderRadius: BorderRadius.circular(4),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              selected ? Icons.radio_button_checked : Icons.radio_button_off,
+              size: 18,
+              color: selected
+                  ? color.withValues(alpha: 0.8)
+                  : color.withValues(alpha: 0.4),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                color: color.withValues(alpha: selected ? 0.8 : 0.5),
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildLocationField(Color color, Color mutedColor) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -711,9 +819,8 @@ class _BirthFormState extends State<BirthForm> {
                         !_searching &&
                         !_resolving &&
                         _birthDate != null &&
-                        _birthTime != null &&
-                        _dateError == null &&
-                        _timeError == null
+                        _effectiveBirthTime != null &&
+                        _dateError == null
                     ? _searchLocation
                     : null,
                 style: TextButton.styleFrom(
