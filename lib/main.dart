@@ -12,6 +12,7 @@ import 'astro/ephemeris_service.dart';
 import 'astro/swe.dart';
 import 'package:charts_dart/charts_dart.dart';
 import 'chart_reader.dart';
+import 'ui/birth_form.dart';
 import 'ui/chart_wheel.dart';
 import 'ui/theme.dart';
 
@@ -87,6 +88,30 @@ class _ExploreAppState extends State<ExploreApp> {
     _prefs.setDouble('zoom', _zoom);
   }
 
+  Future<void> _submitChart(ChartData chartData) async {
+    try {
+      setState(() {
+        _chartData = chartData;
+        _chart = null;
+        _calculating = true;
+      });
+
+      final chart = await _calculator.calculate(chartData);
+      setState(() {
+        _chart = chart;
+        _calculating = false;
+      });
+    } catch (e, s) {
+      debugPrint('Error calculating chart: $e\n$s');
+      setState(() => _calculating = false);
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    }
+  }
+
   Future<void> _openChart() async {
     try {
       final result = await FilePicker.platform.pickFiles(
@@ -157,6 +182,7 @@ class _ExploreAppState extends State<ExploreApp> {
         onZoomIn: _zoomIn,
         onZoomOut: _zoomOut,
         onOpenChart: _openChart,
+        onSubmitChart: _submitChart,
         chartData: _chartData,
         chart: _chart,
         calculating: _calculating,
@@ -172,6 +198,7 @@ class _ExplorePage extends StatelessWidget {
   final VoidCallback onZoomIn;
   final VoidCallback onZoomOut;
   final VoidCallback onOpenChart;
+  final void Function(ChartData) onSubmitChart;
   final ChartData? chartData;
   final arrow.Chart? chart;
   final bool calculating;
@@ -183,6 +210,7 @@ class _ExplorePage extends StatelessWidget {
     required this.onZoomIn,
     required this.onZoomOut,
     required this.onOpenChart,
+    required this.onSubmitChart,
     required this.chartData,
     required this.chart,
     required this.calculating,
@@ -365,12 +393,7 @@ class _ExplorePage extends StatelessWidget {
     }
 
     if (chartData == null) {
-      return Center(
-        child: Text(
-          'Open a chart from the settings menu',
-          style: Theme.of(context).textTheme.bodyLarge,
-        ),
-      );
+      return BirthForm(onSubmit: onSubmitChart, onOpenChart: onOpenChart);
     }
 
     if (chart == null) {
