@@ -109,7 +109,6 @@ class _BirthFormState extends State<BirthForm> {
   }
 
   bool get _canSubmit =>
-      _nameController.text.trim().isNotEmpty &&
       _birthDate != null &&
       _effectiveBirthTime != null &&
       _dateError == null &&
@@ -708,7 +707,7 @@ class _BirthFormState extends State<BirthForm> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'How certain are you of the birth time?',
+          'How accurate is your birth time?',
           style: TextStyle(color: color.withValues(alpha: 0.6), fontSize: 12),
         ),
         const SizedBox(height: 4),
