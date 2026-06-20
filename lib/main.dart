@@ -45,6 +45,7 @@ class _ExploreAppState extends State<ExploreApp> {
   arrow.Chart? _chart;
   BeingUncertainty? _uncertainty;
   bool _calculating = false;
+  int _calcToken = 0;
 
   static const _zoomMin = 0.6;
   static const _zoomMax = 1.8;
@@ -117,6 +118,7 @@ class _ExploreAppState extends State<ExploreApp> {
     TimePrecision precision,
     BirthPeriod? period,
   ) async {
+    final token = ++_calcToken;
     try {
       setState(() {
         _chartData = chartData;
@@ -126,6 +128,7 @@ class _ExploreAppState extends State<ExploreApp> {
       });
 
       final chart = await _calculator.calculate(chartData);
+      if (!mounted || token != _calcToken) return;
       final uncertainty = await computeBeingUncertainty(
         calculator: _calculator,
         chartData: chartData,
@@ -133,6 +136,7 @@ class _ExploreAppState extends State<ExploreApp> {
         precision: precision,
         period: period,
       );
+      if (!mounted || token != _calcToken) return;
       setState(() {
         _chart = chart;
         _uncertainty = uncertainty;
@@ -140,12 +144,11 @@ class _ExploreAppState extends State<ExploreApp> {
       });
     } catch (e, s) {
       debugPrint('Error calculating chart: $e\n$s');
+      if (!mounted || token != _calcToken) return;
       setState(() => _calculating = false);
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error: $e')));
-      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
   }
 

@@ -357,11 +357,13 @@ class _ChartWheelState extends State<ChartWheel> {
         child: GestureDetector(
           onTap: () => setState(() {
             if (_hoveredPlanet?.bodyName == planet.bodyName) {
-              final uncertain =
-                  widget.uncertainty?.isUncertain(planet.bodyName) ?? false;
+              final u = widget.uncertainty;
+              final uncertain = u?.isUncertain(planet.bodyName) ?? false;
               if (uncertain) {
                 _uncertainPlanetName = planet.bodyName;
-                _uncertainKind = _UncertainKind.trimsamsa;
+                _uncertainKind = u!.isTrimsamsaUncertain(planet.bodyName)
+                    ? _UncertainKind.trimsamsa
+                    : _UncertainKind.hora;
                 _selectedPlanet = null;
               } else {
                 _selectedPlanet = planet;

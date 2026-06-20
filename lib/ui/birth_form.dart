@@ -234,6 +234,7 @@ class _BirthFormState extends State<BirthForm> {
       setState(() {
         _birthDate = picked;
         _dateController.text = _formatDate(picked);
+        _dateError = null;
       });
     }
   }
@@ -247,6 +248,7 @@ class _BirthFormState extends State<BirthForm> {
       setState(() {
         _birthTime = picked;
         _timeController.text = picked.format(context);
+        _timeError = null;
       });
     }
   }
@@ -491,6 +493,10 @@ class _BirthFormState extends State<BirthForm> {
   }
 
   Future<void> _resolvePlace(PlaceAutocompleteResult place) async {
+    final snapshotDate = _birthDate;
+    final snapshotTime = _birthTime;
+    final timestamp = _birthDateAsUnixSeconds();
+
     setState(() {
       _resolving = true;
       _searchError = null;
@@ -501,9 +507,10 @@ class _BirthFormState extends State<BirthForm> {
     try {
       final result = await _placesService.resolve(
         place.placeId,
-        timestamp: _birthDateAsUnixSeconds(),
+        timestamp: timestamp,
       );
       if (!mounted) return;
+      if (_birthDate != snapshotDate || _birthTime != snapshotTime) return;
       setState(() {
         _resolving = false;
         _latController.text = result.lat.toString();
