@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:charts_dart/charts_dart.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -117,26 +119,35 @@ class _BirthFormState extends State<BirthForm> {
   Future<void> _saveChart() async {
     if (!_canSave) return;
 
-    final chartData = _buildChartData();
-    final toml = TomlChartFormat.encode(chartData);
-    final bytes = Uint8List.fromList(toml.codeUnits);
-    final safeName = chartData.name.replaceAll(RegExp(r'[^\w\-.]'), '_');
+    try {
+      final chartData = _buildChartData();
+      final toml = TomlChartFormat.encode(chartData);
+      final bytes = Uint8List.fromList(utf8.encode(toml));
+      final safeName = chartData.name.replaceAll(RegExp(r'[^\w\-.]'), '_');
 
-    final result = await FilePicker.platform.saveFile(
-      dialogTitle: 'Save chart',
-      fileName: '$safeName.toml',
-      bytes: bytes,
-    );
+      final result = await FilePicker.platform.saveFile(
+        dialogTitle: 'Save chart',
+        fileName: '$safeName.toml',
+        bytes: bytes,
+      );
 
-    if (result != null) {
-      await writeBytesToPath(result, bytes);
-    }
+      if (result != null) {
+        await writeBytesToPath(result, bytes);
+      }
 
-    if (result != null && mounted) {
-      setState(() => _chartSaved = true);
-      Future.delayed(const Duration(seconds: 3), () {
-        if (mounted) setState(() => _chartSaved = false);
-      });
+      if (result != null && mounted) {
+        setState(() => _chartSaved = true);
+        Future.delayed(const Duration(seconds: 3), () {
+          if (mounted) setState(() => _chartSaved = false);
+        });
+      }
+    } catch (e, s) {
+      debugPrint('Error saving chart: $e\n$s');
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error saving: $e')));
+      }
     }
   }
 
@@ -302,9 +313,8 @@ class _BirthFormState extends State<BirthForm> {
                   const SizedBox(height: 16),
                   _buildTextField(
                     controller: _dateController,
-                    label: 'Date of Birth',
+                    label: 'Date of Birth (MM/DD/YYYY)',
                     color: color,
-                    hint: 'MM/DD/YYYY',
                     onChanged: _onDateTextChanged,
                     suffix: IconButton(
                       onPressed: _pickDate,
@@ -319,9 +329,8 @@ class _BirthFormState extends State<BirthForm> {
                   const SizedBox(height: 16),
                   _buildTextField(
                     controller: _timeController,
-                    label: 'Time of Birth',
+                    label: 'Time of Birth (HH:MM)',
                     color: color,
-                    hint: 'HH:MM',
                     onChanged: _onTimeTextChanged,
                     suffix: IconButton(
                       onPressed: _pickTime,
