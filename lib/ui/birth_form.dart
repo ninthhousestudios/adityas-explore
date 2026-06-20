@@ -46,25 +46,57 @@ class _BirthFormState extends State<BirthForm> {
   bool _searching = false;
   String? _searchError;
 
-  bool get _hasTimezone =>
-      _tzController.text.isNotEmpty &&
-      double.tryParse(_tzController.text) != null;
+  String? _dateError;
+  String? _timeError;
+  String? _latError;
+  String? _lonError;
+  String? _tzError;
+  String? _dstError;
 
-  bool get _hasDst => double.tryParse(_dstController.text) != null;
+  bool get _hasTimezone {
+    final text = _tzController.text.trim();
+    if (text.isEmpty) return false;
+    final v = double.tryParse(text);
+    return v != null && v >= -12 && v <= 14;
+  }
+
+  bool get _hasDst {
+    final text = _dstController.text.trim();
+    final v = double.tryParse(text);
+    return v != null;
+  }
+
+  bool get _hasValidLat {
+    final text = _latController.text.trim();
+    if (text.isEmpty) return false;
+    final v = double.tryParse(text);
+    return v != null && v >= -90 && v <= 90;
+  }
+
+  bool get _hasValidLon {
+    final text = _lonController.text.trim();
+    if (text.isEmpty) return false;
+    final v = double.tryParse(text);
+    return v != null && v >= -180 && v <= 180;
+  }
 
   bool get _canSubmit =>
       _nameController.text.trim().isNotEmpty &&
       _birthDate != null &&
       _birthTime != null &&
+      _dateError == null &&
+      _timeError == null &&
       _hasTimezone &&
-      _hasDst;
+      _hasDst &&
+      _tzError == null &&
+      _dstError == null;
 
   bool get _canSave =>
       _canSubmit &&
-      _latController.text.isNotEmpty &&
-      double.tryParse(_latController.text) != null &&
-      _lonController.text.isNotEmpty &&
-      double.tryParse(_lonController.text) != null;
+      _hasValidLat &&
+      _hasValidLon &&
+      _latError == null &&
+      _lonError == null;
 
   @override
   void dispose() {
@@ -172,74 +204,191 @@ class _BirthFormState extends State<BirthForm> {
   }
 
   void _onDateTextChanged(String value) {
-    final parsed = _tryParseDate(value);
-    if (parsed != null) {
-      setState(() => _birthDate = parsed);
+    final cleaned = value.trim();
+    if (cleaned.isEmpty) {
+      setState(() {
+        _birthDate = null;
+        _dateError = null;
+      });
+      return;
     }
+
+    final result = _tryParseDate(cleaned);
+    setState(() {
+      _birthDate = result.date;
+      _dateError = result.error;
+    });
   }
 
   void _onTimeTextChanged(String value) {
-    final parsed = _tryParseTime(value);
-    if (parsed != null) {
-      setState(() => _birthTime = parsed);
+    final cleaned = value.trim();
+    if (cleaned.isEmpty) {
+      setState(() {
+        _birthTime = null;
+        _timeError = null;
+      });
+      return;
     }
+
+    final result = _tryParseTime(cleaned);
+    setState(() {
+      _birthTime = result.time;
+      _timeError = result.error;
+    });
   }
 
-  DateTime? _tryParseDate(String text) {
-    final cleaned = text.trim();
-    if (cleaned.isEmpty) return null;
+  ({DateTime? date, String? error}) _tryParseDate(String text) {
+    int? m, d, y;
 
-    // Try M/d/yyyy (US format from date picker)
-    final slashParts = cleaned.split('/');
-    if (slashParts.length == 3) {
-      final m = int.tryParse(slashParts[0]);
-      final d = int.tryParse(slashParts[1]);
-      final y = int.tryParse(slashParts[2]);
-      if (m != null && d != null && y != null) {
-        return DateTime(y, m, d);
+    // Try M/D/YYYY or M-D-YYYY
+    final parts = text.split(RegExp(r'[/\-]'));
+    if (parts.length == 3) {
+      final a = int.tryParse(parts[0]);
+      final b = int.tryParse(parts[1]);
+      final c = int.tryParse(parts[2]);
+      if (a != null && b != null && c != null) {
+        if (a > 31) {
+          // yyyy-MM-dd
+          y = a;
+          m = b;
+          d = c;
+        } else {
+          // MM/DD/YYYY
+          m = a;
+          d = b;
+          y = c;
+        }
       }
     }
 
-    // Try yyyy-MM-dd (ISO)
-    final isoParsed = DateTime.tryParse(cleaned);
-    if (isoParsed != null) return isoParsed;
+    // Try ISO fallback
+    if (y == null) {
+      final iso = DateTime.tryParse(text);
+      if (iso != null) return (date: iso, error: null);
+      return (date: null, error: 'Use MM/DD/YYYY or YYYY-MM-DD');
+    }
 
-    return null;
+    if (m! < 1 || m > 12) return (date: null, error: 'Month must be 1–12');
+    if (d! < 1 || d > 31) return (date: null, error: 'Day must be 1–31');
+    if (y < 1) return (date: null, error: 'Invalid year');
+
+    // Validate the day is real for this month/year
+    final candidate = DateTime(y, m, d);
+    if (candidate.month != m || candidate.day != d) {
+      return (date: null, error: 'Invalid date for this month');
+    }
+
+    return (date: candidate, error: null);
   }
 
-  TimeOfDay? _tryParseTime(String text) {
-    final cleaned = text.trim().toUpperCase();
-    if (cleaned.isEmpty) return null;
+  ({TimeOfDay? time, String? error}) _tryParseTime(String text) {
+    final cleaned = text.toUpperCase().replaceAll(RegExp(r'\s+'), ' ').trim();
 
-    // Try "H:MM AM/PM" format (MaterialLocalizations default)
-    final amPm = RegExp(r'^(\d{1,2}):(\d{2})\s*(AM|PM)$');
+    // Try "H:MM[:SS] AM/PM"
+    final amPm = RegExp(r'^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)$');
     final match = amPm.firstMatch(cleaned);
     if (match != null) {
       var hour = int.parse(match.group(1)!);
       final minute = int.parse(match.group(2)!);
-      final period = match.group(3)!;
+      final period = match.group(4)!;
+      if (hour < 1 || hour > 12) {
+        return (time: null, error: 'Hour must be 1–12 with AM/PM');
+      }
+      if (minute > 59) return (time: null, error: 'Minutes must be 0–59');
       if (period == 'AM' && hour == 12) hour = 0;
       if (period == 'PM' && hour != 12) hour += 12;
-      if (hour >= 0 && hour < 24 && minute >= 0 && minute < 60) {
-        return TimeOfDay(hour: hour, minute: minute);
-      }
+      return (time: TimeOfDay(hour: hour, minute: minute), error: null);
     }
 
-    // Try 24h "HH:MM"
-    final h24 = RegExp(r'^(\d{1,2}):(\d{2})$');
+    // Try 24h "HH:MM[:SS]"
+    final h24 = RegExp(r'^(\d{1,2}):(\d{2})(?::(\d{2}))?$');
     final h24Match = h24.firstMatch(cleaned);
     if (h24Match != null) {
       final hour = int.parse(h24Match.group(1)!);
       final minute = int.parse(h24Match.group(2)!);
-      if (hour >= 0 && hour < 24 && minute >= 0 && minute < 60) {
-        return TimeOfDay(hour: hour, minute: minute);
+      if (hour > 23) return (time: null, error: 'Hour must be 0–23');
+      if (minute > 59) return (time: null, error: 'Minutes must be 0–59');
+      // Ambiguous: 1:00–12:59 without AM/PM
+      if (hour >= 1 && hour <= 12) {
+        return (time: null, error: 'Please specify AM or PM');
       }
+      return (time: TimeOfDay(hour: hour, minute: minute), error: null);
     }
 
-    return null;
+    return (time: null, error: 'Use HH:MM AM/PM or 24h HH:MM');
   }
 
   String _formatDate(DateTime d) => '${d.month}/${d.day}/${d.year}';
+
+  void _validateLat(String v) {
+    final text = v.trim();
+    setState(() {
+      if (text.isEmpty) {
+        _latError = null;
+      } else {
+        final val = double.tryParse(text);
+        if (val == null) {
+          _latError = 'Must be a number';
+        } else if (val < -90 || val > 90) {
+          _latError = 'Must be −90 to 90';
+        } else {
+          _latError = null;
+        }
+      }
+    });
+  }
+
+  void _validateLon(String v) {
+    final text = v.trim();
+    setState(() {
+      if (text.isEmpty) {
+        _lonError = null;
+      } else {
+        final val = double.tryParse(text);
+        if (val == null) {
+          _lonError = 'Must be a number';
+        } else if (val < -180 || val > 180) {
+          _lonError = 'Must be −180 to 180';
+        } else {
+          _lonError = null;
+        }
+      }
+    });
+  }
+
+  void _validateTz(String v) {
+    final text = v.trim();
+    setState(() {
+      if (text.isEmpty) {
+        _tzError = null;
+      } else {
+        final val = double.tryParse(text);
+        if (val == null) {
+          _tzError = 'Must be a number';
+        } else if (val < -12 || val > 14) {
+          _tzError = 'Must be −12 to +14';
+        } else {
+          _tzError = null;
+        }
+      }
+    });
+  }
+
+  void _validateDst(String v) {
+    final text = v.trim();
+    setState(() {
+      if (text.isEmpty) {
+        _dstError = null;
+      } else {
+        final val = double.tryParse(text);
+        if (val == null) {
+          _dstError = 'Must be a number';
+        } else {
+          _dstError = null;
+        }
+      }
+    });
+  }
 
   Future<void> _searchLocation() async {
     final query = _locationQueryController.text.trim();
@@ -306,6 +455,7 @@ class _BirthFormState extends State<BirthForm> {
                     controller: _dateController,
                     label: 'Date of Birth (MM/DD/YYYY)',
                     color: color,
+                    errorText: _dateError,
                     onChanged: _onDateTextChanged,
                     suffix: IconButton(
                       onPressed: _pickDate,
@@ -322,6 +472,7 @@ class _BirthFormState extends State<BirthForm> {
                     controller: _timeController,
                     label: 'Time of Birth (HH:MM AM/PM)',
                     color: color,
+                    errorText: _timeError,
                     onChanged: _onTimeTextChanged,
                     suffix: IconButton(
                       onPressed: _pickTime,
@@ -407,6 +558,7 @@ class _BirthFormState extends State<BirthForm> {
     required String label,
     required Color color,
     String? hint,
+    String? errorText,
     Widget? suffix,
     void Function(String)? onChanged,
     List<TextInputFormatter>? inputFormatters,
@@ -421,6 +573,8 @@ class _BirthFormState extends State<BirthForm> {
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
+        errorText: errorText,
+        errorStyle: const TextStyle(fontSize: 11),
         labelStyle: TextStyle(color: color.withValues(alpha: 0.6)),
         hintStyle: TextStyle(color: color.withValues(alpha: 0.3), fontSize: 14),
         suffixIcon: suffix,
@@ -543,11 +697,12 @@ class _BirthFormState extends State<BirthForm> {
                         label: 'Latitude (N+, S−)',
                         color: color,
                         hint: 'e.g. 48.8566',
+                        errorText: _latError,
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                           signed: true,
                         ),
-                        onChanged: (_) => setState(() {}),
+                        onChanged: (v) => _validateLat(v),
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -557,11 +712,12 @@ class _BirthFormState extends State<BirthForm> {
                         label: 'Longitude (E+, W−)',
                         color: color,
                         hint: 'e.g. 2.3522',
+                        errorText: _lonError,
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                           signed: true,
                         ),
-                        onChanged: (_) => setState(() {}),
+                        onChanged: (v) => _validateLon(v),
                       ),
                     ),
                   ],
@@ -575,11 +731,12 @@ class _BirthFormState extends State<BirthForm> {
                         label: 'UTC Offset',
                         color: color,
                         hint: 'e.g. 5.5 or -8',
+                        errorText: _tzError,
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                           signed: true,
                         ),
-                        onChanged: (_) => setState(() {}),
+                        onChanged: (v) => _validateTz(v),
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -589,11 +746,12 @@ class _BirthFormState extends State<BirthForm> {
                         label: 'DST Offset',
                         color: color,
                         hint: 'e.g. 1.0 or 0',
+                        errorText: _dstError,
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                           signed: true,
                         ),
-                        onChanged: (_) => setState(() {}),
+                        onChanged: (v) => _validateDst(v),
                       ),
                     ),
                   ],
