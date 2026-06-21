@@ -178,6 +178,7 @@ class _ExploreAppState extends State<ExploreApp> {
 
       final chart = await _calculator.calculate(chartData);
       if (!mounted || token != _calcToken) return;
+      _precacheChartAssets(chart);
       final uncertainty = await computeBeingUncertainty(
         calculator: _calculator,
         chartData: chartData,
@@ -191,7 +192,6 @@ class _ExploreAppState extends State<ExploreApp> {
         _uncertainty = uncertainty;
         _calculating = false;
       });
-      _precacheChartAssets(chart);
     } catch (e, s) {
       debugPrint('Error calculating chart: $e\n$s');
       if (!mounted || token != _calcToken) return;
@@ -241,6 +241,7 @@ class _ExploreAppState extends State<ExploreApp> {
       });
 
       final chart = await _calculator.calculate(chartData);
+      _precacheChartAssets(chart);
       final uncertainty = await computeBeingUncertainty(
         calculator: _calculator,
         chartData: chartData,
@@ -253,7 +254,6 @@ class _ExploreAppState extends State<ExploreApp> {
         _uncertainty = uncertainty;
         _calculating = false;
       });
-      _precacheChartAssets(chart);
     } catch (e, s) {
       debugPrint('Error opening chart: $e\n$s');
       setState(() => _calculating = false);
