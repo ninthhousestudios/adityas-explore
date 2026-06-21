@@ -5,6 +5,7 @@ import 'package:arrow_core/arrow_core.dart' as arrow;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'navigate.dart' if (dart.library.js_interop) 'navigate_web.dart';
@@ -16,8 +17,11 @@ import 'astro/ephemeris_service.dart';
 import 'astro/swe.dart';
 import 'package:charts_dart/charts_dart.dart';
 import 'chart_reader.dart';
+import 'ui/aditya_data.dart';
+import 'ui/being_content.dart';
 import 'ui/birth_form.dart';
 import 'ui/chart_wheel.dart';
+import 'ui/planet_content.dart';
 import 'ui/theme.dart';
 
 void main() {
@@ -71,9 +75,54 @@ class _ExploreAppState extends State<ExploreApp> {
       _zoom = _prefs.getDouble('zoom') ?? 1.0;
       setState(() => _booted = true);
       dev.log('Boot complete', name: 'APP');
+      _precacheStaticAssets();
     } catch (e, s) {
       dev.log('Boot failed: $e\n$s', name: 'APP');
       setState(() => _bootError = e.toString());
+    }
+  }
+
+  void _precacheStaticAssets() {
+    const beingTypes = [
+      'aditya',
+      'rishi',
+      'yaksha',
+      'rakshasa',
+      'gandharva',
+      'apsara',
+      'naga',
+    ];
+    for (final type in beingTypes) {
+      precacheImage(AssetImage('assets/glyphs/beings/$type.png'), context);
+    }
+    for (final path in planetGlyphs.values) {
+      SvgAssetLoader(path).loadBytes(null);
+    }
+    for (final sign in adityaSigns.values) {
+      SvgAssetLoader(sign.glyph).loadBytes(null);
+    }
+  }
+
+  void _precacheChartAssets(arrow.Chart chart) {
+    for (final name in defaultGrahas) {
+      precacheImage(AssetImage(planetImagePath(name)), context);
+    }
+    for (final p in chart.grahas) {
+      if (!defaultGrahas.contains(p.body.name)) continue;
+      final trimsamsaPath = beingImagePath(
+        p.trimsamsaBeing.signNumber,
+        p.trimsamsaBeing.type.name,
+      );
+      if (trimsamsaPath.isNotEmpty) {
+        precacheImage(AssetImage(trimsamsaPath), context);
+      }
+      final horaPath = beingImagePath(
+        p.horaBeing.signNumber,
+        p.horaBeing.type.name,
+      );
+      if (horaPath.isNotEmpty) {
+        precacheImage(AssetImage(horaPath), context);
+      }
     }
   }
 
@@ -142,6 +191,7 @@ class _ExploreAppState extends State<ExploreApp> {
         _uncertainty = uncertainty;
         _calculating = false;
       });
+      _precacheChartAssets(chart);
     } catch (e, s) {
       debugPrint('Error calculating chart: $e\n$s');
       if (!mounted || token != _calcToken) return;
@@ -203,6 +253,7 @@ class _ExploreAppState extends State<ExploreApp> {
         _uncertainty = uncertainty;
         _calculating = false;
       });
+      _precacheChartAssets(chart);
     } catch (e, s) {
       debugPrint('Error opening chart: $e\n$s');
       setState(() => _calculating = false);
@@ -357,7 +408,7 @@ class _ExplorePage extends StatelessWidget {
                     children: [
                       Icon(Icons.save_alt, size: 20),
                       SizedBox(width: 12),
-                      Text('Save Chart'),
+                      Text('Download chart file'),
                     ],
                   ),
                 ),
