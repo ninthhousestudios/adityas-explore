@@ -5,9 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../astro/being_uncertainty.dart';
-import '../share_util.dart'
-    if (dart.library.js_interop) '../share_util_web.dart';
 import 'aditya_data.dart';
+import 'being_overlay.dart';
+import 'overlay_shell.dart';
 import 'being_content.dart';
 import 'being_type_content.dart';
 import 'chart_wheel_layout.dart';
@@ -222,12 +222,12 @@ class _ChartWheelState extends State<ChartWheel> {
               _buildCenterInfo(half, center, color),
               if (_popupStack.isNotEmpty)
                 switch (_popupStack.last) {
-                  _BeingFromPlanet(:final planet) => _buildBeingOverlay(
+                  _BeingFromPlanet(:final planet) => _buildBeingShell(
                     color,
                     isDark,
                     planet: planet,
                   ),
-                  _BeingFromName(:final being) => _buildBeingOverlay(
+                  _BeingFromName(:final being) => _buildBeingShell(
                     color,
                     isDark,
                     being: being,
@@ -776,281 +776,6 @@ class _ChartWheelState extends State<ChartWheel> {
     );
   }
 
-  Widget _buildBeingOverlay(
-    Color color,
-    bool isDark, {
-    PlacedPlanet? planet,
-    ({String name, String type, String planet, int sign})? being,
-  }) {
-    final cardBg = isDark ? const Color(0xF0151015) : const Color(0xF0F5F1EA);
-    final dimColor = color.withValues(alpha: 0.6);
-
-    int beingSign;
-    String beingType;
-    String planetName;
-    List<Widget> infoRows;
-
-    String beingName;
-
-    if (planet case final planet?) {
-      planetName = planet.bodyName;
-      beingSign = planet.trimsamsaBeingSign ?? 0;
-      beingType = planet.trimsamsaBeingType ?? '';
-      beingName = planet.trimsamsaBeing ?? '';
-      final signName = adityaSigns[planet.sign]?.name ?? '?';
-      infoRows = [
-        _infoRow('Position', '${planet.longitudeLabel} $signName', color),
-        _tappableInfoRow(
-          'Type',
-          _capitalize(beingType),
-          color,
-          () => _pushPopup(_BeingTypePopupState(beingType)),
-        ),
-        _soulStanceRow(
-          planet.horaBeingType ?? '',
-          planet.horaBeing ?? '',
-          planet.bodyName,
-          planet.horaBeingSign ?? 0,
-          color,
-        ),
-        if (planet.isRetrograde) _infoRow('Motion', 'Retrograde', color),
-      ];
-    } else if (being case final being?) {
-      planetName = being.planet;
-      beingSign = being.sign;
-      beingType = being.type;
-      beingName = being.name;
-      infoRows = [
-        _tappableInfoRow(
-          'Type',
-          _capitalize(being.type),
-          color,
-          () => _pushPopup(_BeingTypePopupState(being.type)),
-        ),
-      ];
-    } else {
-      return const SizedBox.shrink();
-    }
-
-    final content = _beingContent?[(beingSign, beingType)];
-    final imagePath = beingImagePath(beingSign, beingType);
-    final glyphPath = beingTypeGlyphPath(beingType);
-    final planetGlyph = planetName.isNotEmpty ? planetGlyphs[planetName] : null;
-    final headerTitle = planetName.isNotEmpty
-        ? '${_capitalize(planetName)} — $beingName'
-        : beingName.isNotEmpty
-        ? beingName
-        : adityaName(beingSign) ?? '';
-
-    return Positioned.fill(
-      child: GestureDetector(
-        onTap: _closeOverlay,
-        behavior: HitTestBehavior.opaque,
-        child: Center(
-          child: GestureDetector(
-            onTap: () {},
-            child: Container(
-              constraints: const BoxConstraints(maxWidth: 460),
-              margin: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: cardBg,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: color.withValues(alpha: 0.3)),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxHeight: MediaQuery.of(context).size.height * 0.85,
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(44, 24, 44, 0),
-                        child: Row(
-                          children: [
-                            if (_popupStack.length > 1) ...[
-                              IconButton(
-                                onPressed: _popPopup,
-                                icon: Icon(
-                                  Icons.arrow_back,
-                                  color: color,
-                                  size: 20,
-                                ),
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(),
-                              ),
-                              const SizedBox(width: 8),
-                            ],
-                            if (planetGlyph != null) ...[
-                              SvgPicture.asset(
-                                planetGlyph,
-                                width: 28,
-                                height: 28,
-                                colorFilter: ColorFilter.mode(
-                                  color,
-                                  BlendMode.srcIn,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                            ] else if (glyphPath != null) ...[
-                              ColorFiltered(
-                                colorFilter: ColorFilter.mode(
-                                  color,
-                                  BlendMode.srcIn,
-                                ),
-                                child: Image.asset(
-                                  glyphPath,
-                                  width: 28,
-                                  height: 28,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                            ],
-                            Expanded(
-                              child: Text(
-                                headerTitle,
-                                style: TextStyle(
-                                  color: color,
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                            IconButton(
-                              onPressed: _closeOverlay,
-                              icon: Icon(Icons.close, color: color, size: 20),
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Flexible(
-                        child: SingleChildScrollView(
-                          padding: const EdgeInsets.fromLTRB(44, 0, 44, 24),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              ...infoRows,
-                              const SizedBox(height: 16),
-                              if (imagePath.isNotEmpty)
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(8),
-                                  child: Image.asset(
-                                    imagePath,
-                                    width: double.infinity,
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (_, _, _) => Container(
-                                      height: 160,
-                                      decoration: BoxDecoration(
-                                        color: color.withValues(alpha: 0.05),
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: Center(
-                                        child: Text(
-                                          'Image not found',
-                                          style: TextStyle(color: dimColor),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              const SizedBox(height: 12),
-                              Center(
-                                child: _ShareBeingButton(
-                                  sign: beingSign,
-                                  beingType: beingType,
-                                  beingName: beingName,
-                                  planetName: planetName,
-                                  color: color,
-                                  isDark: isDark,
-                                ),
-                              ),
-                              const SizedBox(height: 16),
-                              if (glyphPath != null)
-                                Center(
-                                  child: ColorFiltered(
-                                    colorFilter: ColorFilter.mode(
-                                      color,
-                                      BlendMode.srcIn,
-                                    ),
-                                    child: Image.asset(
-                                      glyphPath,
-                                      width: 56,
-                                      height: 56,
-                                    ),
-                                  ),
-                                ),
-                              if (content != null) ...[
-                                const SizedBox(height: 16),
-                                Center(
-                                  child: Text(
-                                    content.subtitle,
-                                    style: TextStyle(
-                                      color: isDark
-                                          ? const Color(0xFFD4A855)
-                                          : color,
-                                      fontSize: 16,
-                                      fontStyle: FontStyle.italic,
-                                      fontWeight: isDark
-                                          ? null
-                                          : FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                Text(
-                                  content.description,
-                                  style: TextStyle(
-                                    color: color.withValues(alpha: 0.85),
-                                    fontSize: 14,
-                                    height: 1.5,
-                                  ),
-                                ),
-                                if (content.reflections.isNotEmpty) ...[
-                                  const SizedBox(height: 20),
-                                  Center(
-                                    child: Text(
-                                      'Reflection',
-                                      style: TextStyle(
-                                        color: isDark
-                                            ? const Color(0xFFD4A855)
-                                            : color,
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    content.reflections,
-                                    style: TextStyle(
-                                      color: color.withValues(alpha: 0.85),
-                                      fontSize: 14,
-                                      height: 1.5,
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildUncertaintyChooser(
     Color color,
     bool isDark,
@@ -1179,451 +904,133 @@ class _ChartWheelState extends State<ChartWheel> {
     );
   }
 
+  Widget _buildBeingShell(
+    Color color,
+    bool isDark, {
+    PlacedPlanet? planet,
+    ({String name, String type, String planet, int sign})? being,
+  }) {
+    final header = beingOverlayHeader(
+      color: color,
+      planet: planet,
+      being: being,
+    );
+    return OverlayShell(
+      color: color,
+      isDark: isDark,
+      onClose: _closeOverlay,
+      onBack: _popupStack.length > 1 ? _popPopup : null,
+      headerLeading: header?.leading,
+      title: header?.title ?? '',
+      body: BeingOverlayBody(
+        color: color,
+        isDark: isDark,
+        planet: planet,
+        being: being,
+        beingContent: _beingContent,
+        onPushBeingType: (t) => _pushPopup(_BeingTypePopupState(t)),
+        onPushBeing: (b) => _pushPopup(_BeingFromName(b)),
+      ),
+    );
+  }
+
   Widget _buildBeingTypeOverlay(Color color, bool isDark, String type) {
     final content = _beingTypeContent?[type];
-    if (content == null) return const SizedBox.shrink();
-
-    final cardBg = isDark ? const Color(0xF0151015) : const Color(0xF0F5F1EA);
     final emblemPath = beingTypeEmblemPath(type);
 
-    return Positioned.fill(
-      child: GestureDetector(
-        onTap: _closeOverlay,
-        behavior: HitTestBehavior.opaque,
-        child: Center(
-          child: GestureDetector(
-            onTap: () {},
-            child: Container(
-              constraints: const BoxConstraints(maxWidth: 460),
-              margin: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: cardBg,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: color.withValues(alpha: 0.3)),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxHeight: MediaQuery.of(context).size.height * 0.85,
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(44, 24, 44, 0),
-                        child: Row(
-                          children: [
-                            if (_popupStack.length > 1) ...[
-                              IconButton(
-                                onPressed: _popPopup,
-                                icon: Icon(
-                                  Icons.arrow_back,
-                                  color: color,
-                                  size: 20,
-                                ),
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(),
-                              ),
-                              const SizedBox(width: 8),
-                            ],
-                            Expanded(
-                              child: Text(
-                                '${content.type} — ${content.role}',
-                                style: TextStyle(
-                                  color: color,
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                            IconButton(
-                              onPressed: _closeOverlay,
-                              icon: Icon(Icons.close, color: color, size: 20),
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Flexible(
-                        child: SingleChildScrollView(
-                          padding: const EdgeInsets.fromLTRB(44, 0, 44, 24),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                content.subtitle,
-                                style: TextStyle(
-                                  color: isDark
-                                      ? const Color(0xFFD4A855)
-                                      : color,
-                                  fontSize: 16,
-                                  fontStyle: FontStyle.italic,
-                                  fontWeight: isDark ? null : FontWeight.bold,
-                                ),
-                              ),
-                              const SizedBox(height: 16),
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
-                                child: Image.asset(
-                                  emblemPath,
-                                  width: double.infinity,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, _, _) =>
-                                      const SizedBox.shrink(),
-                                ),
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                content.description,
-                                style: TextStyle(
-                                  color: color.withValues(alpha: 0.85),
-                                  fontSize: 14,
-                                  height: 1.5,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
+    return OverlayShell(
+      color: color,
+      isDark: isDark,
+      onClose: _closeOverlay,
+      onBack: _popupStack.length > 1 ? _popPopup : null,
+      title: content != null ? '${content.type} — ${content.role}' : '',
+      body: content == null
+          ? const SizedBox.shrink()
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  content.subtitle,
+                  style: TextStyle(
+                    color: isDark ? const Color(0xFFD4A855) : color,
+                    fontSize: 16,
+                    fontStyle: FontStyle.italic,
+                    fontWeight: isDark ? null : FontWeight.bold,
                   ),
                 ),
-              ),
+                const SizedBox(height: 16),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.asset(
+                    emblemPath,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  content.description,
+                  style: TextStyle(
+                    color: color.withValues(alpha: 0.85),
+                    fontSize: 14,
+                    height: 1.5,
+                  ),
+                ),
+              ],
             ),
-          ),
-        ),
-      ),
     );
   }
 
   Widget _buildPlanetOverlay(Color color, bool isDark, String planetName) {
     final content = _planetContent?[planetName];
-    if (content == null) return const SizedBox.shrink();
-
-    final cardBg = isDark ? const Color(0xF0151015) : const Color(0xF0F5F1EA);
     final glyphPath = planetGlyphs[planetName];
     final imagePath = planetImagePath(planetName);
 
-    return Positioned.fill(
-      child: GestureDetector(
-        onTap: _closeOverlay,
-        behavior: HitTestBehavior.opaque,
-        child: Center(
-          child: GestureDetector(
-            onTap: () {},
-            child: Container(
-              constraints: const BoxConstraints(maxWidth: 460),
-              margin: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: cardBg,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: color.withValues(alpha: 0.3)),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxHeight: MediaQuery.of(context).size.height * 0.85,
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(44, 24, 44, 0),
-                        child: Row(
-                          children: [
-                            if (_popupStack.length > 1) ...[
-                              IconButton(
-                                onPressed: _popPopup,
-                                icon: Icon(
-                                  Icons.arrow_back,
-                                  color: color,
-                                  size: 20,
-                                ),
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(),
-                              ),
-                              const SizedBox(width: 8),
-                            ],
-                            if (glyphPath != null) ...[
-                              SvgPicture.asset(
-                                glyphPath,
-                                width: 28,
-                                height: 28,
-                                colorFilter: ColorFilter.mode(
-                                  color,
-                                  BlendMode.srcIn,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                            ],
-                            Expanded(
-                              child: Text(
-                                content.name,
-                                style: TextStyle(
-                                  color: color,
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                            IconButton(
-                              onPressed: _closeOverlay,
-                              icon: Icon(Icons.close, color: color, size: 20),
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Flexible(
-                        child: SingleChildScrollView(
-                          padding: const EdgeInsets.fromLTRB(44, 0, 44, 24),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                content.description,
-                                style: TextStyle(
-                                  color: color.withValues(alpha: 0.85),
-                                  fontSize: 14,
-                                  height: 1.5,
-                                ),
-                              ),
-                              const SizedBox(height: 16),
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
-                                child: Image.asset(
-                                  imagePath,
-                                  width: double.infinity,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, _, _) =>
-                                      const SizedBox.shrink(),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _tappableInfoRow(
-    String label,
-    String value,
-    Color color,
-    VoidCallback onTap,
-  ) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 2),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              label,
-              style: TextStyle(
-                color: color.withValues(alpha: 0.6),
-                fontSize: 14,
-              ),
-            ),
-            Row(
+    return OverlayShell(
+      color: color,
+      isDark: isDark,
+      onClose: _closeOverlay,
+      onBack: _popupStack.length > 1 ? _popPopup : null,
+      headerLeading: glyphPath != null
+          ? SvgPicture.asset(
+              glyphPath,
+              width: 28,
+              height: 28,
+              colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
+            )
+          : null,
+      title: content?.name ?? '',
+      body: content == null
+          ? const SizedBox.shrink()
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(value, style: TextStyle(color: color, fontSize: 14)),
-                const SizedBox(width: 4),
-                Icon(
-                  Icons.arrow_forward,
-                  color: color.withValues(alpha: 0.4),
-                  size: 14,
+                Text(
+                  content.description,
+                  style: TextStyle(
+                    color: color.withValues(alpha: 0.85),
+                    fontSize: 14,
+                    height: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.asset(
+                    imagePath,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                  ),
                 ),
               ],
             ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _soulStanceRow(
-    String horaType,
-    String horaName,
-    String planetName,
-    int horaSign,
-    Color color,
-  ) {
-    final dimColor = color.withValues(alpha: 0.6);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text('Soul Stance', style: TextStyle(color: dimColor, fontSize: 14)),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              GestureDetector(
-                onTap: () => _pushPopup(_BeingTypePopupState(horaType)),
-                behavior: HitTestBehavior.opaque,
-                child: Text(
-                  _capitalize(horaType),
-                  style: TextStyle(color: color, fontSize: 14),
-                ),
-              ),
-              Text(' — ', style: TextStyle(color: dimColor, fontSize: 14)),
-              GestureDetector(
-                onTap: () => _pushPopup(
-                  _BeingFromName((
-                    name: horaName,
-                    type: horaType,
-                    planet: planetName,
-                    sign: horaSign,
-                  )),
-                ),
-                behavior: HitTestBehavior.opaque,
-                child: Text(
-                  horaName,
-                  style: TextStyle(color: color, fontSize: 14),
-                ),
-              ),
-              const SizedBox(width: 4),
-              Icon(
-                Icons.arrow_forward,
-                color: color.withValues(alpha: 0.4),
-                size: 14,
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _infoRow(String label, String value, Color color) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            label,
-            style: TextStyle(color: color.withValues(alpha: 0.6), fontSize: 14),
-          ),
-          Text(value, style: TextStyle(color: color, fontSize: 14)),
-        ],
-      ),
     );
   }
 
   static String _capitalize(String s) =>
       s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
-}
-
-class _ShareBeingButton extends StatefulWidget {
-  final int sign;
-  final String beingType;
-  final String beingName;
-  final String planetName;
-  final Color color;
-  final bool isDark;
-
-  const _ShareBeingButton({
-    required this.sign,
-    required this.beingType,
-    required this.beingName,
-    required this.planetName,
-    required this.color,
-    required this.isDark,
-  });
-
-  @override
-  State<_ShareBeingButton> createState() => _ShareBeingButtonState();
-}
-
-class _ShareBeingButtonState extends State<_ShareBeingButton> {
-  bool _loading = false;
-  String? _error;
-
-  Future<void> _share() async {
-    if (_loading) return;
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final error = await shareBeingCard(
-        sign: widget.sign,
-        beingType: widget.beingType,
-        beingName: widget.beingName,
-        planetName: widget.planetName,
-      );
-      if (mounted && error != null) setState(() => _error = error);
-    } catch (e) {
-      if (mounted) setState(() => _error = '$e');
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final accent = widget.isDark
-        ? const Color(0xFFD4A853)
-        : const Color(0xFF8B6F37);
-    final errorColor = Colors.red.shade300;
-    return GestureDetector(
-      onTap: _share,
-      behavior: HitTestBehavior.opaque,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (_loading)
-                SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 1.5,
-                    color: accent,
-                  ),
-                )
-              else
-                Icon(Icons.share, size: 14, color: accent),
-              const SizedBox(width: 6),
-              Text(
-                _loading ? 'Sharing...' : 'Share my Being',
-                style: TextStyle(
-                  color: accent,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-          if (_error != null) ...[
-            const SizedBox(height: 4),
-            Text(_error!, style: TextStyle(color: errorColor, fontSize: 11)),
-          ],
-        ],
-      ),
-    );
-  }
 }

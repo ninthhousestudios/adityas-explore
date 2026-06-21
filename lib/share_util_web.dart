@@ -7,7 +7,7 @@ import 'package:web/web.dart' as html;
 
 import 'ui/aditya_data.dart';
 
-const _baseUrl = 'https://84beings.com/static/share-cards';
+const _baseUrl = 'https://api.84beings.com/static/share-cards';
 
 String _cardUrl(int sign, String beingType) {
   final aditya = adityaSigns[sign]?.name.toLowerCase() ?? '';
@@ -38,21 +38,28 @@ Future<String?> shareBeingCard({
       ? 'My ${_capitalize(planetName)} is $beingName — 84beings.com'
       : '$beingName — 84beings.com';
 
-  try {
-    final nav = html.window.navigator as JSObject;
-    if (nav.has('share') && nav.has('canShare')) {
-      final file = html.File(
-        [bytes.toJS].toJS,
-        fileName,
-        html.FilePropertyBag(type: 'image/webp'),
-      );
-      final shareData = html.ShareData(files: [file].toJS, text: shareText);
-      if (html.window.navigator.canShare(shareData)) {
+  final nav = html.window.navigator as JSObject;
+  final hasShare = nav.has('share') && nav.has('canShare');
+
+  if (hasShare) {
+    final file = html.File(
+      [bytes.toJS].toJS,
+      fileName,
+      html.FilePropertyBag(type: 'image/webp'),
+    );
+    final shareData = html.ShareData(files: [file].toJS, text: shareText);
+    if (html.window.navigator.canShare(shareData)) {
+      try {
         await html.window.navigator.share(shareData).toDart;
         return null;
+      } catch (e) {
+        final name = (e as JSObject?)?.getProperty('name'.toJS);
+        if (name.dartify() == 'AbortError') return null;
+        return 'Share failed';
       }
     }
-  } catch (_) {}
+  }
+
   _download(fileName, bytes);
   return null;
 }
