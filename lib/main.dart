@@ -40,6 +40,7 @@ class _ExploreAppState extends State<ExploreApp> {
   double _zoom = 1.0;
   bool _booted = false;
   String? _bootError;
+  bool _waitlistSigned = false;
 
   late SharedPreferences _prefs;
   late EphemerisService _ephemerisService;
@@ -73,6 +74,7 @@ class _ExploreAppState extends State<ExploreApp> {
       _calculator = ChartCalculator(_ephemerisService);
       _useLight = _prefs.getBool('useLight') ?? false;
       _zoom = _prefs.getDouble('zoom') ?? 1.0;
+      _waitlistSigned = _prefs.getBool('waitlist_signed') ?? false;
       setState(() => _booted = true);
       dev.log('Boot complete', name: 'APP');
       _precacheStaticAssets();
@@ -129,6 +131,11 @@ class _ExploreAppState extends State<ExploreApp> {
   void _toggleTheme() {
     setState(() => _useLight = !_useLight);
     _prefs.setBool('useLight', _useLight);
+  }
+
+  void _onWaitlistSigned() {
+    setState(() => _waitlistSigned = true);
+    _prefs.setBool('waitlist_signed', true);
   }
 
   void _zoomIn() {
@@ -300,6 +307,8 @@ class _ExploreAppState extends State<ExploreApp> {
         chart: _chart,
         uncertainty: _uncertainty,
         calculating: _calculating,
+        waitlistSigned: _waitlistSigned,
+        onWaitlistSigned: _onWaitlistSigned,
       ),
     );
   }
@@ -319,6 +328,8 @@ class _ExplorePage extends StatelessWidget {
   final arrow.Chart? chart;
   final BeingUncertainty? uncertainty;
   final bool calculating;
+  final bool waitlistSigned;
+  final VoidCallback onWaitlistSigned;
 
   const _ExplorePage({
     required this.useLight,
@@ -334,6 +345,8 @@ class _ExplorePage extends StatelessWidget {
     required this.chart,
     required this.uncertainty,
     required this.calculating,
+    required this.waitlistSigned,
+    required this.onWaitlistSigned,
   });
 
   @override
@@ -548,7 +561,12 @@ class _ExplorePage extends StatelessWidget {
           data: MediaQuery.of(
             context,
           ).copyWith(textScaler: TextScaler.linear(zoom)),
-          child: ChartWheel(chart: chart!, uncertainty: uncertainty),
+          child: ChartWheel(
+            chart: chart!,
+            uncertainty: uncertainty,
+            waitlistSigned: waitlistSigned,
+            onWaitlistSigned: onWaitlistSigned,
+          ),
         ),
       ),
     );

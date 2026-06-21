@@ -8,6 +8,7 @@ import '../astro/being_uncertainty.dart';
 import 'aditya_data.dart';
 import 'being_overlay.dart';
 import 'overlay_shell.dart';
+import 'waitlist_dialog.dart';
 import 'being_content.dart';
 import 'being_type_content.dart';
 import 'chart_wheel_layout.dart';
@@ -22,8 +23,16 @@ extension CapitalizeString on String {
 class ChartWheel extends StatefulWidget {
   final arrow.Chart chart;
   final BeingUncertainty? uncertainty;
+  final bool waitlistSigned;
+  final VoidCallback onWaitlistSigned;
 
-  const ChartWheel({super.key, required this.chart, this.uncertainty});
+  const ChartWheel({
+    super.key,
+    required this.chart,
+    this.uncertainty,
+    this.waitlistSigned = false,
+    required this.onWaitlistSigned,
+  });
 
   @override
   State<ChartWheel> createState() => _ChartWheelState();
@@ -282,10 +291,21 @@ class _ChartWheelState extends State<ChartWheel> {
                 right: 8,
                 top: 0,
                 width: panelWidth,
-                child: _buildBeingsPanel(
-                  color: color,
-                  backdropColor: backdropColor,
-                  half: half,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildBeingsPanel(
+                      color: color,
+                      backdropColor: backdropColor,
+                      half: half,
+                    ),
+                    const SizedBox(height: 8),
+                    _buildWaitlistCta(
+                      color: color,
+                      backdropColor: backdropColor,
+                      half: half,
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -775,6 +795,80 @@ class _ChartWheelState extends State<ChartWheel> {
               ),
             ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildWaitlistCta({
+    required Color color,
+    required Color backdropColor,
+    required double half,
+  }) {
+    final fontSize = half * 0.032;
+    final dimColor = color.withValues(alpha: 0.6);
+    final signed = widget.waitlistSigned;
+
+    final box = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: backdropColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color),
+      ),
+      child: signed
+          ? Text(
+              "You're on the list! We'll let you know.",
+              style: TextStyle(
+                color: dimColor,
+                fontSize: fontSize,
+                fontStyle: FontStyle.italic,
+              ),
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'In-depth reports coming soon.',
+                  style: TextStyle(
+                    color: color,
+                    fontSize: fontSize,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                Text(
+                  'Click here to get notified.',
+                  style: TextStyle(
+                    color: dimColor,
+                    fontSize: fontSize * 0.85,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ],
+            ),
+    );
+
+    if (signed) return box;
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () => _showWaitlistDialog(context),
+        child: box,
+      ),
+    );
+  }
+
+  void _showWaitlistDialog(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final color = isDark ? Colors.white : Colors.black;
+
+    showDialog(
+      context: context,
+      builder: (context) => WaitlistDialog(
+        color: color,
+        isDark: isDark,
+        onSuccess: widget.onWaitlistSigned,
       ),
     );
   }
