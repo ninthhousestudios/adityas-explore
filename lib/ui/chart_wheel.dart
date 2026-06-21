@@ -1558,17 +1558,24 @@ class _ShareBeingButton extends StatefulWidget {
 
 class _ShareBeingButtonState extends State<_ShareBeingButton> {
   bool _loading = false;
+  String? _error;
 
   Future<void> _share() async {
     if (_loading) return;
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
-      await shareBeingCard(
+      final error = await shareBeingCard(
         sign: widget.sign,
         beingType: widget.beingType,
         beingName: widget.beingName,
         planetName: widget.planetName,
       );
+      if (mounted && error != null) setState(() => _error = error);
+    } catch (e) {
+      if (mounted) setState(() => _error = '$e');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -1579,29 +1586,42 @@ class _ShareBeingButtonState extends State<_ShareBeingButton> {
     final accent = widget.isDark
         ? const Color(0xFFD4A853)
         : const Color(0xFF8B6F37);
+    final errorColor = Colors.red.shade300;
     return GestureDetector(
       onTap: _share,
       behavior: HitTestBehavior.opaque,
-      child: Row(
+      child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (_loading)
-            SizedBox(
-              width: 14,
-              height: 14,
-              child: CircularProgressIndicator(strokeWidth: 1.5, color: accent),
-            )
-          else
-            Icon(Icons.share, size: 14, color: accent),
-          const SizedBox(width: 6),
-          Text(
-            _loading ? 'Sharing...' : 'Share my Being',
-            style: TextStyle(
-              color: accent,
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-            ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_loading)
+                SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 1.5,
+                    color: accent,
+                  ),
+                )
+              else
+                Icon(Icons.share, size: 14, color: accent),
+              const SizedBox(width: 6),
+              Text(
+                _loading ? 'Sharing...' : 'Share my Being',
+                style: TextStyle(
+                  color: accent,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
           ),
+          if (_error != null) ...[
+            const SizedBox(height: 4),
+            Text(_error!, style: TextStyle(color: errorColor, fontSize: 11)),
+          ],
         ],
       ),
     );

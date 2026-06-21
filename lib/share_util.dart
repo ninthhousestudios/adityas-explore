@@ -13,21 +13,29 @@ String _cardUrl(int sign, String beingType) {
   return '$_baseUrl/$aditya-$beingType.webp';
 }
 
-Future<void> shareBeingCard({
+Future<String?> shareBeingCard({
   required int sign,
   required String beingType,
   required String beingName,
   required String planetName,
 }) async {
   final url = _cardUrl(sign, beingType);
-  final response = await http.get(Uri.parse(url));
-  if (response.statusCode != 200) return;
+  final http.Response response;
+  try {
+    response = await http.get(Uri.parse(url));
+  } catch (e) {
+    return 'Network error: $e';
+  }
+  if (response.statusCode != 200) {
+    return 'Failed to load card (${response.statusCode})';
+  }
 
   final bytes = response.bodyBytes;
   final aditya = adityaSigns[sign]?.name.toLowerCase() ?? 'being';
   final fileName = '$aditya-$beingType.webp';
 
   await _saveFile(fileName, bytes);
+  return null;
 }
 
 Future<void> _saveFile(String fileName, Uint8List bytes) async {
