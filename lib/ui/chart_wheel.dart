@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../astro/being_uncertainty.dart';
+import '../share_util.dart'
+    if (dart.library.js_interop) '../share_util_web.dart';
 import 'aditya_data.dart';
 import 'being_content.dart';
 import 'being_type_content.dart';
@@ -957,6 +959,17 @@ class _ChartWheelState extends State<ChartWheel> {
                                     ),
                                   ),
                                 ),
+                              const SizedBox(height: 12),
+                              Center(
+                                child: _ShareBeingButton(
+                                  sign: beingSign,
+                                  beingType: beingType,
+                                  beingName: beingName,
+                                  planetName: planetName,
+                                  color: color,
+                                  isDark: isDark,
+                                ),
+                              ),
                               const SizedBox(height: 16),
                               if (glyphPath != null)
                                 Center(
@@ -1520,4 +1533,77 @@ class _ChartWheelState extends State<ChartWheel> {
 
   static String _capitalize(String s) =>
       s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
+}
+
+class _ShareBeingButton extends StatefulWidget {
+  final int sign;
+  final String beingType;
+  final String beingName;
+  final String planetName;
+  final Color color;
+  final bool isDark;
+
+  const _ShareBeingButton({
+    required this.sign,
+    required this.beingType,
+    required this.beingName,
+    required this.planetName,
+    required this.color,
+    required this.isDark,
+  });
+
+  @override
+  State<_ShareBeingButton> createState() => _ShareBeingButtonState();
+}
+
+class _ShareBeingButtonState extends State<_ShareBeingButton> {
+  bool _loading = false;
+
+  Future<void> _share() async {
+    if (_loading) return;
+    setState(() => _loading = true);
+    try {
+      await shareBeingCard(
+        sign: widget.sign,
+        beingType: widget.beingType,
+        beingName: widget.beingName,
+        planetName: widget.planetName,
+      );
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = widget.isDark
+        ? const Color(0xFFD4A853)
+        : const Color(0xFF8B6F37);
+    return GestureDetector(
+      onTap: _share,
+      behavior: HitTestBehavior.opaque,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_loading)
+            SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(strokeWidth: 1.5, color: accent),
+            )
+          else
+            Icon(Icons.share, size: 14, color: accent),
+          const SizedBox(width: 6),
+          Text(
+            _loading ? 'Sharing...' : 'Share my Being',
+            style: TextStyle(
+              color: accent,
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
