@@ -20,6 +20,10 @@ docs/push-explore.md
 assets/images/
 assets/text
 .wrangler/
+docs/being-emblem-picker.html
+docs/being-emblems-kimi.html
+docs/birth-entry.md
+docs/push-explore.sh
 
 # IntelliJ related
 *.iml

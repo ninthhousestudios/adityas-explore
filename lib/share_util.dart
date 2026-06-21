@@ -6,7 +6,7 @@ import 'package:http/http.dart' as http;
 
 import 'ui/aditya_data.dart';
 
-const _baseUrl = 'https://84beings.com/static/share-cards';
+const _baseUrl = 'https://api.84beings.com/static/share-cards';
 
 String _cardUrl(int sign, String beingType) {
   final aditya = adityaSigns[sign]?.name.toLowerCase() ?? '';
