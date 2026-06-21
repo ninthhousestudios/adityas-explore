@@ -91,6 +91,9 @@ class _ChartWheelState extends State<ChartWheel> {
         _beingTypeContent = results[1] as Map<String, BeingTypeContent>;
         _planetContent = results[2] as Map<String, PlanetContent>;
       });
+      for (final type in _beingTypeContent!.keys) {
+        precacheImage(AssetImage(beingTypeEmblemPath(type)), context);
+      }
     }
   }
 
