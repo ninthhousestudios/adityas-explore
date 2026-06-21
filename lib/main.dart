@@ -241,6 +241,7 @@ class _ExploreAppState extends State<ExploreApp> {
       });
 
       final chart = await _calculator.calculate(chartData);
+      if (!mounted) return;
       _precacheChartAssets(chart);
       final uncertainty = await computeBeingUncertainty(
         calculator: _calculator,
@@ -249,6 +250,7 @@ class _ExploreAppState extends State<ExploreApp> {
         precision: precision,
         period: period,
       );
+      if (!mounted) return;
       setState(() {
         _chart = chart;
         _uncertainty = uncertainty;

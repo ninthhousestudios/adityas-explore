@@ -55,7 +55,8 @@ Future<String?> shareBeingCard({
       } catch (e) {
         final name = (e as JSObject?)?.getProperty('name'.toJS);
         if (name.dartify() == 'AbortError') return null;
-        return 'Share failed';
+        _download(fileName, bytes);
+        return null;
       }
     }
   }
