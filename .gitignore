@@ -24,7 +24,9 @@ docs/being-emblem-picker.html
 docs/being-emblems-kimi.html
 docs/birth-entry.md
 docs/push-explore.sh
-
+docs/birth-data-validation.md
+docs/flutter-web-file-picker.md
+test.toml
 # IntelliJ related
 *.iml
 *.ipr
