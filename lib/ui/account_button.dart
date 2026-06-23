@@ -173,7 +173,7 @@ class _SignInDialogState extends State<_SignInDialog> {
   Future<void> _oauthSignIn(OAuthProvider provider) async {
     await Supabase.instance.client.auth.signInWithOAuth(
       provider,
-      redirectTo: '${Uri.base.origin}/account/callback',
+      redirectTo: Uri.base.toString(),
     );
   }
 
