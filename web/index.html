@@ -20,6 +20,11 @@
 <body>
   <script src="swisseph.js"></script>
   <script>if (typeof SwissEph !== 'undefined') window.swisseph = SwissEph;</script>
+  <script>
+    // Stub for passkeys_web plugin (supabase_flutter dep) — it calls
+    // window.close() if this global is missing during plugin registration.
+    window.PasskeyAuthenticator = { init: function(){} };
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
