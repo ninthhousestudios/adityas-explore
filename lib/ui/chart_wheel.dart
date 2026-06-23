@@ -14,6 +14,7 @@ import 'being_type_content.dart';
 import 'chart_wheel_layout.dart';
 import 'chart_wheel_painter.dart';
 import 'planet_content.dart';
+import 'popup_state.dart';
 
 extension CapitalizeString on String {
   String toCapitalized() =>
@@ -38,41 +39,11 @@ class ChartWheel extends StatefulWidget {
   State<ChartWheel> createState() => _ChartWheelState();
 }
 
-enum _UncertainKind { trimsamsa, hora }
-
-sealed class _PopupState {}
-
-class _BeingFromPlanet extends _PopupState {
-  final PlacedPlanet planet;
-  _BeingFromPlanet(this.planet);
-}
-
-class _BeingFromName extends _PopupState {
-  final ({String name, String type, String planet, int sign}) being;
-  _BeingFromName(this.being);
-}
-
-class _BeingTypePopupState extends _PopupState {
-  final String type;
-  _BeingTypePopupState(this.type);
-}
-
-class _PlanetPopupState extends _PopupState {
-  final String planet;
-  _PlanetPopupState(this.planet);
-}
-
-class _UncertaintyPopupState extends _PopupState {
-  final String planet;
-  final _UncertainKind kind;
-  _UncertaintyPopupState(this.planet, this.kind);
-}
-
 class _ChartWheelState extends State<ChartWheel> {
   PlacedPlanet? _hoveredPlanet;
   PlacedCusp? _hoveredCusp;
 
-  final List<_PopupState> _popupStack = [];
+  final List<PopupState> _popupStack = [];
   Map<(int, String), BeingContent>? _beingContent;
   Map<String, BeingTypeContent>? _beingTypeContent;
   Map<String, PlanetContent>? _planetContent;
@@ -108,13 +79,13 @@ class _ChartWheelState extends State<ChartWheel> {
 
   void _closeOverlay() => setState(() => _popupStack.clear());
 
-  void _openPopup(_PopupState state) => setState(() {
+  void _openPopup(PopupState state) => setState(() {
     _popupStack
       ..clear()
       ..add(state);
   });
 
-  void _pushPopup(_PopupState state) => setState(() => _popupStack.add(state));
+  void _pushPopup(PopupState state) => setState(() => _popupStack.add(state));
 
   void _popPopup() => setState(() {
     if (_popupStack.isNotEmpty) _popupStack.removeLast();
@@ -234,27 +205,27 @@ class _ChartWheelState extends State<ChartWheel> {
               _buildCenterInfo(half, center, color),
               if (_popupStack.isNotEmpty)
                 switch (_popupStack.last) {
-                  _BeingFromPlanet(:final planet) => _buildBeingShell(
+                  BeingFromPlanet(:final planet) => _buildBeingShell(
                     color,
                     isDark,
                     planet: planet,
                   ),
-                  _BeingFromName(:final being) => _buildBeingShell(
+                  BeingFromName(:final being) => _buildBeingShell(
                     color,
                     isDark,
                     being: being,
                   ),
-                  _BeingTypePopupState(:final type) => _buildBeingTypeOverlay(
+                  BeingTypePopup(:final type) => _buildBeingTypeOverlay(
                     color,
                     isDark,
                     type,
                   ),
-                  _PlanetPopupState(:final planet) => _buildPlanetOverlay(
+                  PlanetPopup(:final planet) => _buildPlanetOverlay(
                     color,
                     isDark,
                     planet,
                   ),
-                  _UncertaintyPopupState(:final planet, :final kind) =>
+                  UncertaintyPopup(:final planet, :final kind) =>
                     _buildUncertaintyChooser(color, isDark, planet, kind),
                 },
             ],
@@ -335,7 +306,7 @@ class _ChartWheelState extends State<ChartWheel> {
     final startAngle = angle - totalSpan / 2;
 
     void onTap() => _openPopup(
-      _BeingFromName((name: data.name, type: 'aditya', planet: '', sign: sign)),
+      BeingFromName((name: data.name, type: 'aditya', planet: '', sign: sign)),
     );
 
     return Positioned.fill(
@@ -426,11 +397,11 @@ class _ChartWheelState extends State<ChartWheel> {
               final uncertain = u?.isUncertain(planet.bodyName) ?? false;
               if (uncertain) {
                 final kind = u!.isTrimsamsaUncertain(planet.bodyName)
-                    ? _UncertainKind.trimsamsa
-                    : _UncertainKind.hora;
-                _openPopup(_UncertaintyPopupState(planet.bodyName, kind));
+                    ? UncertainKind.trimsamsa
+                    : UncertainKind.hora;
+                _openPopup(UncertaintyPopup(planet.bodyName, kind));
               } else {
-                _openPopup(_BeingFromPlanet(planet));
+                _openPopup(BeingFromPlanet(planet));
               }
             } else {
               setState(() {
@@ -602,7 +573,7 @@ class _ChartWheelState extends State<ChartWheel> {
           const SizedBox(height: 8),
           if (adityaPlanets.isNotEmpty) ...[
             GestureDetector(
-              onTap: () => _openPopup(_BeingTypePopupState('aditya')),
+              onTap: () => _openPopup(BeingTypePopup('aditya')),
               behavior: HitTestBehavior.opaque,
               child: Text(
                 'Aditya Stance',
@@ -628,7 +599,7 @@ class _ChartWheelState extends State<ChartWheel> {
           ],
           if (nagaPlanets.isNotEmpty) ...[
             GestureDetector(
-              onTap: () => _openPopup(_BeingTypePopupState('naga')),
+              onTap: () => _openPopup(BeingTypePopup('naga')),
               behavior: HitTestBehavior.opaque,
               child: Text(
                 'Naga Stance',
@@ -668,7 +639,7 @@ class _ChartWheelState extends State<ChartWheel> {
         mainAxisSize: MainAxisSize.min,
         children: [
           GestureDetector(
-            onTap: () => _openPopup(_PlanetPopupState(p.bodyName)),
+            onTap: () => _openPopup(PlanetPopup(p.bodyName)),
             behavior: HitTestBehavior.opaque,
             child: Text(
               _capitalize(p.bodyName),
@@ -681,12 +652,10 @@ class _ChartWheelState extends State<ChartWheel> {
               final horaUncertain =
                   widget.uncertainty?.isHoraUncertain(p.bodyName) ?? false;
               if (horaUncertain) {
-                _openPopup(
-                  _UncertaintyPopupState(p.bodyName, _UncertainKind.hora),
-                );
+                _openPopup(UncertaintyPopup(p.bodyName, UncertainKind.hora));
               } else {
                 _openPopup(
-                  _BeingFromName((
+                  BeingFromName((
                     name: p.horaBeing ?? '',
                     type: p.horaBeingType ?? '',
                     planet: p.bodyName,
@@ -749,7 +718,7 @@ class _ChartWheelState extends State<ChartWheel> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   GestureDetector(
-                    onTap: () => _openPopup(_PlanetPopupState(p.bodyName)),
+                    onTap: () => _openPopup(PlanetPopup(p.bodyName)),
                     behavior: HitTestBehavior.opaque,
                     child: Text(
                       _capitalize(p.bodyName),
@@ -757,9 +726,8 @@ class _ChartWheelState extends State<ChartWheel> {
                     ),
                   ),
                   GestureDetector(
-                    onTap: () => _openPopup(
-                      _BeingTypePopupState(p.trimsamsaBeingType ?? ''),
-                    ),
+                    onTap: () =>
+                        _openPopup(BeingTypePopup(p.trimsamsaBeingType ?? '')),
                     behavior: HitTestBehavior.opaque,
                     child: Text(
                       '  ${_capitalize(p.trimsamsaBeingType ?? '')}',
@@ -775,13 +743,10 @@ class _ChartWheelState extends State<ChartWheel> {
                           false;
                       if (uncertain) {
                         _openPopup(
-                          _UncertaintyPopupState(
-                            p.bodyName,
-                            _UncertainKind.trimsamsa,
-                          ),
+                          UncertaintyPopup(p.bodyName, UncertainKind.trimsamsa),
                         );
                       } else {
-                        _openPopup(_BeingFromPlanet(p));
+                        _openPopup(BeingFromPlanet(p));
                       }
                     },
                     behavior: HitTestBehavior.opaque,
@@ -877,19 +842,17 @@ class _ChartWheelState extends State<ChartWheel> {
     Color color,
     bool isDark,
     String planetName,
-    _UncertainKind uncertainKind,
+    UncertainKind uncertainKind,
   ) {
     final uncertainty = widget.uncertainty;
     if (uncertainty == null) return const SizedBox.shrink();
 
-    final options = uncertainKind == _UncertainKind.hora
+    final options = uncertainKind == UncertainKind.hora
         ? uncertainty.horaFor(planetName)
         : uncertainty.trimsamsaFor(planetName);
     if (options.isEmpty) return const SizedBox.shrink();
 
-    final label = uncertainKind == _UncertainKind.hora
-        ? 'soul stance'
-        : 'being';
+    final label = uncertainKind == UncertainKind.hora ? 'soul stance' : 'being';
 
     final cardBg = isDark ? const Color(0xF0151015) : const Color(0xF0F5F1EA);
     final dimColor = color.withValues(alpha: 0.6);
@@ -946,7 +909,7 @@ class _ChartWheelState extends State<ChartWheel> {
                   for (final option in options) ...[
                     GestureDetector(
                       onTap: () => _pushPopup(
-                        _BeingFromName((
+                        BeingFromName((
                           name: option.name,
                           type: option.type,
                           planet: planetName,
@@ -1025,8 +988,8 @@ class _ChartWheelState extends State<ChartWheel> {
         planet: planet,
         being: being,
         beingContent: _beingContent,
-        onPushBeingType: (t) => _pushPopup(_BeingTypePopupState(t)),
-        onPushBeing: (b) => _pushPopup(_BeingFromName(b)),
+        onPushBeingType: (t) => _pushPopup(BeingTypePopup(t)),
+        onPushBeing: (b) => _pushPopup(BeingFromName(b)),
       ),
     );
   }
