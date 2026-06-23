@@ -34,6 +34,23 @@ class BeingUncertainty {
   static const none = BeingUncertainty();
 }
 
+arrow.TimeUncertainty roddenToUncertainty(String? rating, int hour) {
+  return switch (rating) {
+    'C' => () {
+      final (start, end) = hour >= 6 && hour < 12
+          ? (6, 12)
+          : hour >= 12 && hour < 18
+          ? (12, 18)
+          : hour >= 18
+          ? (18, 0)
+          : (0, 6);
+      return arrow.PeriodTime(startHour: start, endHour: end);
+    }(),
+    'X' => const arrow.UnknownTime(),
+    _ => const arrow.ExactTime(),
+  };
+}
+
 ChartData _withTime(ChartData original, DateTime dateTime) {
   return ChartData(
     name: original.name,

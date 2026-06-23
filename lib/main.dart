@@ -235,21 +235,10 @@ class _ExploreAppState extends State<ExploreApp> {
       debugPrint('  Location: ${chartData.birthLocation}');
       debugPrint('  UTC offset: ${chartData.utcOffsetHours}h');
 
-      final timeUncertainty = switch (chartData.roddenRating) {
-        'C' => () {
-          final h = chartData.dateTime.hour;
-          final (start, end) = h >= 6 && h < 12
-              ? (6, 12)
-              : h >= 12 && h < 18
-              ? (12, 18)
-              : h >= 18
-              ? (18, 0)
-              : (0, 6);
-          return PeriodTime(startHour: start, endHour: end);
-        }(),
-        'X' => const UnknownTime(),
-        _ => const ExactTime(),
-      };
+      final timeUncertainty = roddenToUncertainty(
+        chartData.roddenRating,
+        chartData.dateTime.hour,
+      );
 
       setState(() {
         _chartData = chartData;
