@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'navigate.dart' if (dart.library.js_interop) 'navigate_web.dart';
 import 'file_util.dart' if (dart.library.js_interop) 'file_util_web.dart';
@@ -22,6 +23,7 @@ import 'ui/being_content.dart';
 import 'ui/birth_form.dart';
 import 'ui/chart_wheel.dart';
 import 'ui/planet_content.dart';
+import 'ui/account_button.dart';
 import 'ui/theme.dart';
 
 void main() {
@@ -65,6 +67,10 @@ class _ExploreAppState extends State<ExploreApp> {
   Future<void> _boot() async {
     try {
       WidgetsFlutterBinding.ensureInitialized();
+      await Supabase.initialize(
+        url: 'https://brkrnuucfdzuligvttol.supabase.co',
+        publishableKey: 'sb_publishable_0G0m4eJ_w5SjhgzDOyvbMg_hJGWQIWZ',
+      );
       final results = await Future.wait([
         initSweEphePath(),
         SharedPreferences.getInstance(),
@@ -449,6 +455,7 @@ class _ExplorePage extends StatelessWidget {
               ),
             ],
           ),
+          const AccountButton(),
         ],
       ),
       body: _buildBody(context),
