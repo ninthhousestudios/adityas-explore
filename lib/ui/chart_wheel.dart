@@ -7,14 +7,16 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../astro/being_uncertainty.dart';
 import 'aditya_data.dart';
 import 'being_overlay.dart';
+import 'beings_panel.dart';
 import 'overlay_shell.dart';
-import 'waitlist_dialog.dart';
 import 'being_content.dart';
 import 'being_type_content.dart';
 import 'chart_wheel_layout.dart';
 import 'chart_wheel_painter.dart';
 import 'planet_content.dart';
 import 'popup_state.dart';
+import 'soul_stances_panel.dart';
+import 'waitlist_cta.dart';
 
 extension CapitalizeString on String {
   String toCapitalized() =>
@@ -252,10 +254,13 @@ class _ChartWheelState extends State<ChartWheel> {
                 left: 8,
                 top: 0,
                 width: panelWidth,
-                child: _buildSoulStancesPanel(
+                child: SoulStancesPanel(
+                  planets: _planets,
+                  uncertainty: widget.uncertainty,
                   color: color,
                   backdropColor: backdropColor,
-                  half: half,
+                  fontSize: half * 0.032,
+                  onOpen: _openPopup,
                 ),
               ),
               Positioned(
@@ -265,16 +270,21 @@ class _ChartWheelState extends State<ChartWheel> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    _buildBeingsPanel(
+                    BeingsPanel(
+                      planets: _planets,
+                      uncertainty: widget.uncertainty,
                       color: color,
                       backdropColor: backdropColor,
-                      half: half,
+                      fontSize: half * 0.032,
+                      onOpen: _openPopup,
                     ),
                     const SizedBox(height: 8),
-                    _buildWaitlistCta(
+                    WaitlistCta(
                       color: color,
                       backdropColor: backdropColor,
-                      half: half,
+                      fontSize: half * 0.032,
+                      signed: widget.waitlistSigned,
+                      onSigned: widget.onWaitlistSigned,
                     ),
                   ],
                 ),
@@ -533,307 +543,6 @@ class _ChartWheelState extends State<ChartWheel> {
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildSoulStancesPanel({
-    required Color color,
-    required Color backdropColor,
-    required double half,
-  }) {
-    final fontSize = half * 0.032;
-    final dimColor = color.withValues(alpha: 0.6);
-
-    final adityaPlanets = _planets
-        .where((p) => p.horaBeingType == 'aditya')
-        .toList();
-    final nagaPlanets = _planets
-        .where((p) => p.horaBeingType == 'naga')
-        .toList();
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: backdropColor,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            'Soul Stances of Your Planets',
-            style: TextStyle(
-              color: color,
-              fontSize: fontSize * 1.1,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 8),
-          if (adityaPlanets.isNotEmpty) ...[
-            GestureDetector(
-              onTap: () => _openPopup(BeingTypePopup('aditya')),
-              behavior: HitTestBehavior.opaque,
-              child: Text(
-                'Aditya Stance',
-                style: TextStyle(
-                  color: color,
-                  fontSize: fontSize,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-            Text(
-              'These planets call you to express your love in the world.',
-              style: TextStyle(
-                color: dimColor,
-                fontSize: fontSize * 0.8,
-                fontStyle: FontStyle.italic,
-              ),
-            ),
-            const SizedBox(height: 2),
-            for (final p in adityaPlanets)
-              _buildStanceRow(p, fontSize, color, dimColor),
-            const SizedBox(height: 8),
-          ],
-          if (nagaPlanets.isNotEmpty) ...[
-            GestureDetector(
-              onTap: () => _openPopup(BeingTypePopup('naga')),
-              behavior: HitTestBehavior.opaque,
-              child: Text(
-                'Naga Stance',
-                style: TextStyle(
-                  color: color,
-                  fontSize: fontSize,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-            Text(
-              'These planets call you to dig deep into yourself.',
-              style: TextStyle(
-                color: dimColor,
-                fontSize: fontSize * 0.8,
-                fontStyle: FontStyle.italic,
-              ),
-            ),
-            const SizedBox(height: 2),
-            for (final p in nagaPlanets)
-              _buildStanceRow(p, fontSize, color, dimColor),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStanceRow(
-    PlacedPlanet p,
-    double fontSize,
-    Color color,
-    Color dimColor,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          GestureDetector(
-            onTap: () => _openPopup(PlanetPopup(p.bodyName)),
-            behavior: HitTestBehavior.opaque,
-            child: Text(
-              _capitalize(p.bodyName),
-              style: TextStyle(color: dimColor, fontSize: fontSize),
-            ),
-          ),
-          const SizedBox(width: 8),
-          GestureDetector(
-            onTap: () {
-              final horaUncertain =
-                  widget.uncertainty?.isHoraUncertain(p.bodyName) ?? false;
-              if (horaUncertain) {
-                _openPopup(UncertaintyPopup(p.bodyName, UncertainKind.hora));
-              } else {
-                _openPopup(
-                  BeingFromName((
-                    name: p.horaBeing ?? '',
-                    type: p.horaBeingType ?? '',
-                    planet: p.bodyName,
-                    sign: p.horaBeingSign ?? 0,
-                  )),
-                );
-              }
-            },
-            behavior: HitTestBehavior.opaque,
-            child: Text(
-              '${p.horaBeing ?? ''}'
-              '${(widget.uncertainty?.isHoraUncertain(p.bodyName) ?? false) ? ' ~' : ''}',
-              style: TextStyle(color: color, fontSize: fontSize),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBeingsPanel({
-    required Color color,
-    required Color backdropColor,
-    required double half,
-  }) {
-    final fontSize = half * 0.032;
-    final dimColor = color.withValues(alpha: 0.6);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: backdropColor,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            'Your Beings',
-            style: TextStyle(
-              color: color,
-              fontSize: fontSize * 1.1,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          Text(
-            'click to find out more',
-            style: TextStyle(
-              color: dimColor,
-              fontSize: fontSize * 0.8,
-              fontStyle: FontStyle.italic,
-            ),
-          ),
-          const SizedBox(height: 4),
-          for (final p in _planets)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  GestureDetector(
-                    onTap: () => _openPopup(PlanetPopup(p.bodyName)),
-                    behavior: HitTestBehavior.opaque,
-                    child: Text(
-                      _capitalize(p.bodyName),
-                      style: TextStyle(color: dimColor, fontSize: fontSize),
-                    ),
-                  ),
-                  GestureDetector(
-                    onTap: () =>
-                        _openPopup(BeingTypePopup(p.trimsamsaBeingType ?? '')),
-                    behavior: HitTestBehavior.opaque,
-                    child: Text(
-                      '  ${_capitalize(p.trimsamsaBeingType ?? '')}',
-                      style: TextStyle(color: dimColor, fontSize: fontSize),
-                    ),
-                  ),
-                  GestureDetector(
-                    onTap: () {
-                      final uncertain =
-                          widget.uncertainty?.isTrimsamsaUncertain(
-                            p.bodyName,
-                          ) ??
-                          false;
-                      if (uncertain) {
-                        _openPopup(
-                          UncertaintyPopup(p.bodyName, UncertainKind.trimsamsa),
-                        );
-                      } else {
-                        _openPopup(BeingFromPlanet(p));
-                      }
-                    },
-                    behavior: HitTestBehavior.opaque,
-                    child: Text(
-                      '  ${p.trimsamsaBeing ?? ''}'
-                      '${(widget.uncertainty?.isTrimsamsaUncertain(p.bodyName) ?? false) ? ' ~' : ''}',
-                      style: TextStyle(color: color, fontSize: fontSize),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildWaitlistCta({
-    required Color color,
-    required Color backdropColor,
-    required double half,
-  }) {
-    final fontSize = half * 0.032;
-    final dimColor = color.withValues(alpha: 0.6);
-    final signed = widget.waitlistSigned;
-
-    final box = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: backdropColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color),
-      ),
-      child: signed
-          ? Text(
-              "You're on the list! We'll let you know.",
-              style: TextStyle(
-                color: dimColor,
-                fontSize: fontSize,
-                fontStyle: FontStyle.italic,
-              ),
-            )
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'In-depth reports coming soon.',
-                  style: TextStyle(
-                    color: color,
-                    fontSize: fontSize,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                Text(
-                  'Click here to get notified.',
-                  style: TextStyle(
-                    color: dimColor,
-                    fontSize: fontSize * 0.85,
-                    fontStyle: FontStyle.italic,
-                  ),
-                ),
-              ],
-            ),
-    );
-
-    if (signed) return box;
-
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: () => _showWaitlistDialog(context),
-        child: box,
-      ),
-    );
-  }
-
-  void _showWaitlistDialog(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final color = isDark ? Colors.white : Colors.black;
-
-    showDialog(
-      context: context,
-      builder: (context) => WaitlistDialog(
-        color: color,
-        isDark: isDark,
-        onSuccess: widget.onWaitlistSigned,
       ),
     );
   }
