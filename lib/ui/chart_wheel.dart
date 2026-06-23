@@ -7,6 +7,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../astro/being_uncertainty.dart';
 import 'aditya_data.dart';
 import 'being_overlay.dart';
+import 'being_type_detail_overlay.dart';
 import 'beings_panel.dart';
 import 'overlay_shell.dart';
 import 'being_content.dart';
@@ -14,8 +15,10 @@ import 'being_type_content.dart';
 import 'chart_wheel_layout.dart';
 import 'chart_wheel_painter.dart';
 import 'planet_content.dart';
+import 'planet_detail_overlay.dart';
 import 'popup_state.dart';
 import 'soul_stances_panel.dart';
+import 'uncertainty_chooser.dart';
 import 'waitlist_cta.dart';
 
 extension CapitalizeString on String {
@@ -205,31 +208,7 @@ class _ChartWheelState extends State<ChartWheel> {
               for (final cusp in _cusps)
                 _buildCuspHitRegion(cusp, half, center, color),
               _buildCenterInfo(half, center, color),
-              if (_popupStack.isNotEmpty)
-                switch (_popupStack.last) {
-                  BeingFromPlanet(:final planet) => _buildBeingShell(
-                    color,
-                    isDark,
-                    planet: planet,
-                  ),
-                  BeingFromName(:final being) => _buildBeingShell(
-                    color,
-                    isDark,
-                    being: being,
-                  ),
-                  BeingTypePopup(:final type) => _buildBeingTypeOverlay(
-                    color,
-                    isDark,
-                    type,
-                  ),
-                  PlanetPopup(:final planet) => _buildPlanetOverlay(
-                    color,
-                    isDark,
-                    planet,
-                  ),
-                  UncertaintyPopup(:final planet, :final kind) =>
-                    _buildUncertaintyChooser(color, isDark, planet, kind),
-                },
+              if (_popupStack.isNotEmpty) _buildOverlay(color, isDark),
             ],
           ),
         );
@@ -547,137 +526,61 @@ class _ChartWheelState extends State<ChartWheel> {
     );
   }
 
-  Widget _buildUncertaintyChooser(
-    Color color,
-    bool isDark,
-    String planetName,
-    UncertainKind uncertainKind,
-  ) {
-    final uncertainty = widget.uncertainty;
-    if (uncertainty == null) return const SizedBox.shrink();
+  Widget _buildOverlay(Color color, bool isDark) {
+    final canGoBack = _popupStack.length > 1;
+    final onBack = canGoBack ? _popPopup : null;
 
-    final options = uncertainKind == UncertainKind.hora
-        ? uncertainty.horaFor(planetName)
-        : uncertainty.trimsamsaFor(planetName);
-    if (options.isEmpty) return const SizedBox.shrink();
-
-    final label = uncertainKind == UncertainKind.hora ? 'soul stance' : 'being';
-
-    final cardBg = isDark ? const Color(0xF0151015) : const Color(0xF0F5F1EA);
-    final dimColor = color.withValues(alpha: 0.6);
-    final accentColor = isDark
-        ? const Color(0xFFD4A853)
-        : const Color(0xFF8B6F37);
-
-    return Positioned.fill(
-      child: GestureDetector(
-        onTap: _closeOverlay,
-        behavior: HitTestBehavior.opaque,
-        child: Center(
-          child: GestureDetector(
-            onTap: () {},
-            child: Container(
-              constraints: const BoxConstraints(maxWidth: 360),
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: cardBg,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: color.withValues(alpha: 0.3)),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      if (_popupStack.length > 1) ...[
-                        GestureDetector(
-                          onTap: _popPopup,
-                          child: Icon(Icons.arrow_back, size: 18, color: color),
-                        ),
-                        const SizedBox(width: 8),
-                      ],
-                      Flexible(
-                        child: Text(
-                          'Your ${_capitalize(planetName)} $label could be:',
-                          style: TextStyle(
-                            color: color,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      GestureDetector(
-                        onTap: _closeOverlay,
-                        child: Icon(Icons.close, size: 18, color: dimColor),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  for (final option in options) ...[
-                    GestureDetector(
-                      onTap: () => _pushPopup(
-                        BeingFromName((
-                          name: option.name,
-                          type: option.type,
-                          planet: planetName,
-                          sign: option.sign,
-                        )),
-                      ),
-                      behavior: HitTestBehavior.opaque,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 6),
-                        child: Row(
-                          children: [
-                            Text(
-                              '▸  ',
-                              style: TextStyle(
-                                color: accentColor,
-                                fontSize: 14,
-                              ),
-                            ),
-                            Text(
-                              option.name,
-                              style: TextStyle(
-                                color: color,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            Text(
-                              '  ${_capitalize(option.type)} of '
-                              '${adityaName(option.sign) ?? '?'}',
-                              style: TextStyle(color: dimColor, fontSize: 13),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 12),
-                  Text(
-                    'Tap a being to learn more.',
-                    style: TextStyle(
-                      color: dimColor,
-                      fontSize: 12,
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
+    return switch (_popupStack.last) {
+      BeingFromPlanet(:final planet) => _buildBeingShell(
+        color,
+        isDark,
+        planet: planet,
+        onBack: onBack,
       ),
-    );
+      BeingFromName(:final being) => _buildBeingShell(
+        color,
+        isDark,
+        being: being,
+        onBack: onBack,
+      ),
+      BeingTypePopup(:final type) => BeingTypeDetailOverlay(
+        color: color,
+        isDark: isDark,
+        type: type,
+        contentMap: _beingTypeContent,
+        onClose: _closeOverlay,
+        onBack: onBack,
+      ),
+      PlanetPopup(:final planet) => PlanetDetailOverlay(
+        color: color,
+        isDark: isDark,
+        planetName: planet,
+        contentMap: _planetContent,
+        onClose: _closeOverlay,
+        onBack: onBack,
+      ),
+      UncertaintyPopup(:final planet, :final kind) => UncertaintyChooser(
+        color: color,
+        isDark: isDark,
+        planetName: planet,
+        kind: kind,
+        options: kind == UncertainKind.hora
+            ? (widget.uncertainty?.horaFor(planet) ?? const [])
+            : (widget.uncertainty?.trimsamsaFor(planet) ?? const []),
+        canGoBack: canGoBack,
+        onClose: _closeOverlay,
+        onBack: onBack,
+        onPush: _pushPopup,
+      ),
+    };
   }
 
   Widget _buildBeingShell(
     Color color,
     bool isDark, {
     PlacedPlanet? planet,
-    ({String name, String type, String planet, int sign})? being,
+    BeingRef? being,
+    VoidCallback? onBack,
   }) {
     final header = beingOverlayHeader(
       color: color,
@@ -688,7 +591,7 @@ class _ChartWheelState extends State<ChartWheel> {
       color: color,
       isDark: isDark,
       onClose: _closeOverlay,
-      onBack: _popupStack.length > 1 ? _popPopup : null,
+      onBack: onBack,
       headerLeading: header?.leading,
       title: header?.title ?? '',
       body: BeingOverlayBody(
@@ -700,103 +603,6 @@ class _ChartWheelState extends State<ChartWheel> {
         onPushBeingType: (t) => _pushPopup(BeingTypePopup(t)),
         onPushBeing: (b) => _pushPopup(BeingFromName(b)),
       ),
-    );
-  }
-
-  Widget _buildBeingTypeOverlay(Color color, bool isDark, String type) {
-    final content = _beingTypeContent?[type];
-    final emblemPath = beingTypeEmblemPath(type);
-
-    return OverlayShell(
-      color: color,
-      isDark: isDark,
-      onClose: _closeOverlay,
-      onBack: _popupStack.length > 1 ? _popPopup : null,
-      title: content != null ? '${content.type} — ${content.role}' : '',
-      body: content == null
-          ? const SizedBox.shrink()
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  content.subtitle,
-                  style: TextStyle(
-                    color: isDark ? const Color(0xFFD4A855) : color,
-                    fontSize: 16,
-                    fontStyle: FontStyle.italic,
-                    fontWeight: isDark ? null : FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.asset(
-                    emblemPath,
-                    width: double.infinity,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) => const SizedBox.shrink(),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  content.description,
-                  style: TextStyle(
-                    color: color.withValues(alpha: 0.85),
-                    fontSize: 14,
-                    height: 1.5,
-                  ),
-                ),
-              ],
-            ),
-    );
-  }
-
-  Widget _buildPlanetOverlay(Color color, bool isDark, String planetName) {
-    final content = _planetContent?[planetName];
-    final glyphPath = planetGlyphs[planetName];
-    final imagePath = planetImagePath(planetName);
-
-    return OverlayShell(
-      color: color,
-      isDark: isDark,
-      onClose: _closeOverlay,
-      onBack: _popupStack.length > 1 ? _popPopup : null,
-      headerLeading: glyphPath != null
-          ? SvgPicture.asset(
-              glyphPath,
-              width: 28,
-              height: 28,
-              colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
-            )
-          : null,
-      title: content?.name ?? '',
-      body: content == null
-          ? const SizedBox.shrink()
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  content.description,
-                  style: TextStyle(
-                    color: color.withValues(alpha: 0.85),
-                    fontSize: 14,
-                    height: 1.5,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.asset(
-                    imagePath,
-                    width: double.infinity,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) => const SizedBox.shrink(),
-                  ),
-                ),
-              ],
-            ),
     );
   }
 
