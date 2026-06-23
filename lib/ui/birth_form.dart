@@ -5,26 +5,56 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../api/places_service.dart';
+import '../astro/being_uncertainty.dart'
+    show TimeUncertainty, ExactTime, PeriodTime, UnknownTime;
 import '../file_util.dart' if (dart.library.js_interop) '../file_util_web.dart';
 import '../navigate.dart' if (dart.library.js_interop) '../navigate_web.dart';
 
 enum TimePrecision { exact, general, unknown }
 
 enum BirthPeriod {
-  morning(label: 'Morning', range: '6:00 AM – 12:00 PM', hour: 9),
-  afternoon(label: 'Afternoon', range: '12:00 PM – 6:00 PM', hour: 15),
-  evening(label: 'Evening', range: '6:00 PM – 12:00 AM', hour: 21),
-  night(label: 'Night', range: '12:00 AM – 6:00 AM', hour: 3);
+  morning(
+    label: 'Morning',
+    range: '6:00 AM – 12:00 PM',
+    hour: 9,
+    startHour: 6,
+    endHour: 12,
+  ),
+  afternoon(
+    label: 'Afternoon',
+    range: '12:00 PM – 6:00 PM',
+    hour: 15,
+    startHour: 12,
+    endHour: 18,
+  ),
+  evening(
+    label: 'Evening',
+    range: '6:00 PM – 12:00 AM',
+    hour: 21,
+    startHour: 18,
+    endHour: 0,
+  ),
+  night(
+    label: 'Night',
+    range: '12:00 AM – 6:00 AM',
+    hour: 3,
+    startHour: 0,
+    endHour: 6,
+  );
 
   const BirthPeriod({
     required this.label,
     required this.range,
     required this.hour,
+    required this.startHour,
+    required this.endHour,
   });
 
   final String label;
   final String range;
   final int hour;
+  final int startHour;
+  final int endHour;
 
   TimeOfDay get midpoint => TimeOfDay(hour: hour, minute: 0);
 
@@ -37,11 +67,7 @@ enum BirthPeriod {
 }
 
 class BirthForm extends StatefulWidget {
-  final void Function(
-    ChartData chartData,
-    TimePrecision precision,
-    BirthPeriod? period,
-  )
+  final void Function(ChartData chartData, TimeUncertainty uncertainty)
   onSubmit;
   final VoidCallback onOpenChart;
 
@@ -188,11 +214,15 @@ class _BirthFormState extends State<BirthForm> {
 
   void _submit() {
     if (!_canSubmit) return;
-    widget.onSubmit(
-      _buildChartData(),
-      _timePrecision,
-      _timePrecision == TimePrecision.general ? _selectedPeriod : null,
-    );
+    final uncertainty = switch (_timePrecision) {
+      TimePrecision.exact => const ExactTime(),
+      TimePrecision.general => PeriodTime(
+        startHour: _selectedPeriod!.startHour,
+        endHour: _selectedPeriod!.endHour,
+      ),
+      TimePrecision.unknown => const UnknownTime(),
+    };
+    widget.onSubmit(_buildChartData(), uncertainty);
   }
 
   Future<void> _saveChart() async {

@@ -177,8 +177,7 @@ class _ExploreAppState extends State<ExploreApp> {
 
   Future<void> _submitChart(
     ChartData chartData,
-    TimePrecision precision,
-    BirthPeriod? period,
+    TimeUncertainty timeUncertainty,
   ) async {
     final token = ++_calcToken;
     try {
@@ -196,8 +195,7 @@ class _ExploreAppState extends State<ExploreApp> {
         calculator: _calculator,
         chartData: chartData,
         primaryChart: chart,
-        precision: precision,
-        period: period,
+        uncertainty: timeUncertainty,
       );
       if (!mounted || token != _calcToken) return;
       setState(() {
@@ -237,14 +235,21 @@ class _ExploreAppState extends State<ExploreApp> {
       debugPrint('  Location: ${chartData.birthLocation}');
       debugPrint('  UTC offset: ${chartData.utcOffsetHours}h');
 
-      final precision = switch (chartData.roddenRating) {
-        'C' => TimePrecision.general,
-        'X' => TimePrecision.unknown,
-        _ => TimePrecision.exact,
+      final timeUncertainty = switch (chartData.roddenRating) {
+        'C' => () {
+          final h = chartData.dateTime.hour;
+          final (start, end) = h >= 6 && h < 12
+              ? (6, 12)
+              : h >= 12 && h < 18
+              ? (12, 18)
+              : h >= 18
+              ? (18, 0)
+              : (0, 6);
+          return PeriodTime(startHour: start, endHour: end);
+        }(),
+        'X' => const UnknownTime(),
+        _ => const ExactTime(),
       };
-      final period = precision == TimePrecision.general
-          ? BirthPeriod.fromHour(chartData.dateTime.hour)
-          : null;
 
       setState(() {
         _chartData = chartData;
@@ -260,8 +265,7 @@ class _ExploreAppState extends State<ExploreApp> {
         calculator: _calculator,
         chartData: chartData,
         primaryChart: chart,
-        precision: precision,
-        period: period,
+        uncertainty: timeUncertainty,
       );
       if (!mounted) return;
       setState(() {
@@ -329,7 +333,7 @@ class _ExplorePage extends StatelessWidget {
   final VoidCallback onOpenChart;
   final VoidCallback onNewChart;
   final VoidCallback onSaveChart;
-  final void Function(ChartData, TimePrecision, BirthPeriod?) onSubmitChart;
+  final void Function(ChartData, TimeUncertainty) onSubmitChart;
   final ChartData? chartData;
   final arrow.Chart? chart;
   final BeingUncertainty? uncertainty;

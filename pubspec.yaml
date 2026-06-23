@@ -12,22 +12,22 @@ dependencies:
   arrow_options:
     git:
       url: https://github.com/ninthhousestudios/arjuna
-      ref: 0b3f3015a7ff93f69a97862c69755c24d0b053a2
+      ref: d70965243de9c14b22bc118adbd86b479497c44c
       path: arrow/options
   arrow_swe:
     git:
       url: https://github.com/ninthhousestudios/arjuna
-      ref: 0b3f3015a7ff93f69a97862c69755c24d0b053a2
+      ref: d70965243de9c14b22bc118adbd86b479497c44c
       path: arrow/swe
   arrow_core:
     git:
       url: https://github.com/ninthhousestudios/arjuna
-      ref: 0b3f3015a7ff93f69a97862c69755c24d0b053a2
+      ref: d70965243de9c14b22bc118adbd86b479497c44c
       path: arrow/core
   arrow_calc:
     git:
       url: https://github.com/ninthhousestudios/arjuna
-      ref: 0b3f3015a7ff93f69a97862c69755c24d0b053a2
+      ref: d70965243de9c14b22bc118adbd86b479497c44c
       path: arrow/calc
   charts_dart:
     git:

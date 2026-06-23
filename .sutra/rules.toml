@@ -16,12 +16,8 @@ kind = "forbidden_dep"
 from = "lib/astro/**"
 to = "lib/ui/**"
 name = "astro-no-ui"
-severity = "advisory"
+severity = "blocking"
 provenance = "adopt:explore"
-# DEBT: being_uncertainty.dart imports TimePrecision/BirthPeriod from
-# birth_form.dart. Fix: extract TimeUncertainty sealed type to astro/
-# or push uncertainty analysis into arrow_calc. See adityas/explore/21
-# codex review and architecture discussion.
 
 [[constraint]]
 kind = "forbidden_dep"

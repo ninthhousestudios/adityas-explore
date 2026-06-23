@@ -45,8 +45,8 @@ packages:
     dependency: "direct main"
     description:
       path: "arrow/calc"
-      ref: "0b3f3015a7ff93f69a97862c69755c24d0b053a2"
-      resolved-ref: "0b3f3015a7ff93f69a97862c69755c24d0b053a2"
+      ref: d70965243de9c14b22bc118adbd86b479497c44c
+      resolved-ref: d70965243de9c14b22bc118adbd86b479497c44c
       url: "https://github.com/ninthhousestudios/arjuna"
     source: git
     version: "0.1.0"
@@ -54,8 +54,8 @@ packages:
     dependency: "direct main"
     description:
       path: "arrow/core"
-      ref: "0b3f3015a7ff93f69a97862c69755c24d0b053a2"
-      resolved-ref: "0b3f3015a7ff93f69a97862c69755c24d0b053a2"
+      ref: d70965243de9c14b22bc118adbd86b479497c44c
+      resolved-ref: d70965243de9c14b22bc118adbd86b479497c44c
       url: "https://github.com/ninthhousestudios/arjuna"
     source: git
     version: "0.1.0"
@@ -63,8 +63,8 @@ packages:
     dependency: "direct main"
     description:
       path: "arrow/options"
-      ref: "0b3f3015a7ff93f69a97862c69755c24d0b053a2"
-      resolved-ref: "0b3f3015a7ff93f69a97862c69755c24d0b053a2"
+      ref: d70965243de9c14b22bc118adbd86b479497c44c
+      resolved-ref: d70965243de9c14b22bc118adbd86b479497c44c
       url: "https://github.com/ninthhousestudios/arjuna"
     source: git
     version: "0.1.0"
@@ -72,8 +72,8 @@ packages:
     dependency: "direct main"
     description:
       path: "arrow/swe"
-      ref: "0b3f3015a7ff93f69a97862c69755c24d0b053a2"
-      resolved-ref: "0b3f3015a7ff93f69a97862c69755c24d0b053a2"
+      ref: d70965243de9c14b22bc118adbd86b479497c44c
+      resolved-ref: d70965243de9c14b22bc118adbd86b479497c44c
       url: "https://github.com/ninthhousestudios/arjuna"
     source: git
     version: "0.1.0"

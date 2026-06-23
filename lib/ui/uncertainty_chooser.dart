@@ -9,7 +9,7 @@ class UncertaintyChooser extends StatelessWidget {
   final bool isDark;
   final String planetName;
   final UncertainKind kind;
-  final List<BeingOption> options;
+  final List<Being> options;
   final bool canGoBack;
   final VoidCallback onClose;
   final VoidCallback? onBack;
@@ -90,9 +90,9 @@ class UncertaintyChooser extends StatelessWidget {
                       onTap: () => onPush(
                         BeingFromName((
                           name: option.name,
-                          type: option.type,
+                          type: option.type.name,
                           planet: planetName,
-                          sign: option.sign,
+                          sign: option.signNumber,
                         )),
                       ),
                       behavior: HitTestBehavior.opaque,
@@ -116,8 +116,8 @@ class UncertaintyChooser extends StatelessWidget {
                               ),
                             ),
                             Text(
-                              '  ${_capitalize(option.type)} of '
-                              '${adityaName(option.sign) ?? '?'}',
+                              '  ${_capitalize(option.type.name)} of '
+                              '${adityaName(option.signNumber) ?? '?'}',
                               style: TextStyle(color: dimColor, fontSize: 13),
                             ),
                           ],
