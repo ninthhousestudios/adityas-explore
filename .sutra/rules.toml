@@ -1,0 +1,86 @@
+# .sutra/rules.toml — Architectural constraints for explore
+#
+# Severity levels:
+#   blocking      — guard denies edits that introduce these
+#   advisory      — warning in review, agent proceeds
+#   informational — tracked in review output, silent otherwise
+
+# ═══════════════════════════════════════════════════════════════════
+# Layer boundaries
+# ═══════════════════════════════════════════════════════════════════
+# astro/ is the calculation engine, api/ is external services,
+# ui/ is presentation. Dependencies flow downward only.
+
+[[constraint]]
+kind = "forbidden_dep"
+from = "lib/astro/**"
+to = "lib/ui/**"
+name = "astro-no-ui"
+severity = "advisory"
+provenance = "adopt:explore"
+# DEBT: being_uncertainty.dart imports TimePrecision/BirthPeriod from
+# birth_form.dart. Fix: extract TimeUncertainty sealed type to astro/
+# or push uncertainty analysis into arrow_calc. See adityas/explore/21
+# codex review and architecture discussion.
+
+[[constraint]]
+kind = "forbidden_dep"
+from = "lib/api/**"
+to = "lib/ui/**"
+name = "api-no-ui"
+severity = "blocking"
+provenance = "adopt:explore"
+
+[[constraint]]
+kind = "forbidden_dep"
+from = "lib/ui/**"
+to = "lib/astro/swe*.dart"
+name = "ui-no-raw-swe"
+severity = "blocking"
+provenance = "doc:docs/chart-wheel.md"
+# UI must go through chart_calculator, not raw Swiss Ephemeris.
+
+# ═══════════════════════════════════════════════════════════════════
+# Cycle prevention
+# ═══════════════════════════════════════════════════════════════════
+
+[[constraint]]
+kind = "no_cycles"
+scope = "lib/api/"
+name = "api-no-cycles"
+severity = "blocking"
+provenance = "adopt:explore"
+
+# ═══════════════════════════════════════════════════════════════════
+# Fan-in limits
+# ═══════════════════════════════════════════════════════════════════
+
+[[constraint]]
+kind = "max_fan_in"
+target = "lib/astro/being_uncertainty.dart"
+threshold = 12
+name = "being-uncertainty-fan-in"
+severity = "advisory"
+provenance = "adopt:explore"
+# Domain logic hub (current fan-in 9). Catch scope creep.
+
+# ═══════════════════════════════════════════════════════════════════
+# Conventions
+# ═══════════════════════════════════════════════════════════════════
+
+[conventions]
+suppress = [
+  "d7ab72decd364f9d",  # vis:private → has_sig — structural truth in Dart
+  "f119c35e34aae475",  # in:lib → has_sig — structural truth in Dart
+  "14e10b571e03a36d",  # vis:private → has_sig (component-scoped)
+  "cfa44b722e54347a",  # in:lib → has_sig (component-scoped)
+  "0c141c9837a750fd",  # has_sig → snake_case (component-scoped, redundant with global)
+  "e18387ee1256675d",  # vis:private → snake_case (component-scoped, redundant)
+  "cee16bcccbf35da6",  # in:lib → snake_case (component-scoped, redundant)
+  "db16ecf244d34585",  # kind:method → snake_case (component-scoped, redundant)
+  "0d84dbed74bc162a",  # is_method → snake_case (component-scoped, redundant)
+  "a41c0053603b62f7",  # vis:private → snake_case (component-scoped, redundant)
+  "79aae21a4493f8ea",  # in:lib → snake_case (component-scoped, redundant)
+  "bc7d2e877ec23d3c",  # complexity:zero → snake_case (component-scoped, redundant)
+  "771652b24d3ad33a",  # complexity:zero → snake_case (component-scoped, redundant)
+]

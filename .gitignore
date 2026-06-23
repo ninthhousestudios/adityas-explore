@@ -12,6 +12,11 @@
 .swiftpm/
 migrate_working_dir/
 .claude/
+.sutra/*/
+.sutra/acks/
+!.sutra/rules.toml
+!.sutra/aliases.toml
+!.sutra/owners.toml
 opencode.json
 docs/build-and-deploy-to-zola.md
 docs/uxui-for-cards-sharing-physical.md
