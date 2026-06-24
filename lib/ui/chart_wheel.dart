@@ -107,14 +107,15 @@ class _ChartWheelState extends State<ChartWheel> {
       ..add(state);
   });
 
-  Widget _buildMobilePanel(Color color, Color backdropColor) {
+  Widget _buildMobilePanel(Color color, bool isDark) {
+    final cardBg = isDark ? const Color(0xF0151015) : const Color(0xF0F5F1EA);
     final panel = _activePanel == _MobilePanel.soulStances
         ? SoulStancesPanel(
             planets: _planets,
             uncertainty: widget.uncertainty,
             color: color,
             backdropColor: Colors.transparent,
-            fontSize: 14,
+            fontSize: 16,
             onOpen: _openPanelPopup,
           )
         : BeingsPanel(
@@ -122,7 +123,7 @@ class _ChartWheelState extends State<ChartWheel> {
             uncertainty: widget.uncertainty,
             color: color,
             backdropColor: Colors.transparent,
-            fontSize: 14,
+            fontSize: 16,
             onOpen: _openPanelPopup,
           );
 
@@ -139,7 +140,7 @@ class _ChartWheelState extends State<ChartWheel> {
               maxHeight: MediaQuery.of(context).size.height * 0.5,
             ),
             decoration: BoxDecoration(
-              color: backdropColor,
+              color: cardBg,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: color.withValues(alpha: 0.3)),
             ),
@@ -160,7 +161,7 @@ class _ChartWheelState extends State<ChartWheel> {
                 ),
                 Flexible(
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
                     child: panel,
                   ),
                 ),
@@ -312,7 +313,7 @@ class _ChartWheelState extends State<ChartWheel> {
                         setState(() => _activePanel = _MobilePanel.yourBeings),
                   ),
                 ),
-              if (_activePanel != null) _buildMobilePanel(color, backdropColor),
+              if (_activePanel != null) _buildMobilePanel(color, isDark),
               if (_popupStack.isNotEmpty) _buildOverlay(color, isDark),
             ],
           );
