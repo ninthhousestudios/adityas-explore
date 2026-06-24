@@ -350,6 +350,9 @@ class _ExplorePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = MediaQuery.of(context).size.width < 600;
+    final fgColor = Theme.of(context).appBarTheme.foregroundColor;
+
     final content = Scaffold(
       appBar: AppBar(
         leading: Padding(
@@ -358,98 +361,171 @@ class _ExplorePage extends StatelessWidget {
             onPressed: () => navigateToUrl('/'),
             icon: const Icon(Icons.arrow_back, size: 18),
             label: const Text('Home'),
-            style: TextButton.styleFrom(
-              foregroundColor: Theme.of(context).appBarTheme.foregroundColor,
-            ),
+            style: TextButton.styleFrom(foregroundColor: fgColor),
           ),
         ),
         leadingWidth: 120,
         title: chartData != null ? Text(chartData!.name) : null,
         centerTitle: true,
-        actions: [
-          if (chartData != null)
-            TextButton.icon(
-              onPressed: onNewChart,
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text('New Chart'),
-              style: TextButton.styleFrom(
-                foregroundColor: Theme.of(context).appBarTheme.foregroundColor,
-              ),
-            ),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              IconButton(
-                onPressed: onZoomOut,
-                icon: const Icon(Icons.remove, size: 18),
-                tooltip: 'Zoom out',
-                visualDensity: VisualDensity.compact,
-              ),
-              Text(
-                '${(zoom * 100).round()}%',
-                style: TextStyle(
-                  color: Theme.of(context).appBarTheme.foregroundColor,
-                  fontSize: 13,
+        actions: isMobile
+            ? [
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.menu),
+                  tooltip: 'Menu',
+                  position: PopupMenuPosition.under,
+                  onSelected: (value) {
+                    switch (value) {
+                      case 'theme':
+                        onToggleTheme();
+                      case 'new_chart':
+                        onNewChart();
+                      case 'save_chart':
+                        onSaveChart();
+                      case 'open_chart':
+                        onOpenChart();
+                      case 'about':
+                        _showAbout(context);
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    PopupMenuItem(
+                      value: 'theme',
+                      child: Row(
+                        children: [
+                          Icon(
+                            useLight ? Icons.dark_mode : Icons.light_mode,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 12),
+                          Text(useLight ? 'Immersive theme' : 'Light theme'),
+                        ],
+                      ),
+                    ),
+                    if (chartData != null)
+                      const PopupMenuItem(
+                        value: 'new_chart',
+                        child: Row(
+                          children: [
+                            Icon(Icons.add, size: 20),
+                            SizedBox(width: 12),
+                            Text('New Chart'),
+                          ],
+                        ),
+                      ),
+                    if (chartData != null)
+                      const PopupMenuItem(
+                        value: 'save_chart',
+                        child: Row(
+                          children: [
+                            Icon(Icons.save_alt, size: 20),
+                            SizedBox(width: 12),
+                            Text('Download chart file'),
+                          ],
+                        ),
+                      ),
+                    const PopupMenuItem(
+                      value: 'open_chart',
+                      child: Row(
+                        children: [
+                          Icon(Icons.folder_open, size: 20),
+                          SizedBox(width: 12),
+                          Text('Open Chart'),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'about',
+                      child: Row(
+                        children: [
+                          Icon(Icons.info_outline, size: 20),
+                          SizedBox(width: 12),
+                          Text('About'),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              IconButton(
-                onPressed: onZoomIn,
-                icon: const Icon(Icons.add, size: 18),
-                tooltip: 'Zoom in',
-                visualDensity: VisualDensity.compact,
-              ),
-            ],
-          ),
-          IconButton(
-            onPressed: onToggleTheme,
-            icon: Icon(useLight ? Icons.dark_mode : Icons.light_mode),
-            tooltip: useLight ? 'Immersive theme' : 'Light theme',
-          ),
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.settings),
-            tooltip: 'Settings',
-            position: PopupMenuPosition.under,
-            onSelected: (value) {
-              if (value == 'save_chart') onSaveChart();
-              if (value == 'open_chart') onOpenChart();
-              if (value == 'about') _showAbout(context);
-            },
-            itemBuilder: (context) => [
-              if (chartData != null)
-                const PopupMenuItem(
-                  value: 'save_chart',
-                  child: Row(
-                    children: [
-                      Icon(Icons.save_alt, size: 20),
-                      SizedBox(width: 12),
-                      Text('Download chart file'),
-                    ],
+                const AccountButton(),
+              ]
+            : [
+                if (chartData != null)
+                  TextButton.icon(
+                    onPressed: onNewChart,
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('New Chart'),
+                    style: TextButton.styleFrom(foregroundColor: fgColor),
                   ),
-                ),
-              const PopupMenuItem(
-                value: 'open_chart',
-                child: Row(
+                Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.folder_open, size: 20),
-                    SizedBox(width: 12),
-                    Text('Open Chart'),
+                    IconButton(
+                      onPressed: onZoomOut,
+                      icon: const Icon(Icons.remove, size: 18),
+                      tooltip: 'Zoom out',
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    Text(
+                      '${(zoom * 100).round()}%',
+                      style: TextStyle(color: fgColor, fontSize: 13),
+                    ),
+                    IconButton(
+                      onPressed: onZoomIn,
+                      icon: const Icon(Icons.add, size: 18),
+                      tooltip: 'Zoom in',
+                      visualDensity: VisualDensity.compact,
+                    ),
                   ],
                 ),
-              ),
-              const PopupMenuItem(
-                value: 'about',
-                child: Row(
-                  children: [
-                    Icon(Icons.info_outline, size: 20),
-                    SizedBox(width: 12),
-                    Text('About'),
+                IconButton(
+                  onPressed: onToggleTheme,
+                  icon: Icon(useLight ? Icons.dark_mode : Icons.light_mode),
+                  tooltip: useLight ? 'Immersive theme' : 'Light theme',
+                ),
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.settings),
+                  tooltip: 'Settings',
+                  position: PopupMenuPosition.under,
+                  onSelected: (value) {
+                    if (value == 'save_chart') onSaveChart();
+                    if (value == 'open_chart') onOpenChart();
+                    if (value == 'about') _showAbout(context);
+                  },
+                  itemBuilder: (context) => [
+                    if (chartData != null)
+                      const PopupMenuItem(
+                        value: 'save_chart',
+                        child: Row(
+                          children: [
+                            Icon(Icons.save_alt, size: 20),
+                            SizedBox(width: 12),
+                            Text('Download chart file'),
+                          ],
+                        ),
+                      ),
+                    const PopupMenuItem(
+                      value: 'open_chart',
+                      child: Row(
+                        children: [
+                          Icon(Icons.folder_open, size: 20),
+                          SizedBox(width: 12),
+                          Text('Open Chart'),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'about',
+                      child: Row(
+                        children: [
+                          Icon(Icons.info_outline, size: 20),
+                          SizedBox(width: 12),
+                          Text('About'),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
-              ),
-            ],
-          ),
-          const AccountButton(),
-        ],
+                const AccountButton(),
+              ],
       ),
       body: _buildBody(context),
     );

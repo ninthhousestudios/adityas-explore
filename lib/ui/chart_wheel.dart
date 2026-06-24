@@ -18,6 +18,7 @@ import 'planet_content.dart';
 import 'planet_detail_overlay.dart';
 import 'popup_state.dart';
 import 'soul_stances_panel.dart';
+import 'mobile_chart_buttons.dart';
 import 'uncertainty_chooser.dart';
 import 'waitlist_cta.dart';
 
@@ -95,6 +96,70 @@ class _ChartWheelState extends State<ChartWheel> {
   void _popPopup() => setState(() {
     if (_popupStack.isNotEmpty) _popupStack.removeLast();
   });
+
+  void _showMobilePanel({
+    required BuildContext context,
+    required String title,
+    required Color color,
+    required bool isDark,
+    required Widget Function(ValueChanged<PopupState> onOpen) builder,
+  }) {
+    final cardBg = isDark ? const Color(0xF0151015) : const Color(0xF0F5F1EA);
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => DraggableScrollableSheet(
+        initialChildSize: 0.5,
+        maxChildSize: 0.9,
+        minChildSize: 0.3,
+        builder: (_, controller) => Container(
+          decoration: BoxDecoration(
+            color: cardBg,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+            border: Border.all(color: color.withValues(alpha: 0.3)),
+          ),
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 8, 0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: TextStyle(
+                          color: color,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.pop(sheetContext),
+                      icon: Icon(Icons.close, color: color, size: 20),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: SingleChildScrollView(
+                  controller: controller,
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                  child: builder((state) {
+                    Navigator.pop(sheetContext);
+                    _openPopup(state);
+                  }),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   void didUpdateWidget(ChartWheel oldWidget) {
@@ -208,12 +273,58 @@ class _ChartWheelState extends State<ChartWheel> {
               for (final cusp in _cusps)
                 _buildCuspHitRegion(cusp, half, center, color),
               _buildCenterInfo(half, center, color),
-              if (_popupStack.isNotEmpty) _buildOverlay(color, isDark),
             ],
           ),
         );
 
-        if (_planets.isEmpty || panelMargin < 80) return wheel;
+        final isMobile = _planets.isEmpty || panelMargin < 80;
+
+        if (isMobile) {
+          return Stack(
+            children: [
+              Center(child: wheel),
+              if (_planets.isNotEmpty && _popupStack.isEmpty)
+                Positioned(
+                  left: 16,
+                  right: 16,
+                  bottom: 24,
+                  child: MobileChartButtons(
+                    color: color,
+                    backdropColor: backdropColor,
+                    onSoulStances: () => _showMobilePanel(
+                      context: context,
+                      title: 'Soul Stances',
+                      color: color,
+                      isDark: isDark,
+                      builder: (onOpen) => SoulStancesPanel(
+                        planets: _planets,
+                        uncertainty: widget.uncertainty,
+                        color: color,
+                        backdropColor: backdropColor,
+                        fontSize: 14,
+                        onOpen: onOpen,
+                      ),
+                    ),
+                    onYourBeings: () => _showMobilePanel(
+                      context: context,
+                      title: 'Your Beings',
+                      color: color,
+                      isDark: isDark,
+                      builder: (onOpen) => BeingsPanel(
+                        planets: _planets,
+                        uncertainty: widget.uncertainty,
+                        color: color,
+                        backdropColor: backdropColor,
+                        fontSize: 14,
+                        onOpen: onOpen,
+                      ),
+                    ),
+                  ),
+                ),
+              if (_popupStack.isNotEmpty) _buildOverlay(color, isDark),
+            ],
+          );
+        }
 
         final panelWidth = panelMargin - 16;
         return SizedBox(
@@ -227,7 +338,13 @@ class _ChartWheelState extends State<ChartWheel> {
                 top: 0,
                 width: side,
                 height: side,
-                child: wheel,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    wheel,
+                    if (_popupStack.isNotEmpty) _buildOverlay(color, isDark),
+                  ],
+                ),
               ),
               Positioned(
                 left: 8,
