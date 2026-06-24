@@ -595,7 +595,10 @@ class _BirthFormState extends State<BirthForm> {
           child: Material(
             color: Colors.transparent,
             child: Padding(
-              padding: const EdgeInsets.all(32),
+              padding: EdgeInsets.symmetric(
+                horizontal: MediaQuery.of(context).size.width < 600 ? 16 : 32,
+                vertical: 32,
+              ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,

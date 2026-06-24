@@ -45,11 +45,14 @@ class ChartWheel extends StatefulWidget {
   State<ChartWheel> createState() => _ChartWheelState();
 }
 
+enum _MobilePanel { soulStances, yourBeings }
+
 class _ChartWheelState extends State<ChartWheel> {
   PlacedPlanet? _hoveredPlanet;
   PlacedCusp? _hoveredCusp;
 
   final List<PopupState> _popupStack = [];
+  _MobilePanel? _activePanel;
   Map<(int, String), BeingContent>? _beingContent;
   Map<String, BeingTypeContent>? _beingTypeContent;
   Map<String, PlanetContent>? _planetContent;
@@ -97,64 +100,72 @@ class _ChartWheelState extends State<ChartWheel> {
     if (_popupStack.isNotEmpty) _popupStack.removeLast();
   });
 
-  void _showMobilePanel({
-    required BuildContext context,
-    required String title,
-    required Color color,
-    required bool isDark,
-    required Widget Function(ValueChanged<PopupState> onOpen) builder,
-  }) {
-    final cardBg = isDark ? const Color(0xF0151015) : const Color(0xF0F5F1EA);
+  void _openPanelPopup(PopupState state) => setState(() {
+    _activePanel = null;
+    _popupStack
+      ..clear()
+      ..add(state);
+  });
 
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) => DraggableScrollableSheet(
-        initialChildSize: 0.5,
-        maxChildSize: 0.9,
-        minChildSize: 0.3,
-        builder: (_, controller) => Container(
-          decoration: BoxDecoration(
-            color: cardBg,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-            border: Border.all(color: color.withValues(alpha: 0.3)),
-          ),
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 8, 0),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        title,
-                        style: TextStyle(
-                          color: color,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () => Navigator.pop(sheetContext),
+  Widget _buildMobilePanel(Color color, Color backdropColor) {
+    final panel = _activePanel == _MobilePanel.soulStances
+        ? SoulStancesPanel(
+            planets: _planets,
+            uncertainty: widget.uncertainty,
+            color: color,
+            backdropColor: Colors.transparent,
+            fontSize: 14,
+            onOpen: _openPanelPopup,
+          )
+        : BeingsPanel(
+            planets: _planets,
+            uncertainty: widget.uncertainty,
+            color: color,
+            backdropColor: Colors.transparent,
+            fontSize: 14,
+            onOpen: _openPanelPopup,
+          );
+
+    return GestureDetector(
+      onTap: () => setState(() => _activePanel = null),
+      behavior: HitTestBehavior.opaque,
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: GestureDetector(
+          onTap: () {},
+          child: Container(
+            margin: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.5,
+            ),
+            decoration: BoxDecoration(
+              color: backdropColor,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: color.withValues(alpha: 0.3)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: IconButton(
+                      onPressed: () => setState(() => _activePanel = null),
                       icon: Icon(Icons.close, color: color, size: 20),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
                     ),
-                  ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              Expanded(
-                child: SingleChildScrollView(
-                  controller: controller,
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-                  child: builder((state) {
-                    Navigator.pop(sheetContext);
-                    _openPopup(state);
-                  }),
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    child: panel,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -280,10 +291,14 @@ class _ChartWheelState extends State<ChartWheel> {
         final isMobile = _planets.isEmpty || panelMargin < 80;
 
         if (isMobile) {
+          final showButtons =
+              _planets.isNotEmpty &&
+              _popupStack.isEmpty &&
+              _activePanel == null;
           return Stack(
             children: [
               Center(child: wheel),
-              if (_planets.isNotEmpty && _popupStack.isEmpty)
+              if (showButtons)
                 Positioned(
                   left: 16,
                   right: 16,
@@ -291,36 +306,13 @@ class _ChartWheelState extends State<ChartWheel> {
                   child: MobileChartButtons(
                     color: color,
                     backdropColor: backdropColor,
-                    onSoulStances: () => _showMobilePanel(
-                      context: context,
-                      title: 'Soul Stances',
-                      color: color,
-                      isDark: isDark,
-                      builder: (onOpen) => SoulStancesPanel(
-                        planets: _planets,
-                        uncertainty: widget.uncertainty,
-                        color: color,
-                        backdropColor: backdropColor,
-                        fontSize: 14,
-                        onOpen: onOpen,
-                      ),
-                    ),
-                    onYourBeings: () => _showMobilePanel(
-                      context: context,
-                      title: 'Your Beings',
-                      color: color,
-                      isDark: isDark,
-                      builder: (onOpen) => BeingsPanel(
-                        planets: _planets,
-                        uncertainty: widget.uncertainty,
-                        color: color,
-                        backdropColor: backdropColor,
-                        fontSize: 14,
-                        onOpen: onOpen,
-                      ),
-                    ),
+                    onSoulStances: () =>
+                        setState(() => _activePanel = _MobilePanel.soulStances),
+                    onYourBeings: () =>
+                        setState(() => _activePanel = _MobilePanel.yourBeings),
                   ),
                 ),
+              if (_activePanel != null) _buildMobilePanel(color, backdropColor),
               if (_popupStack.isNotEmpty) _buildOverlay(color, isDark),
             ],
           );
@@ -498,22 +490,15 @@ class _ChartWheelState extends State<ChartWheel> {
         onExit: (_) => setState(() => _hoveredPlanet = null),
         child: GestureDetector(
           onTap: () {
-            if (_hoveredPlanet?.bodyName == planet.bodyName) {
-              final u = widget.uncertainty;
-              final uncertain = u?.isUncertain(planet.bodyName) ?? false;
-              if (uncertain) {
-                final kind = u!.isTrimsamsaUncertain(planet.bodyName)
-                    ? UncertainKind.trimsamsa
-                    : UncertainKind.hora;
-                _openPopup(UncertaintyPopup(planet.bodyName, kind));
-              } else {
-                _openPopup(BeingFromPlanet(planet));
-              }
+            final u = widget.uncertainty;
+            final uncertain = u?.isUncertain(planet.bodyName) ?? false;
+            if (uncertain) {
+              final kind = u!.isTrimsamsaUncertain(planet.bodyName)
+                  ? UncertainKind.trimsamsa
+                  : UncertainKind.hora;
+              _openPopup(UncertaintyPopup(planet.bodyName, kind));
             } else {
-              setState(() {
-                _hoveredPlanet = planet;
-                _hoveredCusp = null;
-              });
+              _openPopup(BeingFromPlanet(planet));
             }
           },
           child: SizedBox(
