@@ -45,14 +45,11 @@ class ChartWheel extends StatefulWidget {
   State<ChartWheel> createState() => _ChartWheelState();
 }
 
-enum _MobilePanel { soulStances, yourBeings }
-
 class _ChartWheelState extends State<ChartWheel> {
   PlacedPlanet? _hoveredPlanet;
   PlacedCusp? _hoveredCusp;
 
   final List<PopupState> _popupStack = [];
-  _MobilePanel? _activePanel;
   Map<(int, String), BeingContent>? _beingContent;
   Map<String, BeingTypeContent>? _beingTypeContent;
   Map<String, PlanetContent>? _planetContent;
@@ -99,79 +96,6 @@ class _ChartWheelState extends State<ChartWheel> {
   void _popPopup() => setState(() {
     if (_popupStack.isNotEmpty) _popupStack.removeLast();
   });
-
-  void _openPanelPopup(PopupState state) => setState(() {
-    _activePanel = null;
-    _popupStack
-      ..clear()
-      ..add(state);
-  });
-
-  Widget _buildMobilePanel(Color color, bool isDark) {
-    final cardBg = isDark ? const Color(0xF0151015) : const Color(0xF0F5F1EA);
-    final panel = _activePanel == _MobilePanel.soulStances
-        ? SoulStancesPanel(
-            planets: _planets,
-            uncertainty: widget.uncertainty,
-            color: color,
-            backdropColor: Colors.transparent,
-            fontSize: 16,
-            onOpen: _openPanelPopup,
-          )
-        : BeingsPanel(
-            planets: _planets,
-            uncertainty: widget.uncertainty,
-            color: color,
-            backdropColor: Colors.transparent,
-            fontSize: 16,
-            onOpen: _openPanelPopup,
-          );
-
-    return GestureDetector(
-      onTap: () => setState(() => _activePanel = null),
-      behavior: HitTestBehavior.opaque,
-      child: Align(
-        alignment: Alignment.bottomCenter,
-        child: GestureDetector(
-          onTap: () {},
-          child: Container(
-            margin: const EdgeInsets.fromLTRB(12, 0, 12, 16),
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.5,
-            ),
-            decoration: BoxDecoration(
-              color: cardBg,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: color.withValues(alpha: 0.3)),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: IconButton(
-                      onPressed: () => setState(() => _activePanel = null),
-                      icon: Icon(Icons.close, color: color, size: 20),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                    ),
-                  ),
-                ),
-                Flexible(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                    child: panel,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 
   @override
   void didUpdateWidget(ChartWheel oldWidget) {
@@ -292,14 +216,10 @@ class _ChartWheelState extends State<ChartWheel> {
         final isMobile = _planets.isEmpty || panelMargin < 80;
 
         if (isMobile) {
-          final showButtons =
-              _planets.isNotEmpty &&
-              _popupStack.isEmpty &&
-              _activePanel == null;
           return Stack(
             children: [
               Center(child: wheel),
-              if (showButtons)
+              if (_planets.isNotEmpty && _popupStack.isEmpty)
                 Positioned(
                   left: 16,
                   right: 16,
@@ -307,13 +227,10 @@ class _ChartWheelState extends State<ChartWheel> {
                   child: MobileChartButtons(
                     color: color,
                     backdropColor: backdropColor,
-                    onSoulStances: () =>
-                        setState(() => _activePanel = _MobilePanel.soulStances),
-                    onYourBeings: () =>
-                        setState(() => _activePanel = _MobilePanel.yourBeings),
+                    onSoulStances: () => _openPopup(SoulStancesPopup()),
+                    onYourBeings: () => _openPopup(YourBeingsPopup()),
                   ),
                 ),
-              if (_activePanel != null) _buildMobilePanel(color, isDark),
               if (_popupStack.isNotEmpty) _buildOverlay(color, isDark),
             ],
           );
@@ -675,7 +592,83 @@ class _ChartWheelState extends State<ChartWheel> {
         onBack: onBack,
         onPush: _pushPopup,
       ),
+      SoulStancesPopup() => _buildMobilePanelOverlay(
+        color: color,
+        isDark: isDark,
+        child: SoulStancesPanel(
+          planets: _planets,
+          uncertainty: widget.uncertainty,
+          color: color,
+          backdropColor: Colors.transparent,
+          fontSize: 16,
+          onOpen: _pushPopup,
+        ),
+      ),
+      YourBeingsPopup() => _buildMobilePanelOverlay(
+        color: color,
+        isDark: isDark,
+        child: BeingsPanel(
+          planets: _planets,
+          uncertainty: widget.uncertainty,
+          color: color,
+          backdropColor: Colors.transparent,
+          fontSize: 16,
+          onOpen: _pushPopup,
+        ),
+      ),
     };
+  }
+
+  Widget _buildMobilePanelOverlay({
+    required Color color,
+    required bool isDark,
+    required Widget child,
+  }) {
+    final cardBg = isDark ? const Color(0xF0151015) : const Color(0xF0F5F1EA);
+    return GestureDetector(
+      onTap: _closeOverlay,
+      behavior: HitTestBehavior.opaque,
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: GestureDetector(
+          onTap: () {},
+          child: Container(
+            margin: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.5,
+            ),
+            decoration: BoxDecoration(
+              color: cardBg,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: color.withValues(alpha: 0.3)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: IconButton(
+                      onPressed: _closeOverlay,
+                      icon: Icon(Icons.close, color: color, size: 20),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ),
+                ),
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                    child: child,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildBeingShell(

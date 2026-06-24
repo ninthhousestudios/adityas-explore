@@ -31,3 +31,7 @@ class UncertaintyPopup extends PopupState {
   final UncertainKind kind;
   UncertaintyPopup(this.planet, this.kind);
 }
+
+class SoulStancesPopup extends PopupState {}
+
+class YourBeingsPopup extends PopupState {}
