@@ -43,6 +43,7 @@ class AssetPreloader {
         for (final type in _beingTypes) beingTypeGlyphPath(type),
         ..._beingTypeEmblems,
         for (final name in defaultGrahas) planetImagePath(name),
+        for (var sign = 1; sign <= 12; sign++) beingImagePath(sign, 'aditya'),
       ].whereType<String>(),
       imageConfig,
     );

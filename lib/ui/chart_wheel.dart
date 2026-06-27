@@ -305,7 +305,8 @@ class _ChartWheelState extends State<ChartWheel> {
     final data = adityaSigns[sign]!;
     final name = data.name.toUpperCase();
     final fontSize = half * 0.052;
-    final naturalSpacing = fontSize * 0.85 / radius;
+    final scaledSize = MediaQuery.textScalerOf(context).scale(fontSize);
+    final naturalSpacing = scaledSize * 0.85 / radius;
     final maxSpan = 0.85 * pi / 6;
     final totalNatural = name.length > 1
         ? (name.length - 1) * naturalSpacing
@@ -350,7 +351,8 @@ class _ChartWheelState extends State<ChartWheel> {
     VoidCallback onTap,
   ) {
     final pos = polarToCartesian(angle, radius, center);
-    final boxSize = fontSize * 1.2;
+    final scaledSize = MediaQuery.textScalerOf(context).scale(fontSize);
+    final boxSize = scaledSize * 1.2;
     return Positioned(
       left: pos.dx - boxSize / 2,
       top: pos.dy - boxSize / 2,
