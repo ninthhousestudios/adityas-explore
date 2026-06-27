@@ -49,11 +49,16 @@ class AssetPreloader {
     BeingUncertainty? uncertainty,
   }) async {
     final imageConfig = createLocalImageConfiguration(context);
+    final detail = <String>{};
     final primary = <String>{};
     final uncertain = <String>{};
 
     for (final p in chart.grahas) {
       if (!defaultGrahas.contains(p.body.name)) continue;
+      detail
+        ..add(planetImagePath(p.body.name))
+        ..add(beingTypeEmblemPath(p.trimsamsaBeing.type.name))
+        ..add(beingTypeEmblemPath(p.horaBeing.type.name));
       primary
         ..add(
           beingImagePath(
@@ -67,13 +72,16 @@ class AssetPreloader {
       if (options == null) continue;
 
       for (final being in options.trimsamsaFor(p.body.name)) {
+        detail.add(beingTypeEmblemPath(being.type.name));
         uncertain.add(beingImagePath(being.signNumber, being.type.name));
       }
       for (final being in options.horaFor(p.body.name)) {
+        detail.add(beingTypeEmblemPath(being.type.name));
         uncertain.add(beingImagePath(being.signNumber, being.type.name));
       }
     }
 
+    await _precacheImages(detail.where((path) => path.isNotEmpty), imageConfig);
     await _precacheImages(
       primary.where((path) => path.isNotEmpty),
       imageConfig,
