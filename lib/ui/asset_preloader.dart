@@ -21,6 +21,15 @@ class AssetPreloader {
     'apsara',
     'naga',
   ];
+  static const _beingTypeEmblems = [
+    'assets/images/emblems/adityas.webp',
+    'assets/images/emblems/rishis.webp',
+    'assets/images/emblems/yakshas.webp',
+    'assets/images/emblems/rakshasas.webp',
+    'assets/images/emblems/gandharvas.webp',
+    'assets/images/emblems/apsaras.webp',
+    'assets/images/emblems/nagas.webp',
+  ];
 
   const AssetPreloader._();
 
@@ -31,7 +40,7 @@ class AssetPreloader {
       [
         'assets/images/hero-dawn-temple_seed4830.webp',
         for (final type in _beingTypes) beingTypeGlyphPath(type),
-        for (final type in _beingTypes) beingTypeEmblemPath(type),
+        ..._beingTypeEmblems,
         for (final name in defaultGrahas) planetImagePath(name),
       ].whereType<String>(),
       imageConfig,
@@ -49,7 +58,10 @@ class AssetPreloader {
     BeingUncertainty? uncertainty,
   }) async {
     final imageConfig = createLocalImageConfiguration(context);
-    final detail = <String>{};
+    final detail = <String>{
+      ..._beingTypeEmblems,
+      for (final name in defaultGrahas) planetImagePath(name),
+    };
     final primary = <String>{};
     final uncertain = <String>{};
 
