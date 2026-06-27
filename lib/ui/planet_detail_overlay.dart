@@ -4,6 +4,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'aditya_data.dart';
 import 'overlay_shell.dart';
 import 'planet_content.dart';
+import 'stable_asset_image.dart';
 
 class PlanetDetailOverlay extends StatelessWidget {
   final Color color;
@@ -58,15 +59,7 @@ class PlanetDetailOverlay extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 16),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.asset(
-                    imagePath,
-                    width: double.infinity,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) => const SizedBox.shrink(),
-                  ),
-                ),
+                StableAssetImage(path: imagePath),
               ],
             ),
     );

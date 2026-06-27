@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'being_type_content.dart';
 import 'overlay_shell.dart';
+import 'stable_asset_image.dart';
 
 class BeingTypeDetailOverlay extends StatelessWidget {
   final Color color;
@@ -48,15 +49,7 @@ class BeingTypeDetailOverlay extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 16),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.asset(
-                    emblemPath,
-                    width: double.infinity,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) => const SizedBox.shrink(),
-                  ),
-                ),
+                StableAssetImage(path: emblemPath),
                 const SizedBox(height: 16),
                 Text(
                   content.description,

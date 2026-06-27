@@ -100,11 +100,12 @@ class UncertaintyChooser extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(vertical: 6),
                         child: Row(
                           children: [
-                            Text(
-                              '▸  ',
-                              style: TextStyle(
+                            SizedBox(
+                              width: 20,
+                              child: Icon(
+                                Icons.arrow_right,
                                 color: accentColor,
-                                fontSize: 14,
+                                size: 18,
                               ),
                             ),
                             Text(

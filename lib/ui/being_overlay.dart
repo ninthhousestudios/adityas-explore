@@ -6,6 +6,7 @@ import '../share_util.dart'
 import 'aditya_data.dart';
 import 'being_content.dart';
 import 'chart_wheel_layout.dart';
+import 'stable_asset_image.dart';
 
 ({Widget? leading, String title})? beingOverlayHeader({
   required Color color,
@@ -101,23 +102,14 @@ class BeingOverlayBody extends StatelessWidget {
         ...infoRows,
         const SizedBox(height: 16),
         if (imagePath.isNotEmpty)
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: Image.asset(
-              imagePath,
-              width: double.infinity,
-              fit: BoxFit.cover,
-              errorBuilder: (_, _, _) => Container(
-                height: 160,
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.05),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Center(
-                  child: Text(
-                    'Image not found',
-                    style: TextStyle(color: dimColor),
-                  ),
+          StableAssetImage(
+            path: imagePath,
+            errorBuilder: (_) => Container(
+              color: color.withValues(alpha: 0.05),
+              child: Center(
+                child: Text(
+                  'Image not found',
+                  style: TextStyle(color: dimColor),
                 ),
               ),
             ),
