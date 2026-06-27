@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:arrow_core/arrow_core.dart' as arrow;
 import 'package:flutter/material.dart';
@@ -107,24 +108,21 @@ class AssetPreloader {
   static Future<void> _precacheImages(
     Iterable<String> paths,
     ImageConfiguration config,
-  ) async {
-    for (final path in paths) {
-      try {
-        await _precacheImage(AssetImage(path), config);
-      } catch (_) {
-        // One failed preload should not prevent later, higher-value images.
-      }
-    }
+  ) {
+    return Future.wait(
+      paths.map(
+        (path) => _precacheImage(AssetImage(path), config).catchError((_) {}),
+      ),
+    );
   }
 
-  static Future<void> _precacheSvgs(Iterable<String> paths) async {
-    for (final path in paths) {
-      try {
-        await SvgAssetLoader(path).loadBytes(null);
-      } catch (_) {
-        // SVGs are decorative/contextual here; let the normal widget handle it.
-      }
-    }
+  static Future<void> _precacheSvgs(Iterable<String> paths) {
+    return Future.wait(
+      paths.map(
+        (path) =>
+            SvgAssetLoader(path).loadBytes(null).catchError((_) => ByteData(0)),
+      ),
+    );
   }
 
   static Future<void> _precacheImage(
