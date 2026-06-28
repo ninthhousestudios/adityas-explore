@@ -6,6 +6,7 @@ import 'package:arrow_core/arrow_core.dart' as arrow;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -24,10 +25,25 @@ import 'ui/chart_wheel.dart';
 import 'ui/account_button.dart';
 import 'ui/theme.dart';
 
-void main() {
-  WidgetsFlutterBinding.ensureInitialized();
-  SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-  runApp(const ExploreApp());
+const _sentryDsn =
+    'https://cc5b1def15a852176a16cded3ecfc029@o4511643365933056.ingest.us.sentry.io/4511643385331716';
+
+Future<void> main() async {
+  await SentryFlutter.init(
+    (options) {
+      options.dsn = _sentryDsn;
+      options.tracesSampleRate = 0.2;
+      options.environment = const String.fromEnvironment(
+        'SENTRY_ENVIRONMENT',
+        defaultValue: 'production',
+      );
+    },
+    appRunner: () {
+      WidgetsFlutterBinding.ensureInitialized();
+      SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+      runApp(const ExploreApp());
+    },
+  );
 }
 
 class ExploreApp extends StatefulWidget {
@@ -87,6 +103,7 @@ class _ExploreAppState extends State<ExploreApp> {
       unawaited(AssetPreloader.precacheStaticAssets(context));
     } catch (e, s) {
       dev.log('Boot failed: $e\n$s', name: 'APP');
+      await Sentry.captureException(e, stackTrace: s);
       setState(() => _bootError = e.toString());
     }
   }
@@ -263,6 +280,7 @@ class _ExploreAppState extends State<ExploreApp> {
       title: 'The Adityas — Explore',
       debugShowCheckedModeBanner: false,
       theme: _useLight ? lightTheme() : immersiveTheme(),
+      navigatorObservers: [SentryNavigatorObserver()],
       home: _ExplorePage(
         useLight: _useLight,
         onToggleTheme: _toggleTheme,
