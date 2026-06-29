@@ -3,10 +3,22 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../api/chart_service.dart';
 import '../navigate.dart' if (dart.library.js_interop) '../navigate_web.dart';
 
 class AccountButton extends StatefulWidget {
-  const AccountButton({super.key});
+  final bool hasChart;
+  final List<SavedChartSummary> savedCharts;
+  final VoidCallback? onSaveChartToServer;
+  final void Function(String chartId)? onLoadSavedChart;
+
+  const AccountButton({
+    super.key,
+    this.hasChart = false,
+    this.savedCharts = const [],
+    this.onSaveChartToServer,
+    this.onLoadSavedChart,
+  });
 
   @override
   State<AccountButton> createState() => _AccountButtonState();
@@ -35,12 +47,15 @@ class _AccountButtonState extends State<AccountButton> {
   @override
   Widget build(BuildContext context) {
     if (_user != null) {
+      final atLimit = widget.savedCharts.length >= 25;
       return PopupMenuButton<String>(
         icon: const Icon(Icons.person),
         tooltip: 'Account',
         position: PopupMenuPosition.under,
         onSelected: (value) {
           if (value == 'account') navigateToUrl('/account/');
+          if (value == 'save_chart') widget.onSaveChartToServer?.call();
+          if (value == 'my_charts') _showMyChartsDialog(context);
           if (value == 'sign_out') _signOut();
         },
         itemBuilder: (context) => [
@@ -53,6 +68,29 @@ class _AccountButtonState extends State<AccountButton> {
                   context,
                 ).colorScheme.onSurface.withValues(alpha: 0.7),
               ),
+            ),
+          ),
+          const PopupMenuDivider(),
+          if (widget.hasChart)
+            PopupMenuItem(
+              value: 'save_chart',
+              enabled: !atLimit,
+              child: Row(
+                children: [
+                  const Icon(Icons.save, size: 20),
+                  const SizedBox(width: 12),
+                  Text(atLimit ? 'Save Chart (limit reached)' : 'Save Chart'),
+                ],
+              ),
+            ),
+          const PopupMenuItem(
+            value: 'my_charts',
+            child: Row(
+              children: [
+                Icon(Icons.folder, size: 20),
+                SizedBox(width: 12),
+                Text('My Charts'),
+              ],
             ),
           ),
           const PopupMenuDivider(),
@@ -93,6 +131,16 @@ class _AccountButtonState extends State<AccountButton> {
 
   void _showSignInDialog(BuildContext context) {
     showDialog(context: context, builder: (context) => const _SignInDialog());
+  }
+
+  void _showMyChartsDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => _MyChartsDialog(
+        charts: widget.savedCharts,
+        onSelect: widget.onLoadSavedChart,
+      ),
+    );
   }
 }
 
@@ -364,6 +412,119 @@ class _SignInDialogState extends State<_SignInDialog> {
                   ),
                 ),
               ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MyChartsDialog extends StatelessWidget {
+  final List<SavedChartSummary> charts;
+  final void Function(String chartId)? onSelect;
+
+  const _MyChartsDialog({required this.charts, this.onSelect});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final color = isDark ? Colors.white : Colors.black;
+    final cardBg = isDark ? const Color(0xF0151015) : const Color(0xF0F5F1EA);
+    final accent = isDark ? const Color(0xFFD4A853) : const Color(0xFF8B6F37);
+
+    return Center(
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 400, maxHeight: 500),
+        margin: const EdgeInsets.all(32),
+        padding: const EdgeInsets.all(32),
+        decoration: BoxDecoration(
+          color: cardBg,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color.withValues(alpha: 0.3)),
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  const Spacer(),
+                  Text(
+                    'My Charts',
+                    style: TextStyle(
+                      color: color,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: IconButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: Icon(Icons.close, color: color, size: 20),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              if (charts.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 24),
+                  child: Text(
+                    'No saved charts yet.\nSave a chart from the explorer to see it here.',
+                    style: TextStyle(
+                      color: color.withValues(alpha: 0.6),
+                      fontSize: 14,
+                      height: 1.5,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                )
+              else
+                Flexible(
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: charts.length,
+                    separatorBuilder: (_, _) => Divider(
+                      color: color.withValues(alpha: 0.15),
+                      height: 1,
+                    ),
+                    itemBuilder: (context, index) {
+                      final chart = charts[index];
+                      return InkWell(
+                        borderRadius: BorderRadius.circular(8),
+                        onTap: () {
+                          Navigator.of(context).pop();
+                          onSelect?.call(chart.id);
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 12,
+                            horizontal: 8,
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.auto_awesome, size: 18, color: accent),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  chart.name,
+                                  style: TextStyle(color: color, fontSize: 15),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
             ],
           ),
         ),

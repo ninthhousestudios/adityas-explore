@@ -393,7 +393,7 @@ class _ExploreAppState extends State<ExploreApp> {
         calculating: _calculating,
         waitlistSigned: _waitlistSigned,
         onWaitlistSigned: _onWaitlistSigned,
-        isLoggedIn: _user != null,
+        hasChart: _chartData != null,
         savedCharts: _savedCharts,
         onSaveChartToServer: _saveChartToServer,
         onLoadSavedChart: _loadSavedChart,
@@ -418,7 +418,7 @@ class _ExplorePage extends StatelessWidget {
   final bool calculating;
   final bool waitlistSigned;
   final VoidCallback onWaitlistSigned;
-  final bool isLoggedIn;
+  final bool hasChart;
   final List<SavedChartSummary> savedCharts;
   final VoidCallback onSaveChartToServer;
   final void Function(String chartId) onLoadSavedChart;
@@ -439,58 +439,18 @@ class _ExplorePage extends StatelessWidget {
     required this.calculating,
     required this.waitlistSigned,
     required this.onWaitlistSigned,
-    required this.isLoggedIn,
+    required this.hasChart,
     required this.savedCharts,
     required this.onSaveChartToServer,
     required this.onLoadSavedChart,
   });
 
-  List<Widget> _buildSettingsMenuChildren(BuildContext context) => [
-    if (isLoggedIn && chartData != null)
-      MenuItemButton(
-        onPressed: savedCharts.length >= 25 ? null : onSaveChartToServer,
-        leadingIcon: const Icon(Icons.save, size: 20),
-        child: Text(
-          savedCharts.length >= 25
-              ? 'Save Chart (limit reached)'
-              : 'Save Chart',
-        ),
-      ),
-    if (isLoggedIn)
-      SubmenuButton(
-        menuChildren: [
-          if (savedCharts.isEmpty)
-            const MenuItemButton(
-              onPressed: null,
-              leadingIcon: Icon(Icons.info_outline, size: 18),
-              child: Text('No saved charts'),
-            ),
-          for (final chart in savedCharts)
-            MenuItemButton(
-              onPressed: () => onLoadSavedChart(chart.id),
-              child: Text(chart.name),
-            ),
-        ],
-        leadingIcon: const Icon(Icons.folder, size: 20),
-        child: const Text('My Charts'),
-      ),
-    if (chartData != null)
-      MenuItemButton(
-        onPressed: onSaveChart,
-        leadingIcon: const Icon(Icons.save_alt, size: 20),
-        child: const Text('Download chart file'),
-      ),
-    MenuItemButton(
-      onPressed: onOpenChart,
-      leadingIcon: const Icon(Icons.folder_open, size: 20),
-      child: const Text('Open Chart'),
-    ),
-    MenuItemButton(
-      onPressed: () => _showAbout(context),
-      leadingIcon: const Icon(Icons.info_outline, size: 20),
-      child: const Text('About'),
-    ),
-  ];
+  Widget _accountButton() => AccountButton(
+    hasChart: hasChart,
+    savedCharts: savedCharts,
+    onSaveChartToServer: onSaveChartToServer,
+    onLoadSavedChart: onLoadSavedChart,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -513,33 +473,83 @@ class _ExplorePage extends StatelessWidget {
         centerTitle: true,
         actions: isMobile
             ? [
-                MenuAnchor(
-                  builder: (context, controller, child) => IconButton(
-                    icon: const Icon(Icons.menu),
-                    tooltip: 'Menu',
-                    onPressed: () => controller.isOpen
-                        ? controller.close()
-                        : controller.open(),
-                  ),
-                  menuChildren: [
-                    MenuItemButton(
-                      onPressed: onToggleTheme,
-                      leadingIcon: Icon(
-                        useLight ? Icons.dark_mode : Icons.light_mode,
-                        size: 20,
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.menu),
+                  tooltip: 'Menu',
+                  position: PopupMenuPosition.under,
+                  onSelected: (value) {
+                    switch (value) {
+                      case 'theme':
+                        onToggleTheme();
+                      case 'new_chart':
+                        onNewChart();
+                      case 'save_chart':
+                        onSaveChart();
+                      case 'open_chart':
+                        onOpenChart();
+                      case 'about':
+                        _showAbout(context);
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    PopupMenuItem(
+                      value: 'theme',
+                      child: Row(
+                        children: [
+                          Icon(
+                            useLight ? Icons.dark_mode : Icons.light_mode,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 12),
+                          Text(useLight ? 'Immersive theme' : 'Light theme'),
+                        ],
                       ),
-                      child: Text(useLight ? 'Immersive theme' : 'Light theme'),
                     ),
                     if (chartData != null)
-                      MenuItemButton(
-                        onPressed: onNewChart,
-                        leadingIcon: const Icon(Icons.add, size: 20),
-                        child: const Text('New Chart'),
+                      const PopupMenuItem(
+                        value: 'new_chart',
+                        child: Row(
+                          children: [
+                            Icon(Icons.add, size: 20),
+                            SizedBox(width: 12),
+                            Text('New Chart'),
+                          ],
+                        ),
                       ),
-                    ..._buildSettingsMenuChildren(context),
+                    if (chartData != null)
+                      const PopupMenuItem(
+                        value: 'save_chart',
+                        child: Row(
+                          children: [
+                            Icon(Icons.save_alt, size: 20),
+                            SizedBox(width: 12),
+                            Text('Download chart file'),
+                          ],
+                        ),
+                      ),
+                    const PopupMenuItem(
+                      value: 'open_chart',
+                      child: Row(
+                        children: [
+                          Icon(Icons.folder_open, size: 20),
+                          SizedBox(width: 12),
+                          Text('Open Chart'),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'about',
+                      child: Row(
+                        children: [
+                          Icon(Icons.info_outline, size: 20),
+                          SizedBox(width: 12),
+                          Text('About'),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
-                const AccountButton(),
+                _accountButton(),
               ]
             : [
                 if (chartData != null)
@@ -575,17 +585,50 @@ class _ExplorePage extends StatelessWidget {
                   icon: Icon(useLight ? Icons.dark_mode : Icons.light_mode),
                   tooltip: useLight ? 'Immersive theme' : 'Light theme',
                 ),
-                MenuAnchor(
-                  builder: (context, controller, child) => IconButton(
-                    icon: const Icon(Icons.settings),
-                    tooltip: 'Settings',
-                    onPressed: () => controller.isOpen
-                        ? controller.close()
-                        : controller.open(),
-                  ),
-                  menuChildren: _buildSettingsMenuChildren(context),
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.settings),
+                  tooltip: 'Settings',
+                  position: PopupMenuPosition.under,
+                  onSelected: (value) {
+                    if (value == 'save_chart') onSaveChart();
+                    if (value == 'open_chart') onOpenChart();
+                    if (value == 'about') _showAbout(context);
+                  },
+                  itemBuilder: (context) => [
+                    if (chartData != null)
+                      const PopupMenuItem(
+                        value: 'save_chart',
+                        child: Row(
+                          children: [
+                            Icon(Icons.save_alt, size: 20),
+                            SizedBox(width: 12),
+                            Text('Download chart file'),
+                          ],
+                        ),
+                      ),
+                    const PopupMenuItem(
+                      value: 'open_chart',
+                      child: Row(
+                        children: [
+                          Icon(Icons.folder_open, size: 20),
+                          SizedBox(width: 12),
+                          Text('Open Chart'),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'about',
+                      child: Row(
+                        children: [
+                          Icon(Icons.info_outline, size: 20),
+                          SizedBox(width: 12),
+                          Text('About'),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-                const AccountButton(),
+                _accountButton(),
               ],
       ),
       body: _buildBody(context),
