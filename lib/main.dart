@@ -76,6 +76,7 @@ class _ExploreAppState extends State<ExploreApp> {
   StreamSubscription<AuthState>? _authSub;
   final ChartService _chartService = ChartService();
   final _messengerKey = GlobalKey<ScaffoldMessengerState>();
+  final _navigatorKey = GlobalKey<NavigatorState>();
 
   static const _zoomMin = 0.6;
   static const _zoomMax = 1.8;
@@ -192,8 +193,10 @@ class _ExploreAppState extends State<ExploreApp> {
     final token = Supabase.instance.client.auth.currentSession?.accessToken;
     if (token == null) return;
 
+    final dialogContext = _navigatorKey.currentContext;
+    if (dialogContext == null) return;
     final name = await showDialog<String>(
-      context: context,
+      context: dialogContext,
       builder: (ctx) => _SaveChartDialog(initialName: chartData.name),
     );
     if (name == null || name.trim().isEmpty) return;
@@ -369,6 +372,7 @@ class _ExploreAppState extends State<ExploreApp> {
       debugShowCheckedModeBanner: false,
       theme: _useLight ? lightTheme() : immersiveTheme(),
       scaffoldMessengerKey: _messengerKey,
+      navigatorKey: _navigatorKey,
       navigatorObservers: [SentryNavigatorObserver()],
       home: _ExplorePage(
         useLight: _useLight,
