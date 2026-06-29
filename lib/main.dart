@@ -75,6 +75,7 @@ class _ExploreAppState extends State<ExploreApp> {
   List<SavedChartSummary> _savedCharts = [];
   StreamSubscription<AuthState>? _authSub;
   final ChartService _chartService = ChartService();
+  final _messengerKey = GlobalKey<ScaffoldMessengerState>();
 
   static const _zoomMin = 0.6;
   static const _zoomMax = 1.8;
@@ -90,6 +91,10 @@ class _ExploreAppState extends State<ExploreApp> {
   void dispose() {
     _authSub?.cancel();
     super.dispose();
+  }
+
+  void _showSnackBar(String message) {
+    _messengerKey.currentState?.showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _boot() async {
@@ -197,20 +202,17 @@ class _ExploreAppState extends State<ExploreApp> {
       final toml = TomlChartFormat.encode(chartData);
       await _chartService.create(token, name.trim(), toml);
       await _refreshSavedCharts();
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Chart "$name" saved')));
-      }
+      if (mounted) _showSnackBar('Chart "$name" saved');
     } on ChartApiException catch (e) {
       if (mounted) {
-        final msg = e.statusCode == 409
-            ? 'Chart limit reached (25). Delete a chart from your account to save more.'
-            : 'Error: ${e.message}';
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(msg)));
+        _showSnackBar(
+          e.statusCode == 409
+              ? 'Chart limit reached (25). Delete a chart from your account to save more.'
+              : 'Error: ${e.message}',
+        );
       }
+    } catch (e) {
+      if (mounted) _showSnackBar('Error saving chart: $e');
     }
   }
 
@@ -227,11 +229,7 @@ class _ExploreAppState extends State<ExploreApp> {
       );
       await _submitChart(chartData, timeUncertainty);
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error loading chart: $e')));
-      }
+      if (mounted) _showSnackBar('Error loading chart: $e');
     }
   }
 
@@ -284,9 +282,7 @@ class _ExploreAppState extends State<ExploreApp> {
       debugPrint('Error calculating chart: $e\n$s');
       if (!mounted || token != _calcToken) return;
       setState(() => _calculating = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      _showSnackBar('Error: $e');
     }
   }
 
@@ -349,11 +345,7 @@ class _ExploreAppState extends State<ExploreApp> {
     } catch (e, s) {
       debugPrint('Error opening chart: $e\n$s');
       setState(() => _calculating = false);
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error: $e')));
-      }
+      if (mounted) _showSnackBar('Error: $e');
     }
   }
 
@@ -376,6 +368,7 @@ class _ExploreAppState extends State<ExploreApp> {
       title: 'The Adityas — Explore',
       debugShowCheckedModeBanner: false,
       theme: _useLight ? lightTheme() : immersiveTheme(),
+      scaffoldMessengerKey: _messengerKey,
       navigatorObservers: [SentryNavigatorObserver()],
       home: _ExplorePage(
         useLight: _useLight,
