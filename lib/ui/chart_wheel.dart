@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../astro/being_uncertainty.dart';
+import '../navigate.dart' if (dart.library.js_interop) '../navigate_web.dart';
 import 'aditya_data.dart';
 import 'being_overlay.dart';
 import 'being_type_detail_overlay.dart';
@@ -280,6 +281,12 @@ class _ChartWheelState extends State<ChartWheel> {
                       backdropColor: backdropColor,
                       fontSize: half * 0.032,
                       onOpen: _openPopup,
+                    ),
+                    const SizedBox(height: 8),
+                    _ShopCta(
+                      color: color,
+                      backdropColor: backdropColor,
+                      fontSize: half * 0.032,
                     ),
                     const SizedBox(height: 8),
                     WaitlistCta(
@@ -703,4 +710,42 @@ class _ChartWheelState extends State<ChartWheel> {
 
   static String _capitalize(String s) =>
       s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
+}
+
+class _ShopCta extends StatelessWidget {
+  final Color color;
+  final Color backdropColor;
+  final double fontSize;
+
+  const _ShopCta({
+    required this.color,
+    required this.backdropColor,
+    required this.fontSize,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () => openUrlNewTab('https://84beings.com/shop/'),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: backdropColor,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: color),
+          ),
+          child: Text(
+            'Shop in-depth reports',
+            style: TextStyle(
+              color: color,
+              fontSize: fontSize,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

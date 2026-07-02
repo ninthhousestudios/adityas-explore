@@ -43,7 +43,7 @@ class WaitlistCta extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'In-depth reports coming soon.',
+                  'More reports coming soon.',
                   style: TextStyle(
                     color: color,
                     fontSize: fontSize,
