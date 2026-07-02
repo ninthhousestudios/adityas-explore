@@ -22,6 +22,7 @@ docs/build-and-deploy-to-zola.md
 docs/uxui-for-cards-sharing-physical.md
 docs/google-apis.md
 docs/push-explore.md
+docs/sentry-dsn.md
 assets/images/
 assets/text
 .wrangler/

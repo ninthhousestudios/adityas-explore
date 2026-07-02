@@ -139,7 +139,7 @@ class _WaitlistDialogState extends State<WaitlistDialog> {
         ),
         const SizedBox(height: 16),
         Text(
-          "In-depth reports are coming soon. Enter your email to be notified when they’re available.",
+          "More reports and products coming soon. Enter your email to be notified when they’re available.",
           style: TextStyle(
             color: color.withValues(alpha: 0.85),
             fontSize: 14,
