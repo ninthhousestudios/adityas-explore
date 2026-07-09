@@ -34,6 +34,8 @@ class ChartApiException implements Exception {
   String toString() => message;
 }
 
+typedef TokenProvider = Future<String?> Function({bool forceRefresh});
+
 class ChartService {
   static final String _baseUrl = const String.fromEnvironment(
     'API_BASE_URL',
@@ -41,17 +43,40 @@ class ChartService {
   );
 
   final http.Client _client;
+  final TokenProvider _tokenProvider;
 
-  ChartService({http.Client? client}) : _client = client ?? http.Client();
+  ChartService({required TokenProvider tokenProvider, http.Client? client})
+    : _tokenProvider = tokenProvider,
+      _client = client ?? http.Client();
 
   Map<String, String> _headers(String token) => {
     'Authorization': 'Bearer $token',
     'Content-Type': 'application/json',
   };
 
-  Future<List<SavedChartSummary>> list(String token) async {
+  Future<http.Response> _request(
+    Future<http.Response> Function(Map<String, String> headers) send,
+  ) async {
+    var token = await _tokenProvider();
+    if (token == null) {
+      throw ChartApiException('Not authenticated', 401);
+    }
+    var response = await send(_headers(token));
+    if (response.statusCode == 401) {
+      token = await _tokenProvider(forceRefresh: true);
+      if (token == null) {
+        throw ChartApiException('Session expired', 401);
+      }
+      response = await send(_headers(token));
+    }
+    return response;
+  }
+
+  Future<List<SavedChartSummary>> list() async {
     final uri = Uri.parse('$_baseUrl/v1/charts');
-    final response = await _client.get(uri, headers: _headers(token));
+    final response = await _request(
+      (headers) => _client.get(uri, headers: headers),
+    );
 
     if (response.statusCode != 200) {
       throw ChartApiException(_parseError(response), response.statusCode);
@@ -63,12 +88,14 @@ class ChartService {
         .toList();
   }
 
-  Future<String> create(String token, String name, String chartToml) async {
+  Future<String> create(String name, String chartToml) async {
     final uri = Uri.parse('$_baseUrl/v1/charts');
-    final response = await _client.post(
-      uri,
-      headers: _headers(token),
-      body: jsonEncode({'name': name, 'chart_toml': chartToml}),
+    final response = await _request(
+      (headers) => _client.post(
+        uri,
+        headers: headers,
+        body: jsonEncode({'name': name, 'chart_toml': chartToml}),
+      ),
     );
 
     if (response.statusCode != 201) {
@@ -79,9 +106,11 @@ class ChartService {
     return data['id'] as String;
   }
 
-  Future<String> fetchToml(String token, String id) async {
+  Future<String> fetchToml(String id) async {
     final uri = Uri.parse('$_baseUrl/v1/charts/$id');
-    final response = await _client.get(uri, headers: _headers(token));
+    final response = await _request(
+      (headers) => _client.get(uri, headers: headers),
+    );
 
     if (response.statusCode != 200) {
       throw ChartApiException(_parseError(response), response.statusCode);

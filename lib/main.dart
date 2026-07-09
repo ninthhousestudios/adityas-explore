@@ -74,7 +74,15 @@ class _ExploreAppState extends State<ExploreApp> {
   User? _user;
   List<SavedChartSummary> _savedCharts = [];
   StreamSubscription<AuthState>? _authSub;
-  final ChartService _chartService = ChartService();
+  final ChartService _chartService = ChartService(
+    tokenProvider: ({forceRefresh = false}) async {
+      final auth = Supabase.instance.client.auth;
+      if (forceRefresh) {
+        await auth.refreshSession();
+      }
+      return auth.currentSession?.accessToken;
+    },
+  );
   final _messengerKey = GlobalKey<ScaffoldMessengerState>();
   final _navigatorKey = GlobalKey<NavigatorState>();
 
@@ -176,12 +184,15 @@ class _ExploreAppState extends State<ExploreApp> {
   }
 
   Future<void> _refreshSavedCharts() async {
-    final token = Supabase.instance.client.auth.currentSession?.accessToken;
-    if (token == null) return;
     try {
-      final charts = await _chartService.list(token);
+      final charts = await _chartService.list();
       if (!mounted) return;
       setState(() => _savedCharts = charts);
+    } on ChartApiException catch (e) {
+      if (e.statusCode == 401 && mounted) {
+        setState(() => _savedCharts = []);
+      }
+      debugPrint('Error fetching saved charts: $e');
     } catch (e) {
       debugPrint('Error fetching saved charts: $e');
     }
@@ -190,8 +201,6 @@ class _ExploreAppState extends State<ExploreApp> {
   Future<void> _saveChartToServer() async {
     final chartData = _chartData;
     if (chartData == null) return;
-    final token = Supabase.instance.client.auth.currentSession?.accessToken;
-    if (token == null) return;
 
     final dialogContext = _navigatorKey.currentContext;
     if (dialogContext == null) return;
@@ -203,13 +212,15 @@ class _ExploreAppState extends State<ExploreApp> {
 
     try {
       final toml = TomlChartFormat.encode(chartData);
-      await _chartService.create(token, name.trim(), toml);
+      await _chartService.create(name.trim(), toml);
       await _refreshSavedCharts();
       if (mounted) _showSnackBar('Chart "$name" saved');
     } on ChartApiException catch (e) {
       if (mounted) {
         _showSnackBar(
-          e.statusCode == 409
+          e.statusCode == 401
+              ? 'Session expired — please sign in again'
+              : e.statusCode == 409
               ? 'Chart limit reached (25). Delete a chart from your account to save more.'
               : 'Error: ${e.message}',
         );
@@ -220,17 +231,22 @@ class _ExploreAppState extends State<ExploreApp> {
   }
 
   Future<void> _loadSavedChart(String chartId) async {
-    final token = Supabase.instance.client.auth.currentSession?.accessToken;
-    if (token == null) return;
-
     try {
-      final toml = await _chartService.fetchToml(token, chartId);
+      final toml = await _chartService.fetchToml(chartId);
       final chartData = TomlChartFormat.parseString(toml);
       final timeUncertainty = roddenToUncertainty(
         chartData.roddenRating,
         chartData.dateTime.hour,
       );
       await _submitChart(chartData, timeUncertainty);
+    } on ChartApiException catch (e) {
+      if (mounted) {
+        _showSnackBar(
+          e.statusCode == 401
+              ? 'Session expired — please sign in again'
+              : 'Error loading chart: $e',
+        );
+      }
     } catch (e) {
       if (mounted) _showSnackBar('Error loading chart: $e');
     }
