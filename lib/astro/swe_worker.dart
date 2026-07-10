@@ -2,15 +2,13 @@ import 'dart:isolate';
 
 import 'package:arrow_swe/arrow_swe.dart';
 
-import 'swe.dart';
 import 'swe_compute.dart';
 
 void sweWorkerEntry(List<Object?> args) {
   final mainPort = args[0] as SendPort;
   final ephePath = args[1] as String?;
 
-  final swe = openSwissEph(ephePath);
-  workerFacade = SweFacade(swe, ephePath: ephePath);
+  workerFacade = SweFacade.create(ephePath: ephePath);
 
   final port = ReceivePort();
   mainPort.send(port.sendPort);

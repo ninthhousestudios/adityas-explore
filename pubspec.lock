@@ -45,8 +45,8 @@ packages:
     dependency: "direct main"
     description:
       path: "arrow/calc"
-      ref: d70965243de9c14b22bc118adbd86b479497c44c
-      resolved-ref: d70965243de9c14b22bc118adbd86b479497c44c
+      ref: da6b453d2d358975602a57dfedfa49f0568b2116
+      resolved-ref: da6b453d2d358975602a57dfedfa49f0568b2116
       url: "https://github.com/ninthhousestudios/arjuna"
     source: git
     version: "0.1.0"
@@ -54,8 +54,8 @@ packages:
     dependency: "direct main"
     description:
       path: "arrow/core"
-      ref: d70965243de9c14b22bc118adbd86b479497c44c
-      resolved-ref: d70965243de9c14b22bc118adbd86b479497c44c
+      ref: da6b453d2d358975602a57dfedfa49f0568b2116
+      resolved-ref: da6b453d2d358975602a57dfedfa49f0568b2116
       url: "https://github.com/ninthhousestudios/arjuna"
     source: git
     version: "0.1.0"
@@ -63,8 +63,8 @@ packages:
     dependency: "direct main"
     description:
       path: "arrow/options"
-      ref: d70965243de9c14b22bc118adbd86b479497c44c
-      resolved-ref: d70965243de9c14b22bc118adbd86b479497c44c
+      ref: da6b453d2d358975602a57dfedfa49f0568b2116
+      resolved-ref: da6b453d2d358975602a57dfedfa49f0568b2116
       url: "https://github.com/ninthhousestudios/arjuna"
     source: git
     version: "0.1.0"
@@ -72,8 +72,8 @@ packages:
     dependency: "direct main"
     description:
       path: "arrow/swe"
-      ref: d70965243de9c14b22bc118adbd86b479497c44c
-      resolved-ref: d70965243de9c14b22bc118adbd86b479497c44c
+      ref: da6b453d2d358975602a57dfedfa49f0568b2116
+      resolved-ref: da6b453d2d358975602a57dfedfa49f0568b2116
       url: "https://github.com/ninthhousestudios/arjuna"
     source: git
     version: "0.1.0"
@@ -122,10 +122,10 @@ packages:
     dependency: transitive
     description:
       name: code_assets
-      sha256: "83ccdaa064c980b5596c35dd64a8d3ecc68620174ab9b90b6343b753aa721687"
+      sha256: bf394f466ba9205f1812a0433b392d6af280f155f56651eda7c18cc32ed493b8
       url: "https://pub.dev"
     source: hosted
-    version: "1.0.0"
+    version: "1.2.1"
   collection:
     dependency: transitive
     description:
@@ -277,14 +277,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.6.1"
-  glob:
-    dependency: transitive
-    description:
-      name: glob
-      sha256: c3f1ee72c96f8f78935e18aa8cecced9ab132419e8625dc187e1c2408efc20de
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.1.3"
   gotrue:
     dependency: transitive
     description:
@@ -305,10 +297,10 @@ packages:
     dependency: transitive
     description:
       name: hooks
-      sha256: "025f060e86d2d4c3c47b56e33caf7f93bf9283340f26d23424ebcfccf34f621e"
+      sha256: "9a62a50b50b769a737bc0a8ff381f333529df3ab746b2f6b02e83760231455ba"
       url: "https://pub.dev"
     source: hosted
-    version: "1.0.3"
+    version: "2.0.2"
   http:
     dependency: "direct main"
     description:
@@ -409,10 +401,10 @@ packages:
     dependency: transitive
     description:
       name: meta
-      sha256: "23f08335362185a5ea2ad3a4e597f1375e78bce8a040df5c600c8d3552ef2394"
+      sha256: "1741988757a65eb6b36abe716829688cf01910bbf91c34354ff7ec1c3de2b349"
       url: "https://pub.dev"
     source: hosted
-    version: "1.17.0"
+    version: "1.18.0"
   mime:
     dependency: transitive
     description:
@@ -421,22 +413,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.0.0"
-  native_toolchain_c:
-    dependency: transitive
-    description:
-      name: native_toolchain_c
-      sha256: "6ba77bb18063eebe9de401f5e6437e95e1438af0a87a3a39084fbd37c90df572"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.17.6"
   objective_c:
     dependency: transitive
     description:
       name: objective_c
-      sha256: "100a1c87616ab6ed41ec263b083c0ef3261ee6cd1dc3b0f35f8ddfa4f996fe52"
+      sha256: "6cb691c686fa2838c6deb34980d426145c2a5d537491cb83d463c33cdbc726ed"
       url: "https://pub.dev"
     source: hosted
-    version: "9.3.0"
+    version: "9.4.1"
   package_config:
     dependency: transitive
     description:
@@ -794,14 +778,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.15.0"
-  swisseph:
+  swisseph_rs:
     dependency: "direct main"
     description:
-      name: swisseph
-      sha256: "457822becdce652a94568ffc60f027b7cd5a43307a5e466d947b0522d3df68be"
+      name: swisseph_rs
+      sha256: "1296c6032ea35f7067a9ed7c19f26d5f7e125629a776183bd725c3b431ff3d9a"
       url: "https://pub.dev"
     source: hosted
-    version: "0.5.1"
+    version: "0.2.0"
   term_glyph:
     dependency: transitive
     description:
@@ -814,10 +798,10 @@ packages:
     dependency: transitive
     description:
       name: test_api
-      sha256: "8161c84903fd860b26bfdefb7963b3f0b68fee7adea0f59ef805ecca346f0c7a"
+      sha256: "949a932224383300f01be9221c39180316445ecb8e7547f70a41a35bf421fb9e"
       url: "https://pub.dev"
     source: hosted
-    version: "0.7.10"
+    version: "0.7.11"
   toml:
     dependency: transitive
     description:
@@ -1035,5 +1019,5 @@ packages:
     source: hosted
     version: "2.1.1"
 sdks:
-  dart: ">=3.11.1 <4.0.0"
+  dart: ">=3.12.0 <4.0.0"
   flutter: ">=3.38.4"

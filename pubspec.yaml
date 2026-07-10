@@ -4,7 +4,7 @@ publish_to: none
 version: 0.1.0
 
 environment:
-  sdk: ^3.11.1
+  sdk: ^3.12.0
 
 dependencies:
   flutter:
@@ -12,27 +12,27 @@ dependencies:
   arrow_options:
     git:
       url: https://github.com/ninthhousestudios/arjuna
-      ref: d70965243de9c14b22bc118adbd86b479497c44c
+      ref: da6b453d2d358975602a57dfedfa49f0568b2116
       path: arrow/options
   arrow_swe:
     git:
       url: https://github.com/ninthhousestudios/arjuna
-      ref: d70965243de9c14b22bc118adbd86b479497c44c
+      ref: da6b453d2d358975602a57dfedfa49f0568b2116
       path: arrow/swe
   arrow_core:
     git:
       url: https://github.com/ninthhousestudios/arjuna
-      ref: d70965243de9c14b22bc118adbd86b479497c44c
+      ref: da6b453d2d358975602a57dfedfa49f0568b2116
       path: arrow/core
   arrow_calc:
     git:
       url: https://github.com/ninthhousestudios/arjuna
-      ref: d70965243de9c14b22bc118adbd86b479497c44c
+      ref: da6b453d2d358975602a57dfedfa49f0568b2116
       path: arrow/calc
   charts_dart:
     git:
       url: https://github.com/ninthhousestudios/charts_dart
-  swisseph: ^0.5.1
+  swisseph_rs: ^0.2.0
   web: ^1.1.0
   path_provider: ^2.1.4
   shared_preferences: ^2.3.4

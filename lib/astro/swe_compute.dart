@@ -1,5 +1,4 @@
 import 'package:arrow_swe/arrow_swe.dart';
-import 'swe.dart';
 
 SweFacade? workerFacade;
 
@@ -16,12 +15,12 @@ void checkSweAborted() {
 }
 
 R runWithSwe<R>(String? ephePath, R Function(SweFacade facade) body) {
-  final facade = workerFacade;
-  if (facade != null) return body(facade);
-  final swe = openSwissEph(ephePath);
+  final cached = workerFacade;
+  if (cached != null) return body(cached);
+  final facade = SweFacade.create(ephePath: ephePath);
   try {
-    return body(SweFacade(swe, ephePath: ephePath));
+    return body(facade);
   } finally {
-    swe.close();
+    facade.dispose();
   }
 }
