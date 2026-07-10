@@ -42,6 +42,10 @@ dependencies:
   supabase_flutter: ^2.15.0
   sentry_flutter: ^9.22.0
 
+dependency_overrides:
+  swisseph_rs:
+    path: /home/josh/nhs/soft/astrology/swisseph.rs.dart
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

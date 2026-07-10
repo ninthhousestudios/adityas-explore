@@ -781,10 +781,9 @@ packages:
   swisseph_rs:
     dependency: "direct main"
     description:
-      name: swisseph_rs
-      sha256: "8cb8afc2aed1edea715c4c7db19567fe24305947f8b5097839c9432a55e60651"
-      url: "https://pub.dev"
-    source: hosted
+      path: "/home/josh/nhs/soft/astrology/swisseph.rs.dart"
+      relative: false
+    source: path
     version: "0.2.1"
   term_glyph:
     dependency: transitive
