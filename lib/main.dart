@@ -27,7 +27,7 @@ import 'ui/theme.dart';
 import 'api/chart_service.dart';
 
 const _sentryDsn =
-    'https://cc5b1def15a852176a16cded3ecfc029@o4511643365933056.ingest.us.sentry.io/4511643385331716';
+    'https://0decc8fd44d76a8374d3dc45f055f584@o4511643365933056.ingest.us.sentry.io/4511643403878400';
 
 Future<void> main() async {
   await SentryFlutter.init(

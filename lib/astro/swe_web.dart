@@ -19,7 +19,7 @@ String? get currentSweEphePath => '/ephe';
 Future<void> initSweEphePath() async {
   dev.log('swe: loading WASM module', name: 'IO');
   final base = web.document.baseURI;
-  final modulePath = Uri.parse(base).resolve('swisseph_ffi').toString();
+  final modulePath = Uri.parse(base).resolve('swisseph_ffi.js').toString();
   dev.log('swe: loading from $modulePath', name: 'IO');
   await swe.initializeWasm(modulePath);
   for (final asset in _epheAssets) {
