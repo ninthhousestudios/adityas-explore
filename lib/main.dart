@@ -123,17 +123,36 @@ class _ExploreAppState extends State<ExploreApp> {
       _useLight = _prefs.getBool('useLight') ?? false;
       _zoom = _prefs.getDouble('zoom') ?? 1.0;
       _waitlistSigned = _prefs.getBool('waitlist_signed') ?? false;
-      _user = Supabase.instance.client.auth.currentUser;
-      _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
-        if (!mounted) return;
-        final user = data.session?.user;
-        setState(() => _user = user);
-        if (user != null) {
-          _refreshSavedCharts();
-        } else {
-          setState(() => _savedCharts = []);
+      final auth = Supabase.instance.client.auth;
+      // Validate stored session before subscribing — a stale refresh token
+      // causes an uncaught async throw from the SDK's background refresh.
+      if (auth.currentSession != null) {
+        try {
+          await auth.refreshSession();
+        } on AuthApiException catch (e) {
+          dev.log('Stale session cleared: ${e.code}', name: 'AUTH');
+          await auth.signOut();
         }
-      });
+      }
+      _user = auth.currentUser;
+      _authSub = auth.onAuthStateChange.listen(
+        (data) {
+          if (!mounted) return;
+          final user = data.session?.user;
+          setState(() => _user = user);
+          if (user != null) {
+            _refreshSavedCharts();
+          } else {
+            setState(() => _savedCharts = []);
+          }
+        },
+        onError: (Object e) {
+          if (e is AuthApiException) {
+            dev.log('Auth error, signing out: ${e.code}', name: 'AUTH');
+            auth.signOut();
+          }
+        },
+      );
       if (_user != null) unawaited(_refreshSavedCharts());
 
       if (!mounted) return;
