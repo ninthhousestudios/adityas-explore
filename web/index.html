@@ -18,6 +18,7 @@
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
+  <script>if(!Array.prototype.at)Array.prototype.at=function(n){return n=Math.trunc(n)||0,this[n<0?n+this.length:n]}</script>
   <script src="swisseph.js"></script>
   <script>if (typeof SwissEph !== 'undefined') window.swisseph = SwissEph;</script>
   <script>
