@@ -7,3 +7,7 @@ void navigateToUrl(String url) {
 void openUrlNewTab(String url) {
   html.window.open(url, '_blank');
 }
+
+void reloadApp() {
+  html.window.location.reload();
+}

@@ -4,6 +4,7 @@ import 'dart:developer' as dev;
 
 import 'package:arrow_core/arrow_core.dart' as arrow;
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
@@ -169,6 +170,21 @@ class _ExploreAppState extends State<ExploreApp> {
       await Sentry.captureException(e, stackTrace: s);
       setState(() => _bootError = e.toString());
     }
+  }
+
+  void _retryBoot() {
+    if (kIsWeb) {
+      // On web, initializeWasm is single-flight and caches the *failed*
+      // future, so re-running _boot() in-process won't re-fetch the wasm.
+      // A hard page reload is the only reliable recovery.
+      reloadApp();
+      return;
+    }
+    setState(() {
+      _bootError = null;
+      _booted = false;
+    });
+    _boot();
   }
 
   void _toggleTheme() {
@@ -391,7 +407,48 @@ class _ExploreAppState extends State<ExploreApp> {
   Widget build(BuildContext context) {
     if (_bootError != null) {
       return MaterialApp(
-        home: Scaffold(body: Center(child: Text('Boot error: $_bootError'))),
+        debugShowCheckedModeBanner: false,
+        theme: immersiveTheme(),
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 380),
+                child: Padding(
+                  padding: const EdgeInsets.all(32),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.cloud_off_outlined,
+                        size: 48,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(height: 20),
+                      Text(
+                        "Couldn't load the chart explorer",
+                        style: Theme.of(context).textTheme.titleLarge,
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        'This is usually a temporary network issue. Please '
+                        'check your connection and try again.',
+                        style: Theme.of(context).textTheme.bodyMedium,
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 24),
+                      FilledButton(
+                        onPressed: _retryBoot,
+                        child: const Text('Try again'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
       );
     }
 
