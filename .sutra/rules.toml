@@ -80,3 +80,16 @@ suppress = [
   "bc7d2e877ec23d3c",  # complexity:zero → snake_case (component-scoped, redundant)
   "771652b24d3ad33a",  # complexity:zero → snake_case (component-scoped, redundant)
 ]
+
+# ═══════════════════════════════════════════════════════════════════
+# Forbidden patterns (vidhi/language-rules/dart.toml)
+# ═══════════════════════════════════════════════════════════════════
+
+[[constraint]]
+kind = "forbidden_pattern"
+language = "dart"
+query = '((comment) @match (#match? @match "^//+ *ignore(_for_file)?:"))'
+name = "no-ignore-comments"
+severity = "blocking"
+scope = "lib/"
+provenance = "house analysis_options.yaml baseline"
