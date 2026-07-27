@@ -16,8 +16,10 @@ linter:
     - avoid_dynamic_calls
     # Async hygiene: a Future silently dropped is a fire-and-forget bug
     - unawaited_futures
-    # Errors: catch what you can handle, throw only Error/Exception, log properly
-    - avoid_catches_without_on_clauses
+    # Errors: throw only Error/Exception, log properly.
+    # (avoid_catches_without_on_clauses dropped from the house baseline
+    # @ swe-dashboard/93 — Dart has no checked exceptions, so it demands a
+    # guessed type in the one position where "anything" is the right answer.)
     - only_throw_errors
     - avoid_print
     # const discipline (coding_discipline: Enforce Const Constructors)
