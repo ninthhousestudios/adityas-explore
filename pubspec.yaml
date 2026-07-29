@@ -12,27 +12,27 @@ dependencies:
   arrow_options:
     git:
       url: https://github.com/ninthhousestudios/arjuna
-      ref: da6b453d2d358975602a57dfedfa49f0568b2116
+      ref: bc3f5b43f41da8e5b4b95b8c9c63e2895472ebe7
       path: arrow/options
   arrow_swe:
     git:
       url: https://github.com/ninthhousestudios/arjuna
-      ref: da6b453d2d358975602a57dfedfa49f0568b2116
+      ref: bc3f5b43f41da8e5b4b95b8c9c63e2895472ebe7
       path: arrow/swe
   arrow_core:
     git:
       url: https://github.com/ninthhousestudios/arjuna
-      ref: da6b453d2d358975602a57dfedfa49f0568b2116
+      ref: bc3f5b43f41da8e5b4b95b8c9c63e2895472ebe7
       path: arrow/core
   arrow_calc:
     git:
       url: https://github.com/ninthhousestudios/arjuna
-      ref: da6b453d2d358975602a57dfedfa49f0568b2116
+      ref: bc3f5b43f41da8e5b4b95b8c9c63e2895472ebe7
       path: arrow/calc
   charts_dart:
     git:
       url: https://github.com/ninthhousestudios/charts_dart
-  swisseph_rs: ^0.2.2
+  swisseph_rs: ^0.3.1
   web: ^1.1.0
   path_provider: ^2.1.4
   shared_preferences: ^2.3.4

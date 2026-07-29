@@ -45,8 +45,8 @@ packages:
     dependency: "direct main"
     description:
       path: "arrow/calc"
-      ref: da6b453d2d358975602a57dfedfa49f0568b2116
-      resolved-ref: da6b453d2d358975602a57dfedfa49f0568b2116
+      ref: bc3f5b43f41da8e5b4b95b8c9c63e2895472ebe7
+      resolved-ref: bc3f5b43f41da8e5b4b95b8c9c63e2895472ebe7
       url: "https://github.com/ninthhousestudios/arjuna"
     source: git
     version: "0.1.0"
@@ -54,8 +54,8 @@ packages:
     dependency: "direct main"
     description:
       path: "arrow/core"
-      ref: da6b453d2d358975602a57dfedfa49f0568b2116
-      resolved-ref: da6b453d2d358975602a57dfedfa49f0568b2116
+      ref: bc3f5b43f41da8e5b4b95b8c9c63e2895472ebe7
+      resolved-ref: bc3f5b43f41da8e5b4b95b8c9c63e2895472ebe7
       url: "https://github.com/ninthhousestudios/arjuna"
     source: git
     version: "0.1.0"
@@ -63,8 +63,8 @@ packages:
     dependency: "direct main"
     description:
       path: "arrow/options"
-      ref: da6b453d2d358975602a57dfedfa49f0568b2116
-      resolved-ref: da6b453d2d358975602a57dfedfa49f0568b2116
+      ref: bc3f5b43f41da8e5b4b95b8c9c63e2895472ebe7
+      resolved-ref: bc3f5b43f41da8e5b4b95b8c9c63e2895472ebe7
       url: "https://github.com/ninthhousestudios/arjuna"
     source: git
     version: "0.1.0"
@@ -72,8 +72,8 @@ packages:
     dependency: "direct main"
     description:
       path: "arrow/swe"
-      ref: da6b453d2d358975602a57dfedfa49f0568b2116
-      resolved-ref: da6b453d2d358975602a57dfedfa49f0568b2116
+      ref: bc3f5b43f41da8e5b4b95b8c9c63e2895472ebe7
+      resolved-ref: bc3f5b43f41da8e5b4b95b8c9c63e2895472ebe7
       url: "https://github.com/ninthhousestudios/arjuna"
     source: git
     version: "0.1.0"
@@ -781,10 +781,11 @@ packages:
   swisseph_rs:
     dependency: "direct main"
     description:
-      path: "/home/josh/nhs/soft/astrology/swisseph.rs.dart"
-      relative: false
-    source: path
-    version: "0.2.1"
+      name: swisseph_rs
+      sha256: "37fffeaa9192ece5803603276bef9293babcbcf72d575459fb0572f9eb2840ee"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.3.1"
   term_glyph:
     dependency: transitive
     description:
