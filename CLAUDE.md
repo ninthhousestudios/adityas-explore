@@ -8,7 +8,9 @@ client-side using Arrow engine via FFI (desktop) or WASM (web).
 Flutter, Dart. Key dependencies:
 - arrow_core/arrow_swe/arrow_calc (git deps from ninthhousestudios/arjuna) — chart calculation engine
 - charts_dart (git dep from ninthhousestudios/charts_dart) — ChartData model, file format parsers (TOML/CHTK/JHD), TomlChartFormat.encode for saving
-- swisseph — Swiss Ephemeris bindings
+- swisseph_rs — Swiss Ephemeris bindings (Rust). Ships its own web glue as
+  package assets at assets/packages/swisseph_rs/wasm/; never vendor copies
+  into web/. Reached through arrow_swe, and directly in lib/astro/swe_web.dart.
 - file_picker — open/save chart files (saveFile unimplemented on web; we use conditional imports in file_util.dart / file_util_web.dart)
 - flutter_svg — glyph rendering
 </stack>
