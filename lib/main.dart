@@ -49,7 +49,18 @@ Future<void> main() async {
 }
 
 class ExploreApp extends StatefulWidget {
-  const ExploreApp({super.key});
+  const ExploreApp({
+    super.key,
+    this.authOptions = const FlutterAuthClientOptions(),
+  });
+
+  /// Auth client configuration handed to [Supabase.initialize] during boot.
+  ///
+  /// Production uses the defaults. Widget tests pass
+  /// `autoRefreshToken: false` so gotrue does not start its periodic refresh
+  /// ticker, and `detectSessionInUri: false` so no deep-link observer is
+  /// attached — both outlive the test and fail it on pending timers.
+  final FlutterAuthClientOptions authOptions;
 
   @override
   State<ExploreApp> createState() => _ExploreAppState();
@@ -113,6 +124,7 @@ class _ExploreAppState extends State<ExploreApp> {
       await Supabase.initialize(
         url: 'https://brkrnuucfdzuligvttol.supabase.co',
         publishableKey: 'sb_publishable_0G0m4eJ_w5SjhgzDOyvbMg_hJGWQIWZ',
+        authOptions: widget.authOptions,
       );
       final results = await Future.wait([
         initSweEphePath(),
