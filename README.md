@@ -2,6 +2,8 @@
 
 # Adityas Explore
 
+To try the app go to [84beings.com](84beings.com) and click "Meet my Beings".
+
 Interactive birth chart explorer for the Aditya system — a non-standard Vedic
 framework derived from the Srimad Bhagavatam. Renders a circular chart wheel
 with Aditya sign glyphs, planet positions, Campanus house cusps, and
