@@ -32,6 +32,7 @@ docs/birth-entry.md
 docs/push-explore.sh
 docs/birth-data-validation.md
 docs/flutter-web-file-picker.md
+!docs/push-explore.sh
 test.toml
 # IntelliJ related
 *.iml
