@@ -181,6 +181,10 @@ class _ExploreAppState extends State<ExploreApp> {
     } catch (e, s) {
       dev.log('Boot failed: $e\n$s', name: 'APP');
       await Sentry.captureException(e, stackTrace: s);
+      // Report first, then bail if we were disposed — the failure is worth
+      // capturing either way, but the await above means dispose can land
+      // between it and the setState.
+      if (!mounted) return;
       setState(() => _bootError = e.toString());
     }
   }
