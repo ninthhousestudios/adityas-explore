@@ -14,10 +14,13 @@ void main() {
         const SweConfig(),
       );
       final chart = Chart(snap, const CalcConfig());
-      expect(chart.planets, isNotEmpty);
-      expect(chart.cusps, isNotEmpty);
-      // Sun on 2000-01-01 12:00 UT sits ~280° tropical / ~256° sidereal.
-      expect(chart.sun.longitude.eclipticLongitude, inInclusiveRange(250, 285));
+      expect(chart.planets, hasLength(9));
+      expect(chart.cusps, hasLength(12));
+      // Sun on 2000-01-01 12:00 UT. The tolerance is deliberately tight: the
+      // sidereal value for the same instant is ~256°, so a loose range would
+      // pass through an ayanamsa or zodiac-mode flip — the exact regression
+      // class this guard exists to catch on the next dependency bump.
+      expect(chart.sun.longitude.eclipticLongitude, closeTo(280.369, 0.01));
     } finally {
       facade.dispose();
     }

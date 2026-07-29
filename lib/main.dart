@@ -22,6 +22,7 @@ import 'package:charts_dart/charts_dart.dart';
 import 'chart_reader.dart';
 import 'ui/asset_preloader.dart';
 import 'ui/birth_form.dart';
+import 'ui/boot_error_screen.dart';
 import 'ui/chart_wheel.dart';
 import 'ui/account_button.dart';
 import 'ui/theme.dart';
@@ -421,46 +422,7 @@ class _ExploreAppState extends State<ExploreApp> {
       return MaterialApp(
         debugShowCheckedModeBanner: false,
         theme: immersiveTheme(),
-        home: Scaffold(
-          body: Builder(
-            builder: (context) => Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 380),
-                child: Padding(
-                  padding: const EdgeInsets.all(32),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.cloud_off_outlined,
-                        size: 48,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                      const SizedBox(height: 20),
-                      Text(
-                        "Couldn't load the chart explorer",
-                        style: Theme.of(context).textTheme.titleLarge,
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        'This is usually a temporary network issue. Please '
-                        'check your connection and try again.',
-                        style: Theme.of(context).textTheme.bodyMedium,
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 24),
-                      FilledButton(
-                        onPressed: _retryBoot,
-                        child: const Text('Try again'),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
+        home: BootErrorScreen(onRetry: _retryBoot),
       );
     }
 

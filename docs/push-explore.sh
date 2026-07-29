@@ -23,11 +23,17 @@ flutter build web --release --base-href=/explore/
 # missing, the build resolved against the wrong swisseph_rs (or a stale
 # vendored copy in web/) and the engine will fail to boot in the browser.
 # Catch that here rather than after it is live.
-GLUE=build/web/assets/packages/swisseph_rs/wasm/swisseph_ffi.js
-if [ ! -f "$GLUE" ]; then
-  echo "error: $GLUE missing — refusing to deploy a build with no engine" >&2
-  exit 1
-fi
+#
+# Both files matter: the .js is what initializeWasm loads, and it fetches the
+# sibling .wasm at runtime. A build carrying only the glue passes a JS-only
+# check and then dies on module instantiation in the browser.
+WASM_DIR=build/web/assets/packages/swisseph_rs/wasm
+for f in "$WASM_DIR/swisseph_ffi.js" "$WASM_DIR/swisseph_ffi.wasm"; do
+  if [ ! -s "$f" ]; then
+    echo "error: $f missing or empty — refusing to deploy a build with no engine" >&2
+    exit 1
+  fi
+done
 
 npx --yes "wrangler@${WRANGLER_VERSION}" pages deploy build/web \
   --project-name 84beings-explore
