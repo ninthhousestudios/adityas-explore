@@ -284,7 +284,7 @@ class _WheelWidget extends pw.Widget {
     for (var s = 1; s <= 12; s++) {
       final data = adityaSigns[s]!;
       final name = data.name.toUpperCase();
-      final charWidth = fontSize * 0.6;
+      final charWidth = fontSize * 0.85;
       final spacing = min(
         charWidth,
         0.85 * (pi / 6) * radius / max(name.length - 1, 1),
@@ -302,7 +302,7 @@ class _WheelWidget extends pw.Widget {
           ..setTransform(
             Matrix4.identity()
               ..translateByDouble(pos.x, pos.y, 0, 1)
-              ..rotateZ(charAngle - pi / 2),
+              ..rotateZ(pi / 2 - charAngle),
           );
 
         _drawCenteredText(canvas, pdfFont, name[i], 0, 0, fontSize);
@@ -351,7 +351,7 @@ class _WheelWidget extends pw.Widget {
   }
 
   PdfPoint _polar(double angle, double radius, double cx, double cy) =>
-      PdfPoint(cx + radius * cos(angle), cy + radius * sin(angle));
+      PdfPoint(cx + radius * cos(angle), cy - radius * sin(angle));
 
   void _drawCenteredText(
     PdfGraphics canvas,
