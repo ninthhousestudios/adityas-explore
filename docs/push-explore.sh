@@ -10,8 +10,6 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-WRANGLER_VERSION=4.115.0
-
 if [ -n "$(git status --porcelain)" ]; then
   echo "warning: working tree is dirty — deploying uncommitted changes" >&2
 fi
@@ -35,5 +33,5 @@ for f in "$WASM_DIR/swisseph_ffi.js" "$WASM_DIR/swisseph_ffi.wasm"; do
   fi
 done
 
-npx --yes "wrangler@${WRANGLER_VERSION}" pages deploy build/web \
+npx --yes wrangler pages deploy build/web \
   --project-name 84beings-explore
