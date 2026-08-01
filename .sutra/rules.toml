@@ -61,27 +61,6 @@ provenance = "adopt:explore"
 # Domain logic hub (current fan-in 9). Catch scope creep.
 
 # ═══════════════════════════════════════════════════════════════════
-# Conventions
-# ═══════════════════════════════════════════════════════════════════
-
-[conventions]
-suppress = [
-  "d7ab72decd364f9d",  # vis:private → has_sig — structural truth in Dart
-  "f119c35e34aae475",  # in:lib → has_sig — structural truth in Dart
-  "14e10b571e03a36d",  # vis:private → has_sig (component-scoped)
-  "cfa44b722e54347a",  # in:lib → has_sig (component-scoped)
-  "0c141c9837a750fd",  # has_sig → snake_case (component-scoped, redundant with global)
-  "e18387ee1256675d",  # vis:private → snake_case (component-scoped, redundant)
-  "cee16bcccbf35da6",  # in:lib → snake_case (component-scoped, redundant)
-  "db16ecf244d34585",  # kind:method → snake_case (component-scoped, redundant)
-  "0d84dbed74bc162a",  # is_method → snake_case (component-scoped, redundant)
-  "a41c0053603b62f7",  # vis:private → snake_case (component-scoped, redundant)
-  "79aae21a4493f8ea",  # in:lib → snake_case (component-scoped, redundant)
-  "bc7d2e877ec23d3c",  # complexity:zero → snake_case (component-scoped, redundant)
-  "771652b24d3ad33a",  # complexity:zero → snake_case (component-scoped, redundant)
-]
-
-# ═══════════════════════════════════════════════════════════════════
 # Forbidden patterns (vidhi/language-rules/dart.toml)
 # ═══════════════════════════════════════════════════════════════════
 
