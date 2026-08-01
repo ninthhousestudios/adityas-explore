@@ -82,6 +82,7 @@ Future<Uint8List> buildChartPdf({
                   ascSign: ascSign,
                   svgCache: svgCache,
                   font: font,
+                  uncertainty: uncertainty,
                 ),
               ),
             ),
@@ -172,6 +173,7 @@ class _WheelWidget extends pw.Widget {
   final int ascSign;
   final Map<String, String> svgCache;
   final pw.Font font;
+  final BeingUncertainty? uncertainty;
 
   _WheelWidget({
     required this.planets,
@@ -179,6 +181,7 @@ class _WheelWidget extends pw.Widget {
     required this.ascSign,
     required this.svgCache,
     required this.font,
+    this.uncertainty,
   });
 
   @override
@@ -363,6 +366,19 @@ class _WheelWidget extends pw.Widget {
         glyphSize,
       );
       svgImage.paint(context);
+
+      if (uncertainty?.isUncertain(planet.bodyName) ?? false) {
+        final tildeSize = glyphSize * 0.6;
+        _drawCenteredText(
+          context.canvas,
+          font.getFont(context),
+          '~',
+          pos.x + glyphSize * 0.6,
+          pos.y + glyphSize * 0.4,
+          tildeSize,
+          color: const PdfColor.fromInt(0xFF808080),
+        );
+      }
     }
   }
 
