@@ -27,6 +27,7 @@ import 'ui/chart_wheel.dart';
 import 'ui/account_button.dart';
 import 'ui/theme.dart';
 import 'api/chart_service.dart';
+import 'export/chart_pdf.dart';
 
 const _sentryDsn =
     'https://0decc8fd44d76a8374d3dc45f055f584@o4511643365933056.ingest.us.sentry.io/4511643403878400';
@@ -314,6 +315,19 @@ class _ExploreAppState extends State<ExploreApp> {
     await saveFileBytes('$safeName.toml', bytes);
   }
 
+  Future<void> _downloadPdf() async {
+    final chart = _chart;
+    final chartData = _chartData;
+    if (chart == null) return;
+
+    final bytes = await buildChartPdf(chart: chart, chartName: chartData?.name);
+    final safeName = (chartData?.name ?? 'chart').replaceAll(
+      RegExp(r'[^\w\-.]'),
+      '_',
+    );
+    await saveFileBytes('$safeName-chart.pdf', bytes);
+  }
+
   Future<void> _submitChart(
     ChartData chartData,
     TimeUncertainty timeUncertainty,
@@ -453,6 +467,7 @@ class _ExploreAppState extends State<ExploreApp> {
         onOpenChart: _openChart,
         onNewChart: _newChart,
         onSaveChart: _saveChart,
+        onDownloadPdf: _downloadPdf,
         onSubmitChart: _submitChart,
         chartData: _chartData,
         chart: _chart,
@@ -478,6 +493,7 @@ class _ExplorePage extends StatelessWidget {
   final VoidCallback onOpenChart;
   final VoidCallback onNewChart;
   final VoidCallback onSaveChart;
+  final VoidCallback onDownloadPdf;
   final void Function(ChartData, TimeUncertainty) onSubmitChart;
   final ChartData? chartData;
   final arrow.Chart? chart;
@@ -499,6 +515,7 @@ class _ExplorePage extends StatelessWidget {
     required this.onOpenChart,
     required this.onNewChart,
     required this.onSaveChart,
+    required this.onDownloadPdf,
     required this.onSubmitChart,
     required this.chartData,
     required this.chart,
@@ -552,6 +569,8 @@ class _ExplorePage extends StatelessWidget {
                         onNewChart();
                       case 'save_chart':
                         onSaveChart();
+                      case 'download_pdf':
+                        onDownloadPdf();
                       case 'open_chart':
                         onOpenChart();
                       case 'about':
@@ -591,6 +610,17 @@ class _ExplorePage extends StatelessWidget {
                             Icon(Icons.save_alt, size: 20),
                             SizedBox(width: 12),
                             Text('Download chart file'),
+                          ],
+                        ),
+                      ),
+                    if (chart != null)
+                      const PopupMenuItem(
+                        value: 'download_pdf',
+                        child: Row(
+                          children: [
+                            Icon(Icons.picture_as_pdf, size: 20),
+                            SizedBox(width: 12),
+                            Text('Download PDF'),
                           ],
                         ),
                       ),
@@ -658,6 +688,7 @@ class _ExplorePage extends StatelessWidget {
                   position: PopupMenuPosition.under,
                   onSelected: (value) {
                     if (value == 'save_chart') onSaveChart();
+                    if (value == 'download_pdf') onDownloadPdf();
                     if (value == 'open_chart') onOpenChart();
                     if (value == 'about') _showAbout(context);
                   },
@@ -670,6 +701,17 @@ class _ExplorePage extends StatelessWidget {
                             Icon(Icons.save_alt, size: 20),
                             SizedBox(width: 12),
                             Text('Download chart file'),
+                          ],
+                        ),
+                      ),
+                    if (chart != null)
+                      const PopupMenuItem(
+                        value: 'download_pdf',
+                        child: Row(
+                          children: [
+                            Icon(Icons.picture_as_pdf, size: 20),
+                            SizedBox(width: 12),
+                            Text('Download PDF'),
                           ],
                         ),
                       ),

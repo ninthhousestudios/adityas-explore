@@ -41,6 +41,8 @@ dependencies:
   http: ^1.6.0
   supabase_flutter: ^2.15.0
   sentry_flutter: ^9.22.0
+  pdf: ^3.13.0
+  vector_math: ^2.2.0
 
 dev_dependencies:
   flutter_test:
@@ -59,3 +61,4 @@ flutter:
     - assets/glyphs/beings/
     - assets/glyphs/planets/
     - assets/text/
+    - assets/fonts/
