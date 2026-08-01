@@ -7,12 +7,14 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:vector_math/vector_math_64.dart';
 
+import '../astro/being_uncertainty.dart';
 import '../ui/aditya_data.dart';
 import '../ui/chart_wheel_layout.dart';
 
 Future<Uint8List> buildChartPdf({
   required arrow.Chart chart,
   String? chartName,
+  BeingUncertainty? uncertainty,
 }) async {
   final fontData = await rootBundle.load('assets/fonts/Inter.ttf');
   final font = pw.Font.ttf(fontData);
@@ -87,10 +89,22 @@ Future<Uint8List> buildChartPdf({
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
                 pw.Expanded(
-                  child: _buildSoulStancesPanel(planets, font, boldFont),
+                  child: _buildSoulStancesPanel(
+                    planets,
+                    font,
+                    boldFont,
+                    uncertainty,
+                  ),
                 ),
                 pw.SizedBox(width: 16),
-                pw.Expanded(child: _buildBeingsPanel(planets, font, boldFont)),
+                pw.Expanded(
+                  child: _buildBeingsPanel(
+                    planets,
+                    font,
+                    boldFont,
+                    uncertainty,
+                  ),
+                ),
               ],
             ),
             pw.Spacer(),
@@ -379,11 +393,62 @@ pw.Widget _buildSoulStancesPanel(
   List<PlacedPlanet> planets,
   pw.Font font,
   pw.Font boldFont,
+  BeingUncertainty? uncertainty,
 ) {
   final adityaPlanets = planets
       .where((p) => p.horaBeingType == 'aditya')
       .toList();
   final nagaPlanets = planets.where((p) => p.horaBeingType == 'naga').toList();
+
+  List<pw.Widget> stanceRows(List<PlacedPlanet> group) {
+    return [
+      for (final p in group) ...[
+        pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(vertical: 1),
+          child: pw.Row(
+            children: [
+              pw.Text(
+                _capitalize(p.bodyName),
+                style: pw.TextStyle(
+                  font: font,
+                  fontSize: 8,
+                  color: PdfColors.grey700,
+                ),
+              ),
+              pw.SizedBox(width: 6),
+              pw.Text(
+                p.horaBeing ?? '',
+                style: pw.TextStyle(font: font, fontSize: 8),
+              ),
+              if (uncertainty?.isHoraUncertain(p.bodyName) ?? false)
+                pw.Text(
+                  ' ~',
+                  style: pw.TextStyle(
+                    font: font,
+                    fontSize: 8,
+                    color: PdfColors.grey500,
+                  ),
+                ),
+            ],
+          ),
+        ),
+        if (uncertainty?.isHoraUncertain(p.bodyName) ?? false)
+          for (final alt in uncertainty!.horaFor(p.bodyName))
+            if (alt.name != p.horaBeing)
+              pw.Padding(
+                padding: const pw.EdgeInsets.only(left: 24),
+                child: pw.Text(
+                  'or ${alt.type.name != p.horaBeingType ? '${_capitalize(alt.type.name)}: ' : ''}${alt.name}',
+                  style: pw.TextStyle(
+                    font: font,
+                    fontSize: 7,
+                    color: PdfColors.grey600,
+                  ),
+                ),
+              ),
+      ],
+    ];
+  }
 
   return pw.Container(
     padding: const pw.EdgeInsets.all(8),
@@ -414,27 +479,7 @@ pw.Widget _buildSoulStancesPanel(
             ),
           ),
           pw.SizedBox(height: 2),
-          for (final p in adityaPlanets)
-            pw.Padding(
-              padding: const pw.EdgeInsets.symmetric(vertical: 1),
-              child: pw.Row(
-                children: [
-                  pw.Text(
-                    _capitalize(p.bodyName),
-                    style: pw.TextStyle(
-                      font: font,
-                      fontSize: 8,
-                      color: PdfColors.grey700,
-                    ),
-                  ),
-                  pw.SizedBox(width: 6),
-                  pw.Text(
-                    p.horaBeing ?? '',
-                    style: pw.TextStyle(font: font, fontSize: 8),
-                  ),
-                ],
-              ),
-            ),
+          ...stanceRows(adityaPlanets),
           pw.SizedBox(height: 6),
         ],
         if (nagaPlanets.isNotEmpty) ...[
@@ -452,27 +497,7 @@ pw.Widget _buildSoulStancesPanel(
             ),
           ),
           pw.SizedBox(height: 2),
-          for (final p in nagaPlanets)
-            pw.Padding(
-              padding: const pw.EdgeInsets.symmetric(vertical: 1),
-              child: pw.Row(
-                children: [
-                  pw.Text(
-                    _capitalize(p.bodyName),
-                    style: pw.TextStyle(
-                      font: font,
-                      fontSize: 8,
-                      color: PdfColors.grey700,
-                    ),
-                  ),
-                  pw.SizedBox(width: 6),
-                  pw.Text(
-                    p.horaBeing ?? '',
-                    style: pw.TextStyle(font: font, fontSize: 8),
-                  ),
-                ],
-              ),
-            ),
+          ...stanceRows(nagaPlanets),
         ],
       ],
     ),
@@ -483,6 +508,7 @@ pw.Widget _buildBeingsPanel(
   List<PlacedPlanet> planets,
   pw.Font font,
   pw.Font boldFont,
+  BeingUncertainty? uncertainty,
 ) {
   return pw.Container(
     padding: const pw.EdgeInsets.all(8),
@@ -498,7 +524,7 @@ pw.Widget _buildBeingsPanel(
           style: pw.TextStyle(font: boldFont, fontSize: 10),
         ),
         pw.SizedBox(height: 6),
-        for (final p in planets)
+        for (final p in planets) ...[
           pw.Padding(
             padding: const pw.EdgeInsets.symmetric(vertical: 1),
             child: pw.Row(
@@ -523,9 +549,33 @@ pw.Widget _buildBeingsPanel(
                   '  ${p.trimsamsaBeing ?? ''}',
                   style: pw.TextStyle(font: font, fontSize: 8),
                 ),
+                if (uncertainty?.isTrimsamsaUncertain(p.bodyName) ?? false)
+                  pw.Text(
+                    ' ~',
+                    style: pw.TextStyle(
+                      font: font,
+                      fontSize: 8,
+                      color: PdfColors.grey500,
+                    ),
+                  ),
               ],
             ),
           ),
+          if (uncertainty?.isTrimsamsaUncertain(p.bodyName) ?? false)
+            for (final alt in uncertainty!.trimsamsaFor(p.bodyName))
+              if (alt.name != p.trimsamsaBeing)
+                pw.Padding(
+                  padding: const pw.EdgeInsets.only(left: 24),
+                  child: pw.Text(
+                    'or ${_capitalize(alt.type.name)}  ${alt.name}',
+                    style: pw.TextStyle(
+                      font: font,
+                      fontSize: 7,
+                      color: PdfColors.grey600,
+                    ),
+                  ),
+                ),
+        ],
       ],
     ),
   );

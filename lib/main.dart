@@ -320,7 +320,11 @@ class _ExploreAppState extends State<ExploreApp> {
     final chartData = _chartData;
     if (chart == null) return;
 
-    final bytes = await buildChartPdf(chart: chart, chartName: chartData?.name);
+    final bytes = await buildChartPdf(
+      chart: chart,
+      chartName: chartData?.name,
+      uncertainty: _uncertainty,
+    );
     final safeName = (chartData?.name ?? 'chart').replaceAll(
       RegExp(r'[^\w\-.]'),
       '_',
