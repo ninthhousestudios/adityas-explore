@@ -17,6 +17,12 @@ echo "==> deploying $(git rev-parse --short HEAD) on $(git branch --show-current
 
 flutter build web --release --base-href=/explore/
 
+# Flutter emits a NOTICES file (third-party licenses) with no extension.
+# Cloudflare WAF challenges extensionless requests, producing a 403 that
+# surfaces as an uncaught error in Sentry. The app has no license page,
+# so the file is unnecessary.
+mv build/web/NOTICES /tmp/flutter-notices-$$
+
 # The Swiss Ephemeris web glue ships as a swisseph_rs package asset. If it is
 # missing, the build resolved against the wrong swisseph_rs (or a stale
 # vendored copy in web/) and the engine will fail to boot in the browser.
