@@ -46,7 +46,12 @@ import 'stable_asset_image.dart';
   } else if (glyphPath != null) {
     leading = ColorFiltered(
       colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
-      child: Image.asset(glyphPath, width: 28, height: 28),
+      child: Image.asset(
+        glyphPath,
+        width: 28,
+        height: 28,
+        filterQuality: FilterQuality.medium,
+      ),
     );
   } else {
     leading = null;
@@ -130,7 +135,12 @@ class BeingOverlayBody extends StatelessWidget {
           Center(
             child: ColorFiltered(
               colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
-              child: Image.asset(glyphPath, width: 56, height: 56),
+              child: Image.asset(
+                glyphPath,
+                width: 56,
+                height: 56,
+                filterQuality: FilterQuality.medium,
+              ),
             ),
           ),
         if (content != null) ...[
