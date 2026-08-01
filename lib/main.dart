@@ -83,6 +83,7 @@ class _ExploreAppState extends State<ExploreApp> {
   arrow.Chart? _chart;
   BeingUncertainty? _uncertainty;
   bool _calculating = false;
+  bool _exportingPdf = false;
   int _calcToken = 0;
 
   User? _user;
@@ -318,18 +319,26 @@ class _ExploreAppState extends State<ExploreApp> {
   Future<void> _downloadPdf() async {
     final chart = _chart;
     final chartData = _chartData;
-    if (chart == null) return;
+    if (chart == null || _exportingPdf) return;
 
-    final bytes = await buildChartPdf(
-      chart: chart,
-      chartName: chartData?.name,
-      uncertainty: _uncertainty,
-    );
-    final safeName = (chartData?.name ?? 'chart').replaceAll(
-      RegExp(r'[^\w\-.]'),
-      '_',
-    );
-    await saveFileBytes('$safeName-chart.pdf', bytes);
+    setState(() => _exportingPdf = true);
+    try {
+      final bytes = await buildChartPdf(
+        chart: chart,
+        chartName: chartData?.name,
+        uncertainty: _uncertainty,
+      );
+      if (!mounted) return;
+      final safeName = (chartData?.name ?? 'chart').replaceAll(
+        RegExp(r'[^\w\-.]'),
+        '_',
+      );
+      await saveFileBytes('$safeName-chart.pdf', bytes);
+    } on Exception catch (e) {
+      if (mounted) _showSnackBar('Error exporting PDF: $e');
+    } finally {
+      if (mounted) setState(() => _exportingPdf = false);
+    }
   }
 
   Future<void> _submitChart(

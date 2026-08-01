@@ -17,8 +17,9 @@ Future<Uint8List> buildChartPdf({
   BeingUncertainty? uncertainty,
 }) async {
   final fontData = await rootBundle.load('assets/fonts/Inter.ttf');
+  final boldFontData = await rootBundle.load('assets/fonts/Inter-Bold.ttf');
   final font = pw.Font.ttf(fontData);
-  final boldFont = pw.Font.ttf(fontData);
+  final boldFont = pw.Font.ttf(boldFontData);
 
   final svgCache = <String, String>{};
   for (final entry in adityaSigns.entries) {
@@ -296,7 +297,8 @@ class _WheelWidget extends pw.Widget {
     final radius = signMidRadius(half);
 
     for (var s = 1; s <= 12; s++) {
-      final data = adityaSigns[s]!;
+      final data = adityaSigns[s];
+      if (data == null) continue;
       final name = data.name.toUpperCase();
       final charWidth = fontSize * 0.85;
       final spacing = min(
