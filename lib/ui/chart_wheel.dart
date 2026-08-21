@@ -15,6 +15,7 @@ import 'being_content.dart';
 import 'being_type_content.dart';
 import 'chart_wheel_layout.dart';
 import 'chart_wheel_painter.dart';
+import 'layout_state.dart';
 import 'planet_content.dart';
 import 'planet_detail_overlay.dart';
 import 'popup_state.dart';
@@ -51,6 +52,12 @@ class _ChartWheelState extends State<ChartWheel> {
   PlacedCusp? _hoveredCusp;
 
   final List<PopupState> _popupStack = [];
+
+  /// Desktop layout as data: which persistent panels are visible + the mode.
+  /// `build` derives panel placement from this instead of hardcoded
+  /// `Positioned` blocks. See docs/layout-modes.md.
+  final LayoutState _layout = const LayoutState.explore();
+
   Map<(int, String), BeingContent>? _beingContent;
   Map<String, BeingTypeContent>? _beingTypeContent;
   Map<String, PlanetContent>? _planetContent;
@@ -235,6 +242,7 @@ class _ChartWheelState extends State<ChartWheel> {
         }
 
         final panelWidth = panelMargin - 16;
+        final panelFontSize = half * 0.032;
         return SizedBox(
           width: constraints.maxWidth,
           height: side,
@@ -254,56 +262,114 @@ class _ChartWheelState extends State<ChartWheel> {
                   ],
                 ),
               ),
-              Positioned(
-                left: 8,
-                top: 0,
-                width: panelWidth,
-                child: SoulStancesPanel(
-                  planets: _planets,
-                  uncertainty: widget.uncertainty,
-                  color: color,
-                  backdropColor: backdropColor,
-                  fontSize: half * 0.032,
-                  onOpen: _openPopup,
-                ),
-              ),
-              Positioned(
-                right: 8,
-                top: 0,
-                width: panelWidth,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    BeingsPanel(
-                      planets: _planets,
-                      uncertainty: widget.uncertainty,
+              for (final dock in PanelDock.values)
+                if (_dockedPanels(dock).isNotEmpty)
+                  Positioned(
+                    left: dock == PanelDock.leftGutter ? 8 : null,
+                    right: dock == PanelDock.rightGutter ? 8 : null,
+                    top: 0,
+                    width: panelWidth,
+                    child: _buildGutter(
+                      dock,
                       color: color,
                       backdropColor: backdropColor,
-                      fontSize: half * 0.032,
-                      onOpen: _openPopup,
+                      fontSize: panelFontSize,
                     ),
-                    const SizedBox(height: 8),
-                    _ShopCta(
-                      color: color,
-                      backdropColor: backdropColor,
-                      fontSize: half * 0.032,
-                    ),
-                    const SizedBox(height: 8),
-                    WaitlistCta(
-                      color: color,
-                      backdropColor: backdropColor,
-                      fontSize: half * 0.032,
-                      signed: widget.waitlistSigned,
-                      onSigned: widget.onWaitlistSigned,
-                    ),
-                  ],
-                ),
-              ),
+                  ),
             ],
           ),
         );
       },
     );
+  }
+
+  /// Visible persistent panels assigned to [dock], in enum order.
+  List<PanelId> _dockedPanels(PanelDock dock) => [
+    for (final id in PanelId.values)
+      if (_layout.isVisible(id) && exploreDock(id) == dock) id,
+  ];
+
+  /// Stacks the visible panels of one gutter into a column.
+  ///
+  /// The left gutter stretches its (single) panel to the full gutter width —
+  /// matching the pre-refactor `Positioned(width: panelWidth)`. The right
+  /// gutter centers and shrink-wraps each panel, as its stacked column did.
+  Widget _buildGutter(
+    PanelDock dock, {
+    required Color color,
+    required Color backdropColor,
+    required double fontSize,
+  }) {
+    final panels = _dockedPanels(dock);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: dock == PanelDock.leftGutter
+          ? CrossAxisAlignment.stretch
+          : CrossAxisAlignment.center,
+      children: [
+        for (var i = 0; i < panels.length; i++) ...[
+          if (i > 0) const SizedBox(height: 8),
+          _buildPanel(
+            panels[i],
+            color: color,
+            backdropColor: backdropColor,
+            fontSize: fontSize,
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// Builds the widget for one persistent panel.
+  Widget _buildPanel(
+    PanelId id, {
+    required Color color,
+    required Color backdropColor,
+    required double fontSize,
+  }) {
+    switch (id) {
+      case PanelId.soulStances:
+        return SoulStancesPanel(
+          planets: _planets,
+          uncertainty: widget.uncertainty,
+          color: color,
+          backdropColor: backdropColor,
+          fontSize: fontSize,
+          onOpen: _openPopup,
+        );
+      case PanelId.yourBeings:
+        return BeingsPanel(
+          planets: _planets,
+          uncertainty: widget.uncertainty,
+          color: color,
+          backdropColor: backdropColor,
+          fontSize: fontSize,
+          onOpen: _openPopup,
+        );
+      case PanelId.ctas:
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _ShopCta(
+              color: color,
+              backdropColor: backdropColor,
+              fontSize: fontSize,
+            ),
+            const SizedBox(height: 8),
+            WaitlistCta(
+              color: color,
+              backdropColor: backdropColor,
+              fontSize: fontSize,
+              signed: widget.waitlistSigned,
+              onSigned: widget.onWaitlistSigned,
+            ),
+          ],
+        );
+      case PanelId.chat:
+        // Stub: chat docks in conversation mode (adityas/explore task 2);
+        // hidden in explore, so this is never reached today.
+        return const SizedBox.shrink();
+    }
   }
 
   Widget _buildSignGlyph(int sign, double half, Offset center, Color color) {
