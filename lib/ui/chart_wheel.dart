@@ -275,12 +275,20 @@ class _ChartWheelState extends State<ChartWheel>
         final side = min(constraints.maxWidth, constraints.maxHeight);
         final panelMargin = (constraints.maxWidth - side) / 2;
 
-        // Explore-size wheel; also computes `_planets` for the mobile check.
-        final wheel = _buildWheel(side, color, backdropColor);
-
-        final isMobile = _planets.isEmpty || panelMargin < 80;
+        // Mobile means no room for side gutters, or an empty chart. Derive it
+        // without building the wheel — `_planets.isEmpty` used to stand in for
+        // the empty-chart case, but reading it forced a throwaway `_buildWheel`
+        // purely for its side effect. `_planets.isEmpty` ⟺ no graha survives the
+        // `defaultGrahas` filter, so check that directly.
+        final hasPlanets = widget.chart.grahas.any(
+          (p) => defaultGrahas.contains(p.body.name),
+        );
+        final isMobile = !hasPlanets || panelMargin < 80;
 
         if (isMobile) {
+          // Explore-size wheel; `_buildWheel` also populates `_planets`, which
+          // the mobile buttons below read.
+          final wheel = _buildWheel(side, color, backdropColor);
           return Stack(
             children: [
               Center(child: wheel),
