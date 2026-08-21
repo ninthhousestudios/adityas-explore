@@ -7,17 +7,29 @@
 "planet content" = "lib/ui/planet_content.dart"
 "aditya data" = "lib/ui/aditya_data.dart"
 "app entry" = "lib/main.dart"
+"layout state" = "lib/ui/layout_state.dart"
 
 [symbol]
+# desktop layout as state (docs/layout-modes.md)
+"layout controller" = "LayoutState"
+"layout mode" = "LayoutMode"
+"panel id" = "PanelId"
+"panel dock" = "PanelDock"
+"panel visibility" = "LayoutState::isVisible"
+"panel gutter" = "_ChartWheelState::_buildGutter"
+"panel builder" = "_ChartWheelState::_buildPanel"
+"chat panel" = "PanelId"
+"explore dock" = "exploreDock"
+
 # popup cards / overlays
 "being detail card" = "_buildBeingOverlay"
 "being type card" = "_buildBeingTypeOverlay"
 "planet card" = "_buildPlanetOverlay"
 
-# side panels
-"soul stances panel" = "_buildSoulStancesPanel"
-"beings panel" = "_buildBeingsPanel"
-"stance row" = "_buildStanceRow"
+# side panels (now standalone widgets, not _build* methods)
+"soul stances panel" = "SoulStancesPanel"
+"beings panel" = "BeingsPanel"
+"stance row" = "SoulStancesPanel::_buildStanceRow"
 
 # wheel internals
 "center info" = "_buildCenterInfo"

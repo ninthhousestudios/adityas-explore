@@ -48,6 +48,7 @@ lib/
 
 <key_docs>
 - docs/chart-wheel.md — read before modifying chart_wheel*.dart
+- docs/layout-modes.md — desktop layout architecture (state-driven panels, LayoutMode, docked-vs-floating layers). Read before touching panel composition in chart_wheel.dart or the popup/overlay layer.
 - docs/birth-entry.md — birth data entry spec
 - docs/birth-data-validation.md — validation rules reference
 - Parent project docs at /home/josh/adityas/docs/ (brand.md, aditya-system.md, vision.md)
@@ -65,4 +66,5 @@ Ephemeris files in assets/ephe/, glyphs in assets/glyphs/.
 - ChartData.utcDateTime getter returns a local-tagged DateTime (via subtract); if you then call .toUtc() you get double timezone offset. Always construct dateTime with DateTime.utc() for form-built ChartData.
 - Arrow git deps pinned to a specific commit hash — update all four arrow_* deps together
 - charts_dart tracks HEAD (no pinned ref) — be aware of upstream changes
+- Desktop persistent panels (Soul Stances, Your Beings, CTAs, chat) are state-driven, not hardcoded: `_ChartWheelState.build` renders them from `LayoutState` (visible `PanelId` set + `LayoutMode`) via `_buildGutter`/`_buildPanel`, keyed by `exploreDock`. Add/move a panel by editing that state + dock map, not by hand-placing a `Positioned`. Transient popups (`_popupStack`) are a separate floating layer. See docs/layout-modes.md.
 </gotchas>
