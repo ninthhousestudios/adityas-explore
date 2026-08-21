@@ -63,10 +63,30 @@ class LayoutState {
         PanelId.ctas,
       };
 
+  /// Persistent panels the user may show/hide directly. Chat is excluded — it
+  /// is stubbed and driven by the mode, not a user toggle.
+  static const List<PanelId> toggleable = [
+    PanelId.soulStances,
+    PanelId.yourBeings,
+    PanelId.ctas,
+  ];
+
   final LayoutMode mode;
   final Set<PanelId> visiblePanels;
 
   bool isVisible(PanelId id) => visiblePanels.contains(id);
+
+  /// Returns a copy with [id] shown or hidden. The visibility set is copied, so
+  /// the original state stays immutable.
+  LayoutState withPanelVisible(PanelId id, bool visible) {
+    final next = {...visiblePanels};
+    if (visible) {
+      next.add(id);
+    } else {
+      next.remove(id);
+    }
+    return copyWith(visiblePanels: next);
+  }
 
   LayoutState copyWith({LayoutMode? mode, Set<PanelId>? visiblePanels}) =>
       LayoutState(
@@ -74,6 +94,14 @@ class LayoutState {
         visiblePanels: visiblePanels ?? this.visiblePanels,
       );
 }
+
+/// Human-readable label for a persistent panel, for the visibility affordance.
+String panelLabel(PanelId id) => switch (id) {
+  PanelId.soulStances => 'Soul Stances',
+  PanelId.yourBeings => 'Your Beings',
+  PanelId.ctas => 'Shop & Waitlist',
+  PanelId.chat => 'Chat',
+};
 
 /// Dock assignment for a persistent panel in explore mode.
 ///

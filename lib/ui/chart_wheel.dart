@@ -109,6 +109,14 @@ class _ChartWheelState extends State<ChartWheel>
     _modeAnim.forward(from: 0);
   }
 
+  /// Shows or hides a persistent panel. Panels reflow in the gutters from the
+  /// updated visibility set (see `_dockedPanels`). Exposed to the user via the
+  /// bottom-bar panels menu and each panel's hover close button.
+  void _setPanelVisible(PanelId id, bool visible) =>
+      setState(() => _layout = _layout.withPanelVisible(id, visible));
+
+  void _togglePanel(PanelId id) => _setPanelVisible(id, !_layout.isVisible(id));
+
   Future<void> _loadContent() async {
     final results = await Future.wait([
       loadBeingContent(),
@@ -364,19 +372,33 @@ class _ChartWheelState extends State<ChartWheel>
                     ),
                   ),
                 ),
-              // Temporary mode switcher for visual testing. The real
-              // panel-visibility affordance is adityas/explore task 4; this
-              // pill just exercises the mode transitions until then.
+              // Bottom control bar: the always-visible panels menu (show/hide
+              // each persistent panel — the primary visibility affordance, so a
+              // user who closed every panel can bring them back) beside the
+              // mode switcher (the only trigger for conversation/focus until
+              // chat lands). See docs/layout-modes.md § foundation item 4.
               Positioned(
                 left: 0,
                 right: 0,
                 bottom: 8,
                 child: Center(
-                  child: _ModeSwitcher(
-                    mode: _layout.mode,
-                    color: color,
-                    backdropColor: backdropColor,
-                    onSelect: _setMode,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _PanelsMenu(
+                        layout: _layout,
+                        color: color,
+                        backdropColor: backdropColor,
+                        onToggle: _togglePanel,
+                      ),
+                      const SizedBox(width: 8),
+                      _ModeSwitcher(
+                        mode: _layout.mode,
+                        color: color,
+                        backdropColor: backdropColor,
+                        onSelect: _setMode,
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -503,11 +525,17 @@ class _ChartWheelState extends State<ChartWheel>
       children: [
         for (var i = 0; i < panels.length; i++) ...[
           if (i > 0) const SizedBox(height: 8),
-          _buildPanel(
-            panels[i],
+          _ClosablePanel(
             color: color,
             backdropColor: backdropColor,
-            fontSize: fontSize,
+            label: panelLabel(panels[i]),
+            onClose: () => _setPanelVisible(panels[i], false),
+            child: _buildPanel(
+              panels[i],
+              color: color,
+              backdropColor: backdropColor,
+              fontSize: fontSize,
+            ),
           ),
         ],
       ],
@@ -1065,9 +1093,9 @@ class _ModeGeometry {
       );
 }
 
-/// Temporary segmented control to flip between layout modes for visual
-/// testing. Replaced by the real panel-visibility affordance in
-/// adityas/explore task 4. See docs/layout-modes.md.
+/// Segmented control to flip between layout modes. Until chat lands this is the
+/// only trigger for `conversation`/`focus`; per-panel show/hide is handled
+/// separately by [_PanelsMenu] and [_ClosablePanel]. See docs/layout-modes.md.
 class _ModeSwitcher extends StatelessWidget {
   final LayoutMode mode;
   final Color color;
@@ -1126,6 +1154,140 @@ class _ModeSwitcher extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Always-visible pill that opens a checklist of the persistent panels, so the
+/// user can show/hide each one (and restore panels they closed). Checkmark =
+/// visible. The primary panel-visibility affordance per docs/layout-modes.md
+/// § foundation item 4 — right-click is only ever a secondary shortcut.
+class _PanelsMenu extends StatelessWidget {
+  final LayoutState layout;
+  final Color color;
+  final Color backdropColor;
+  final ValueChanged<PanelId> onToggle;
+
+  const _PanelsMenu({
+    required this.layout,
+    required this.color,
+    required this.backdropColor,
+    required this.onToggle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<PanelId>(
+      tooltip: 'Show or hide panels',
+      onSelected: onToggle,
+      position: PopupMenuPosition.over,
+      color: backdropColor,
+      itemBuilder: (context) => [
+        for (final id in LayoutState.toggleable)
+          CheckedPopupMenuItem<PanelId>(
+            value: id,
+            checked: layout.isVisible(id),
+            child: Text(panelLabel(id), style: TextStyle(color: color)),
+          ),
+      ],
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: backdropColor,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: color.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.view_sidebar_outlined, size: 16, color: color),
+            const SizedBox(width: 6),
+            Text(
+              'Panels',
+              style: TextStyle(
+                color: color,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Wraps a persistent panel with a hover-revealed close (X) button in its top
+/// corner, so each panel can be dismissed in place. Reappears via [_PanelsMenu].
+class _ClosablePanel extends StatefulWidget {
+  final Widget child;
+  final Color color;
+  final Color backdropColor;
+  final String label;
+  final VoidCallback onClose;
+
+  const _ClosablePanel({
+    required this.child,
+    required this.color,
+    required this.backdropColor,
+    required this.label,
+    required this.onClose,
+  });
+
+  @override
+  State<_ClosablePanel> createState() => _ClosablePanelState();
+}
+
+class _ClosablePanelState extends State<_ClosablePanel> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          widget.child,
+          Positioned(
+            top: 4,
+            right: 4,
+            child: IgnorePointer(
+              ignoring: !_hover,
+              child: AnimatedOpacity(
+                opacity: _hover ? 1 : 0,
+                duration: const Duration(milliseconds: 120),
+                child: Tooltip(
+                  message: 'Hide ${widget.label}',
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    child: GestureDetector(
+                      onTap: widget.onClose,
+                      child: Container(
+                        width: 22,
+                        height: 22,
+                        decoration: BoxDecoration(
+                          color: widget.backdropColor,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: widget.color.withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: Icon(
+                          Icons.close,
+                          size: 14,
+                          color: widget.color.withValues(alpha: 0.7),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
