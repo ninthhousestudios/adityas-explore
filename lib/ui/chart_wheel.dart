@@ -10,6 +10,7 @@ import 'aditya_data.dart';
 import 'being_overlay.dart';
 import 'being_type_detail_overlay.dart';
 import 'beings_panel.dart';
+import 'chat_panel.dart';
 import 'overlay_shell.dart';
 import 'being_content.dart';
 import 'being_type_content.dart';
@@ -47,7 +48,8 @@ class ChartWheel extends StatefulWidget {
   State<ChartWheel> createState() => _ChartWheelState();
 }
 
-class _ChartWheelState extends State<ChartWheel> {
+class _ChartWheelState extends State<ChartWheel>
+    with SingleTickerProviderStateMixin {
   PlacedPlanet? _hoveredPlanet;
   PlacedCusp? _hoveredCusp;
 
@@ -56,7 +58,13 @@ class _ChartWheelState extends State<ChartWheel> {
   /// Desktop layout as data: which persistent panels are visible + the mode.
   /// `build` derives panel placement from this instead of hardcoded
   /// `Positioned` blocks. See docs/layout-modes.md.
-  final LayoutState _layout = const LayoutState.explore();
+  LayoutState _layout = const LayoutState.explore();
+
+  /// The mode we are animating *away from*. `build` lerps the chart/panel
+  /// geometry from `_prevMode` to `_layout.mode` by `_modeAnim.value`, so a
+  /// mode switch choreographs the chart resize/recenter and panel reflow.
+  LayoutMode _prevMode = LayoutMode.explore;
+  late final AnimationController _modeAnim;
 
   Map<(int, String), BeingContent>? _beingContent;
   Map<String, BeingTypeContent>? _beingTypeContent;
@@ -69,8 +77,29 @@ class _ChartWheelState extends State<ChartWheel> {
   @override
   void initState() {
     super.initState();
+    _modeAnim = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 340),
+      value: 1,
+    )..addListener(() => setState(() {}));
     _computeLayout();
     _loadContent();
+  }
+
+  @override
+  void dispose() {
+    _modeAnim.dispose();
+    super.dispose();
+  }
+
+  /// Switches the desktop layout mode, animating the transition. Idempotent.
+  void _setMode(LayoutMode mode) {
+    if (_layout.mode == mode) return;
+    setState(() {
+      _prevMode = _layout.mode;
+      _layout = _layout.copyWith(mode: mode);
+    });
+    _modeAnim.forward(from: 0);
   }
 
   Future<void> _loadContent() async {
@@ -182,41 +211,10 @@ class _ChartWheelState extends State<ChartWheel> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final side = min(constraints.maxWidth, constraints.maxHeight);
-        final half = side / 2;
-        final center = Offset(half, half);
         final panelMargin = (constraints.maxWidth - side) / 2;
 
-        final planetGlyphSize = half * 0.065;
-
-        // Compute planet positions based on current size.
-        _planets = _buildPlanets(half, planetGlyphSize);
-
-        final wheel = SizedBox(
-          width: side,
-          height: side,
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Positioned.fill(
-                child: CustomPaint(
-                  painter: ChartWheelPainter(
-                    color: color,
-                    backdropColor: backdropColor,
-                    ascSign: _ascSign,
-                    cusps: _cusps,
-                  ),
-                ),
-              ),
-              for (var s = 1; s <= 12; s++)
-                _buildSignGlyph(s, half, center, color),
-              for (final planet in _planets)
-                _buildPlanetGlyph(planet, half, center, color, planetGlyphSize),
-              for (final cusp in _cusps)
-                _buildCuspHitRegion(cusp, half, center, color),
-              _buildCenterInfo(half, center, color),
-            ],
-          ),
-        );
+        // Explore-size wheel; also computes `_planets` for the mobile check.
+        final wheel = _buildWheel(side, color, backdropColor);
 
         final isMobile = _planets.isEmpty || panelMargin < 80;
 
@@ -241,47 +239,182 @@ class _ChartWheelState extends State<ChartWheel> {
           );
         }
 
+        // The desktop layout is a function of the mode: lerp the geometry from
+        // the mode we're leaving to the mode we're entering. When idle,
+        // `_modeAnim.value == 1` so `g` is exactly the current mode's geometry.
+        final w = constraints.maxWidth;
+        final t = Curves.easeInOut.transform(_modeAnim.value);
+        final g = _ModeGeometry.lerp(
+          _geometryFor(_prevMode, w, side),
+          _geometryFor(_layout.mode, w, side),
+          t,
+        );
+
+        // Panels keep their explore-mode gutter geometry and simply fade with
+        // the mode (they only show in explore); the chart is what reflows.
         final panelWidth = panelMargin - 16;
-        final panelFontSize = half * 0.032;
+        final panelFontSize = (side / 2) * 0.032;
+        final chartWheel = _buildWheel(g.chartSide, color, backdropColor);
         return SizedBox(
-          width: constraints.maxWidth,
+          width: w,
           height: side,
           child: Stack(
             clipBehavior: Clip.none,
             children: [
               Positioned(
-                left: panelMargin,
-                top: 0,
-                width: side,
-                height: side,
+                left: g.chartLeft,
+                top: g.chartTop,
+                width: g.chartSide,
+                height: g.chartSide,
                 child: Stack(
                   clipBehavior: Clip.none,
                   children: [
-                    wheel,
+                    chartWheel,
                     if (_popupStack.isNotEmpty) _buildOverlay(color, isDark),
                   ],
                 ),
               ),
-              for (final dock in PanelDock.values)
-                if (_dockedPanels(dock).isNotEmpty)
-                  Positioned(
-                    left: dock == PanelDock.leftGutter ? 8 : null,
-                    right: dock == PanelDock.rightGutter ? 8 : null,
-                    top: 0,
-                    width: panelWidth,
-                    child: _buildGutter(
-                      dock,
-                      color: color,
-                      backdropColor: backdropColor,
-                      fontSize: panelFontSize,
+              if (g.panelsOpacity > 0.01)
+                for (final dock in PanelDock.values)
+                  if (_dockedPanels(dock).isNotEmpty)
+                    Positioned(
+                      left: dock == PanelDock.leftGutter ? 8 : null,
+                      right: dock == PanelDock.rightGutter ? 8 : null,
+                      top: 0,
+                      width: panelWidth,
+                      child: IgnorePointer(
+                        ignoring: g.panelsOpacity < 0.99,
+                        child: Opacity(
+                          opacity: g.panelsOpacity,
+                          child: _buildGutter(
+                            dock,
+                            color: color,
+                            backdropColor: backdropColor,
+                            fontSize: panelFontSize,
+                          ),
+                        ),
+                      ),
+                    ),
+              if (g.chatOpacity > 0.01)
+                Positioned(
+                  left: g.chatLeft,
+                  top: g.chatTop,
+                  width: g.chatWidth,
+                  height: g.chatHeight,
+                  child: IgnorePointer(
+                    ignoring: g.chatOpacity < 0.99,
+                    child: Opacity(
+                      opacity: g.chatOpacity,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(0, 8, 8, 8),
+                        child: ChatPanel(
+                          color: color,
+                          backdropColor: backdropColor,
+                          fontSize: panelFontSize,
+                        ),
+                      ),
                     ),
                   ),
+                ),
+              // Temporary mode switcher for visual testing. The real
+              // panel-visibility affordance is adityas/explore task 4; this
+              // pill just exercises the mode transitions until then.
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 8,
+                child: Center(
+                  child: _ModeSwitcher(
+                    mode: _layout.mode,
+                    color: color,
+                    backdropColor: backdropColor,
+                    onSelect: _setMode,
+                  ),
+                ),
+              ),
             ],
           ),
         );
       },
     );
   }
+
+  /// Builds the chart wheel sized to [wheelSide]. Recomputes `_planets` for
+  /// that size (positions scale with the wheel) as a side effect; panels read
+  /// `_planets` afterwards but only for being-type data, not positions.
+  Widget _buildWheel(double wheelSide, Color color, Color backdropColor) {
+    final half = wheelSide / 2;
+    final center = Offset(half, half);
+    final glyphSize = half * 0.065;
+    _planets = _buildPlanets(half, glyphSize);
+    return SizedBox(
+      width: wheelSide,
+      height: wheelSide,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned.fill(
+            child: CustomPaint(
+              painter: ChartWheelPainter(
+                color: color,
+                backdropColor: backdropColor,
+                ascSign: _ascSign,
+                cusps: _cusps,
+              ),
+            ),
+          ),
+          for (var s = 1; s <= 12; s++) _buildSignGlyph(s, half, center, color),
+          for (final planet in _planets)
+            _buildPlanetGlyph(planet, half, center, color, glyphSize),
+          for (final cusp in _cusps)
+            _buildCuspHitRegion(cusp, half, center, color),
+          _buildCenterInfo(half, center, color),
+        ],
+      ),
+    );
+  }
+
+  /// Derives the chart + chat geometry for [mode] within a `w`×`boxH` desktop
+  /// area (`boxH` is the explore square's side, the outer box's height). This
+  /// is the "layout is data" seam: transitions animate because placement is a
+  /// pure function of the mode, not hand-placed `Positioned` widgets.
+  _ModeGeometry _geometryFor(LayoutMode mode, double w, double boxH) {
+    switch (mode) {
+      case LayoutMode.explore:
+      case LayoutMode.focus:
+        final s = min(w, boxH);
+        return _ModeGeometry(
+          chartLeft: (w - s) / 2,
+          chartTop: 0,
+          chartSide: s,
+          chatLeft: w,
+          chatTop: 0,
+          chatWidth: _chatColumnWidth(w),
+          chatHeight: boxH,
+          panelsOpacity: mode == LayoutMode.explore ? 1 : 0,
+          chatOpacity: 0,
+        );
+      case LayoutMode.conversation:
+        final chatW = _chatColumnWidth(w);
+        const gap = 16.0;
+        final leftRegion = w - chatW - gap;
+        final s = min(leftRegion, boxH);
+        return _ModeGeometry(
+          chartLeft: (leftRegion - s) / 2,
+          chartTop: (boxH - s) / 2,
+          chartSide: s,
+          chatLeft: w - chatW,
+          chatTop: 0,
+          chatWidth: chatW,
+          chatHeight: boxH,
+          panelsOpacity: 0,
+          chatOpacity: 1,
+        );
+    }
+  }
+
+  /// Docked chat-column width: ~30% of the viewport, clamped to a readable band.
+  double _chatColumnWidth(double w) => (w * 0.3).clamp(300.0, 460.0);
 
   /// Visible persistent panels assigned to [dock], in enum order.
   List<PanelId> _dockedPanels(PanelDock dock) => [
@@ -808,6 +941,118 @@ class _ShopCta extends StatelessWidget {
               color: color,
               fontSize: fontSize,
               fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The chart + chat placement for one desktop layout mode, as plain numbers so
+/// a mode transition can be animated by lerping between two of these.
+@immutable
+class _ModeGeometry {
+  const _ModeGeometry({
+    required this.chartLeft,
+    required this.chartTop,
+    required this.chartSide,
+    required this.chatLeft,
+    required this.chatTop,
+    required this.chatWidth,
+    required this.chatHeight,
+    required this.panelsOpacity,
+    required this.chatOpacity,
+  });
+
+  final double chartLeft;
+  final double chartTop;
+  final double chartSide;
+  final double chatLeft;
+  final double chatTop;
+  final double chatWidth;
+  final double chatHeight;
+
+  /// Opacity of the docked info panels (1 in explore, 0 otherwise).
+  final double panelsOpacity;
+
+  /// Opacity of the docked chat column (1 in conversation, 0 otherwise).
+  final double chatOpacity;
+
+  static double _lerp(double a, double b, double t) => a + (b - a) * t;
+
+  static _ModeGeometry lerp(_ModeGeometry a, _ModeGeometry b, double t) =>
+      _ModeGeometry(
+        chartLeft: _lerp(a.chartLeft, b.chartLeft, t),
+        chartTop: _lerp(a.chartTop, b.chartTop, t),
+        chartSide: _lerp(a.chartSide, b.chartSide, t),
+        chatLeft: _lerp(a.chatLeft, b.chatLeft, t),
+        chatTop: _lerp(a.chatTop, b.chatTop, t),
+        chatWidth: _lerp(a.chatWidth, b.chatWidth, t),
+        chatHeight: _lerp(a.chatHeight, b.chatHeight, t),
+        panelsOpacity: _lerp(a.panelsOpacity, b.panelsOpacity, t),
+        chatOpacity: _lerp(a.chatOpacity, b.chatOpacity, t),
+      );
+}
+
+/// Temporary segmented control to flip between layout modes for visual
+/// testing. Replaced by the real panel-visibility affordance in
+/// adityas/explore task 4. See docs/layout-modes.md.
+class _ModeSwitcher extends StatelessWidget {
+  final LayoutMode mode;
+  final Color color;
+  final Color backdropColor;
+  final ValueChanged<LayoutMode> onSelect;
+
+  const _ModeSwitcher({
+    required this.mode,
+    required this.color,
+    required this.backdropColor,
+    required this.onSelect,
+  });
+
+  static const _labels = {
+    LayoutMode.explore: 'Explore',
+    LayoutMode.conversation: 'Chat',
+    LayoutMode.focus: 'Focus',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: backdropColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [for (final m in LayoutMode.values) _segment(m)],
+      ),
+    );
+  }
+
+  Widget _segment(LayoutMode m) {
+    final selected = m == mode;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () => onSelect(m),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: selected
+                ? color.withValues(alpha: 0.15)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Text(
+            _labels[m]!,
+            style: TextStyle(
+              color: color.withValues(alpha: selected ? 1 : 0.6),
+              fontSize: 13,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
             ),
           ),
         ),
