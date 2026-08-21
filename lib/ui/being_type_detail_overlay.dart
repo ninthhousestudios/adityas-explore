@@ -11,6 +11,7 @@ class BeingTypeDetailOverlay extends StatelessWidget {
   final Map<String, BeingTypeContent>? contentMap;
   final VoidCallback onClose;
   final VoidCallback? onBack;
+  final FloatingConfig? floating;
 
   const BeingTypeDetailOverlay({
     super.key,
@@ -20,6 +21,7 @@ class BeingTypeDetailOverlay extends StatelessWidget {
     required this.contentMap,
     required this.onClose,
     this.onBack,
+    this.floating,
   });
 
   @override
@@ -32,6 +34,7 @@ class BeingTypeDetailOverlay extends StatelessWidget {
       isDark: isDark,
       onClose: onClose,
       onBack: onBack,
+      floating: floating,
       title: content != null ? '${content.type} — ${content.role}' : '',
       body: content == null
           ? const SizedBox.shrink()

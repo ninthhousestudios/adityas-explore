@@ -55,6 +55,13 @@ class _ChartWheelState extends State<ChartWheel>
 
   final List<PopupState> _popupStack = [];
 
+  /// Geometry of the floating detail-popup window on desktop. `null` means the
+  /// user hasn't moved/resized it yet, so it renders at a centered default (see
+  /// `_popupWindowRect`). Reset whenever a fresh root popup opens or all close,
+  /// but preserved across drill-down (push/pop) so the window stays put. The
+  /// transient layer is the desktop concern only — mobile stays a modal.
+  Rect? _popupRect;
+
   /// Desktop layout as data: which persistent panels are visible + the mode.
   /// `build` derives panel placement from this instead of hardcoded
   /// `Positioned` blocks. See docs/layout-modes.md.
@@ -117,18 +124,65 @@ class _ChartWheelState extends State<ChartWheel>
     }
   }
 
-  void _closeOverlay() => setState(() => _popupStack.clear());
+  void _closeOverlay() => setState(() {
+    _popupStack.clear();
+    _popupRect = null;
+  });
 
   void _openPopup(PopupState state) => setState(() {
     _popupStack
       ..clear()
       ..add(state);
+    _popupRect = null;
   });
 
   void _pushPopup(PopupState state) => setState(() => _popupStack.add(state));
 
   void _popPopup() => setState(() {
     if (_popupStack.isNotEmpty) _popupStack.removeLast();
+  });
+
+  // --- Floating popup geometry (desktop transient layer) -------------------
+
+  static const double _kPopupMinW = 300;
+  static const double _kPopupMinH = 220;
+  static const double _kPopupDefaultW = 460;
+  static const double _kPopupDefaultH = 560;
+
+  /// The popup window rect for a desktop area of [areaW]×[areaH]: the stored
+  /// geometry, or a centered default when unset, always clamped on-screen so a
+  /// viewport resize can't strand it.
+  Rect _popupWindowRect(double areaW, double areaH) {
+    final r = _popupRect ?? _defaultPopupRect(areaW, areaH);
+    return _clampPopupRect(r, areaW, areaH);
+  }
+
+  Rect _defaultPopupRect(double areaW, double areaH) {
+    final w = min(_kPopupDefaultW, areaW - 32);
+    final h = min(_kPopupDefaultH, areaH - 32);
+    return Rect.fromLTWH((areaW - w) / 2, (areaH - h) / 2, w, h);
+  }
+
+  Rect _clampPopupRect(Rect r, double areaW, double areaH) {
+    final w = r.width.clamp(_kPopupMinW, max(_kPopupMinW, areaW)).toDouble();
+    final h = r.height.clamp(_kPopupMinH, max(_kPopupMinH, areaH)).toDouble();
+    final left = r.left.clamp(0.0, max(0.0, areaW - w)).toDouble();
+    final top = r.top.clamp(0.0, max(0.0, areaH - h)).toDouble();
+    return Rect.fromLTWH(left, top, w, h);
+  }
+
+  void _dragPopup(Offset delta, double areaW, double areaH) => setState(() {
+    final r = _popupWindowRect(areaW, areaH);
+    _popupRect = _clampPopupRect(r.shift(delta), areaW, areaH);
+  });
+
+  void _resizePopup(Offset delta, double areaW, double areaH) => setState(() {
+    final r = _popupWindowRect(areaW, areaH);
+    _popupRect = _clampPopupRect(
+      Rect.fromLTWH(r.left, r.top, r.width + delta.dx, r.height + delta.dy),
+      areaW,
+      areaH,
+    );
   });
 
   @override
@@ -266,13 +320,7 @@ class _ChartWheelState extends State<ChartWheel>
                 top: g.chartTop,
                 width: g.chartSide,
                 height: g.chartSide,
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    chartWheel,
-                    if (_popupStack.isNotEmpty) _buildOverlay(color, isDark),
-                  ],
-                ),
+                child: chartWheel,
               ),
               if (g.panelsOpacity > 0.01)
                 for (final dock in PanelDock.values)
@@ -332,6 +380,19 @@ class _ChartWheelState extends State<ChartWheel>
                   ),
                 ),
               ),
+              // Transient popup layer floats above everything, over the whole
+              // desktop area (not confined to the chart square). Draggable +
+              // resizable — see docs/layout-modes.md.
+              if (_popupStack.isNotEmpty)
+                _buildOverlay(
+                  color,
+                  isDark,
+                  floating: FloatingConfig(
+                    rect: _popupWindowRect(w, side),
+                    onDrag: (d) => _dragPopup(d, w, side),
+                    onResize: (d) => _resizePopup(d, w, side),
+                  ),
+                ),
             ],
           ),
         );
@@ -751,7 +812,10 @@ class _ChartWheelState extends State<ChartWheel>
     );
   }
 
-  Widget _buildOverlay(Color color, bool isDark) {
+  /// Builds the top popup. When [floating] is supplied (desktop) the three
+  /// detail popups render as a draggable + resizable window; the uncertainty
+  /// chooser and mobile panel sheets stay modal regardless.
+  Widget _buildOverlay(Color color, bool isDark, {FloatingConfig? floating}) {
     final canGoBack = _popupStack.length > 1;
     final onBack = canGoBack ? _popPopup : null;
 
@@ -761,12 +825,14 @@ class _ChartWheelState extends State<ChartWheel>
         isDark,
         planet: planet,
         onBack: onBack,
+        floating: floating,
       ),
       BeingFromName(:final being) => _buildBeingShell(
         color,
         isDark,
         being: being,
         onBack: onBack,
+        floating: floating,
       ),
       BeingTypePopup(:final type) => BeingTypeDetailOverlay(
         color: color,
@@ -775,6 +841,7 @@ class _ChartWheelState extends State<ChartWheel>
         contentMap: _beingTypeContent,
         onClose: _closeOverlay,
         onBack: onBack,
+        floating: floating,
       ),
       PlanetPopup(:final planet) => PlanetDetailOverlay(
         color: color,
@@ -783,6 +850,7 @@ class _ChartWheelState extends State<ChartWheel>
         contentMap: _planetContent,
         onClose: _closeOverlay,
         onBack: onBack,
+        floating: floating,
       ),
       UncertaintyPopup(:final planet, :final kind) => UncertaintyChooser(
         color: color,
@@ -882,6 +950,7 @@ class _ChartWheelState extends State<ChartWheel>
     PlacedPlanet? planet,
     BeingRef? being,
     VoidCallback? onBack,
+    FloatingConfig? floating,
   }) {
     final header = beingOverlayHeader(
       color: color,
@@ -893,6 +962,7 @@ class _ChartWheelState extends State<ChartWheel>
       isDark: isDark,
       onClose: _closeOverlay,
       onBack: onBack,
+      floating: floating,
       headerLeading: header?.leading,
       title: header?.title ?? '',
       body: BeingOverlayBody(

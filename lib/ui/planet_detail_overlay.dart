@@ -13,6 +13,7 @@ class PlanetDetailOverlay extends StatelessWidget {
   final Map<String, PlanetContent>? contentMap;
   final VoidCallback onClose;
   final VoidCallback? onBack;
+  final FloatingConfig? floating;
 
   const PlanetDetailOverlay({
     super.key,
@@ -22,6 +23,7 @@ class PlanetDetailOverlay extends StatelessWidget {
     required this.contentMap,
     required this.onClose,
     this.onBack,
+    this.floating,
   });
 
   @override
@@ -35,6 +37,7 @@ class PlanetDetailOverlay extends StatelessWidget {
       isDark: isDark,
       onClose: onClose,
       onBack: onBack,
+      floating: floating,
       headerLeading: glyphPath != null
           ? SvgPicture.asset(
               glyphPath,
