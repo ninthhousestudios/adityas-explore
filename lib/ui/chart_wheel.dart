@@ -343,6 +343,7 @@ class _ChartWheelState extends State<ChartWheel>
                         child: Opacity(
                           opacity: g.panelsOpacity,
                           child: _buildGutter(
+                            context,
                             dock,
                             color: color,
                             backdropColor: backdropColor,
@@ -511,6 +512,7 @@ class _ChartWheelState extends State<ChartWheel>
   /// matching the pre-refactor `Positioned(width: panelWidth)`. The right
   /// gutter centers and shrink-wraps each panel, as its stacked column did.
   Widget _buildGutter(
+    BuildContext context,
     PanelDock dock, {
     required Color color,
     required Color backdropColor,
@@ -525,21 +527,74 @@ class _ChartWheelState extends State<ChartWheel>
       children: [
         for (var i = 0; i < panels.length; i++) ...[
           if (i > 0) const SizedBox(height: 8),
-          _ClosablePanel(
-            color: color,
-            backdropColor: backdropColor,
-            label: panelLabel(panels[i]),
-            onClose: () => _setPanelVisible(panels[i], false),
-            child: _buildPanel(
-              panels[i],
+          // Right-click is a secondary power-user shortcut only (the bottom-bar
+          // menu is the primary path — docs/layout-modes.md § foundation 4).
+          GestureDetector(
+            behavior: HitTestBehavior.deferToChild,
+            onSecondaryTapDown: (d) =>
+                _showPanelContextMenu(context, panels[i], d.globalPosition),
+            child: _ClosablePanel(
               color: color,
               backdropColor: backdropColor,
-              fontSize: fontSize,
+              label: panelLabel(panels[i]),
+              onClose: () => _setPanelVisible(panels[i], false),
+              child: _buildPanel(
+                panels[i],
+                color: color,
+                backdropColor: backdropColor,
+                fontSize: fontSize,
+              ),
             ),
           ),
         ],
       ],
     );
+  }
+
+  /// Secondary-only right-click menu on a persistent panel: "Hide" the panel
+  /// under the cursor, then a checklist mirroring the bottom-bar panels menu.
+  Future<void> _showPanelContextMenu(
+    BuildContext context,
+    PanelId panel,
+    Offset globalPos,
+  ) async {
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final color = isDark ? Colors.white : Colors.black;
+    final selected = await showMenu<(_PanelMenuKind, PanelId)>(
+      context: context,
+      color: isDark
+          ? Colors.black.withValues(alpha: 0.5)
+          : Colors.white.withValues(alpha: 0.5),
+      position: RelativeRect.fromRect(
+        Rect.fromLTWH(globalPos.dx, globalPos.dy, 0, 0),
+        Offset.zero & overlay.size,
+      ),
+      items: [
+        PopupMenuItem(
+          value: (_PanelMenuKind.hideThis, panel),
+          child: Text(
+            'Hide ${panelLabel(panel)}',
+            style: TextStyle(color: color),
+          ),
+        ),
+        const PopupMenuDivider(),
+        for (final id in LayoutState.toggleable)
+          CheckedPopupMenuItem(
+            value: (_PanelMenuKind.toggle, id),
+            checked: _layout.isVisible(id),
+            child: Text(panelLabel(id), style: TextStyle(color: color)),
+          ),
+      ],
+    );
+    if (selected == null) return;
+    final (kind, id) = selected;
+    switch (kind) {
+      case _PanelMenuKind.hideThis:
+        _setPanelVisible(id, false);
+      case _PanelMenuKind.toggle:
+        _togglePanel(id);
+    }
   }
 
   /// Builds the widget for one persistent panel.
@@ -1158,6 +1213,10 @@ class _ModeSwitcher extends StatelessWidget {
     );
   }
 }
+
+/// What a right-click panel menu item does: hide the right-clicked panel, or
+/// toggle a named one (mirroring the bottom-bar checklist).
+enum _PanelMenuKind { hideThis, toggle }
 
 /// Always-visible pill that opens a checklist of the persistent panels, so the
 /// user can show/hide each one (and restore panels they closed). Checkmark =
