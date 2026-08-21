@@ -553,6 +553,13 @@ class _ChartWheelState extends State<ChartWheel>
 
   /// Secondary-only right-click menu on a persistent panel: "Hide" the panel
   /// under the cursor, then a checklist mirroring the bottom-bar panels menu.
+  ///
+  /// Desktop only by design. On web the browser's native context menu wins, so
+  /// this never fires — not a bug. The only override is the global
+  /// `BrowserContextMenu.disableContextMenu()`, which would suppress the native
+  /// menu app-wide (copy, inspect, open-image) for a secondary power-user
+  /// shortcut — a bad trade. Web keeps the primary affordances (the bottom-bar
+  /// Panels menu + hover close), which cover panel visibility fully.
   Future<void> _showPanelContextMenu(
     BuildContext context,
     PanelId panel,
