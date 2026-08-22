@@ -1176,16 +1176,33 @@ class _SettingsMenu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Match the old bottom-bar pills: brand backdrop, faint border, rounded
+    // corners (card convention, radius 16) on the popup, and a softly rounded
+    // hover highlight on each row.
     final menuStyle = MenuStyle(
       backgroundColor: WidgetStatePropertyAll(backdropColor),
       side: WidgetStatePropertyAll(
         BorderSide(color: color.withValues(alpha: 0.3)),
+      ),
+      shape: WidgetStatePropertyAll(
+        RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      ),
+      padding: const WidgetStatePropertyAll(EdgeInsets.all(6)),
+    );
+    final buttonStyle = ButtonStyle(
+      shape: WidgetStatePropertyAll(
+        RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      overlayColor: WidgetStatePropertyAll(color.withValues(alpha: 0.1)),
+      padding: const WidgetStatePropertyAll(
+        EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       ),
     );
     return MenuAnchor(
       style: menuStyle,
       menuChildren: [
         SubmenuButton(
+          style: buttonStyle,
           menuStyle: menuStyle,
           leadingIcon: Icon(
             Icons.view_sidebar_outlined,
@@ -1198,11 +1215,13 @@ class _SettingsMenu extends StatelessWidget {
                 label: panelLabel(id),
                 active: layout.isVisible(id),
                 onPressed: () => onTogglePanel(id),
+                buttonStyle: buttonStyle,
               ),
           ],
           child: Text('Panels', style: TextStyle(color: color)),
         ),
         SubmenuButton(
+          style: buttonStyle,
           menuStyle: menuStyle,
           leadingIcon: Icon(Icons.dashboard_outlined, size: 18, color: color),
           menuChildren: [
@@ -1211,6 +1230,7 @@ class _SettingsMenu extends StatelessWidget {
                 label: layoutModeLabel(m),
                 active: m == layout.mode,
                 onPressed: () => onSelectMode(m),
+                buttonStyle: buttonStyle,
               ),
           ],
           child: Text('Mode', style: TextStyle(color: color)),
@@ -1242,9 +1262,11 @@ class _SettingsMenu extends StatelessWidget {
     required String label,
     required bool active,
     required VoidCallback onPressed,
+    required ButtonStyle buttonStyle,
   }) {
     return MenuItemButton(
       onPressed: onPressed,
+      style: buttonStyle,
       leadingIcon: Icon(active ? Icons.check : null, size: 18, color: color),
       child: Text(label, style: TextStyle(color: color)),
     );
