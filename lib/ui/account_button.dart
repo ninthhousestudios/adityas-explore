@@ -112,11 +112,14 @@ class _AccountButtonState extends ConsumerState<AccountButton> {
   }
 
   void _showSignInDialog(BuildContext context) {
-    showDialog(context: context, builder: (context) => const _SignInDialog());
+    showDialog<void>(
+      context: context,
+      builder: (context) => const _SignInDialog(),
+    );
   }
 
   void _showMyChartsDialog(BuildContext context) {
-    showDialog(
+    showDialog<void>(
       context: context,
       builder: (context) => _MyChartsDialog(
         charts: widget.savedCharts,

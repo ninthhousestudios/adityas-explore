@@ -927,7 +927,7 @@ class _BirthFormState extends State<BirthForm> {
           shrinkWrap: true,
           padding: EdgeInsets.zero,
           itemCount: _searchResults.length,
-          separatorBuilder: (_, __) =>
+          separatorBuilder: (_, _) =>
               Divider(height: 1, color: color.withValues(alpha: 0.1)),
           itemBuilder: (context, index) {
             final result = _searchResults[index];

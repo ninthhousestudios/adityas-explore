@@ -48,12 +48,11 @@ class ChartCalculator {
   }
 
   static void _logChart(Chart chart, String name) {
-    final buf = StringBuffer();
-    buf.writeln('=== Chart: $name ===');
-    buf.writeln('Circle: ${chart.config.circle.name}');
-    buf.writeln('');
-
-    buf.writeln('--- Planets ---');
+    final buf = StringBuffer()
+      ..writeln('=== Chart: $name ===')
+      ..writeln('Circle: ${chart.config.circle.name}')
+      ..writeln('')
+      ..writeln('--- Planets ---');
     for (final planet in chart.planets) {
       final lon = planet.longitude;
       buf.writeln(
@@ -67,8 +66,9 @@ class ChartCalculator {
       );
     }
 
-    buf.writeln('');
-    buf.writeln('--- Houses ---');
+    buf
+      ..writeln('')
+      ..writeln('--- Houses ---');
     for (final cusp in chart.cusps) {
       final lon = cusp.longitude;
       buf.writeln(

@@ -620,7 +620,7 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
     final fontSize = half * 0.052;
     final scaledSize = MediaQuery.textScalerOf(context).scale(fontSize);
     final naturalSpacing = scaledSize * 0.85 / radius;
-    final maxSpan = 0.85 * pi / 6;
+    const maxSpan = 0.85 * pi / 6;
     final totalNatural = name.length > 1
         ? (name.length - 1) * naturalSpacing
         : 0.0;

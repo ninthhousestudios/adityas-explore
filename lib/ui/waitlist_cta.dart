@@ -77,7 +77,7 @@ class WaitlistCta extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final dialogColor = isDark ? Colors.white : Colors.black;
 
-    showDialog(
+    showDialog<void>(
       context: context,
       builder: (context) => WaitlistDialog(
         color: dialogColor,

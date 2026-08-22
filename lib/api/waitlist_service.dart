@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 const _defaultBaseUrl = 'https://api.84beings.com';
 
 class WaitlistService {
-  static final String _baseUrl = const String.fromEnvironment(
+  static const String _baseUrl = String.fromEnvironment(
     'API_BASE_URL',
     defaultValue: _defaultBaseUrl,
   );

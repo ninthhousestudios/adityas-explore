@@ -47,82 +47,81 @@ Future<Uint8List> buildChartPdf({
     );
   });
 
-  final doc = pw.Document();
+  final doc = pw.Document()
+    ..addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(36),
+        build: (context) {
+          final pageWidth = context.page.pageFormat.availableWidth;
+          final wheelSize = min(pageWidth, 380.0);
+          final half = wheelSize / 2;
+          final glyphSize = half * 0.065;
 
-  doc.addPage(
-    pw.Page(
-      pageFormat: PdfPageFormat.a4,
-      margin: const pw.EdgeInsets.all(36),
-      build: (context) {
-        final pageWidth = context.page.pageFormat.availableWidth;
-        final wheelSize = min(pageWidth, 380.0);
-        final half = wheelSize / 2;
-        final glyphSize = half * 0.065;
+          final planets = _buildPlanets(chart, ascSign, half, glyphSize);
 
-        final planets = _buildPlanets(chart, ascSign, half, glyphSize);
-
-        return pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.center,
-          children: [
-            if (chartName != null)
-              pw.Padding(
-                padding: const pw.EdgeInsets.only(bottom: 12),
-                child: pw.Text(
-                  chartName,
-                  style: pw.TextStyle(font: boldFont, fontSize: 16),
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.center,
+            children: [
+              if (chartName != null)
+                pw.Padding(
+                  padding: const pw.EdgeInsets.only(bottom: 12),
+                  child: pw.Text(
+                    chartName,
+                    style: pw.TextStyle(font: boldFont, fontSize: 16),
+                  ),
+                ),
+              pw.Center(
+                child: pw.SizedBox(
+                  width: wheelSize,
+                  height: wheelSize,
+                  child: _WheelWidget(
+                    planets: planets,
+                    cusps: cusps,
+                    ascSign: ascSign,
+                    svgCache: svgCache,
+                    font: font,
+                    uncertainty: uncertainty,
+                  ),
                 ),
               ),
-            pw.Center(
-              child: pw.SizedBox(
-                width: wheelSize,
-                height: wheelSize,
-                child: _WheelWidget(
-                  planets: planets,
-                  cusps: cusps,
-                  ascSign: ascSign,
-                  svgCache: svgCache,
+              pw.SizedBox(height: 16),
+              pw.Row(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Expanded(
+                    child: _buildSoulStancesPanel(
+                      planets,
+                      font,
+                      boldFont,
+                      uncertainty,
+                    ),
+                  ),
+                  pw.SizedBox(width: 16),
+                  pw.Expanded(
+                    child: _buildBeingsPanel(
+                      planets,
+                      font,
+                      boldFont,
+                      uncertainty,
+                    ),
+                  ),
+                ],
+              ),
+              pw.Spacer(),
+              pw.Text(
+                '84beings.com',
+                style: pw.TextStyle(
                   font: font,
-                  uncertainty: uncertainty,
+                  fontSize: 8,
+                  color: PdfColors.grey600,
                 ),
               ),
-            ),
-            pw.SizedBox(height: 16),
-            pw.Row(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Expanded(
-                  child: _buildSoulStancesPanel(
-                    planets,
-                    font,
-                    boldFont,
-                    uncertainty,
-                  ),
-                ),
-                pw.SizedBox(width: 16),
-                pw.Expanded(
-                  child: _buildBeingsPanel(
-                    planets,
-                    font,
-                    boldFont,
-                    uncertainty,
-                  ),
-                ),
-              ],
-            ),
-            pw.Spacer(),
-            pw.Text(
-              '84beings.com',
-              style: pw.TextStyle(
-                font: font,
-                fontSize: 8,
-                color: PdfColors.grey600,
-              ),
-            ),
-          ],
-        );
-      },
-    ),
-  );
+            ],
+          );
+        },
+      ),
+    );
 
   return doc.save();
 }
@@ -215,15 +214,11 @@ class _WheelWidget extends pw.Widget {
     canvas
       ..setFillColor(PdfColors.white)
       ..drawEllipse(cx, cy, half * outerRingOuter, half * outerRingOuter)
-      ..fillPath();
-
-    canvas
+      ..fillPath()
       ..setStrokeColor(PdfColors.black)
       ..setLineWidth(1.5)
       ..drawEllipse(cx, cy, half * outerRingOuter, half * outerRingOuter)
-      ..strokePath();
-
-    canvas
+      ..strokePath()
       ..setStrokeColor(const PdfColor.fromInt(0xFF808080))
       ..setLineWidth(0.75);
     for (final r in [outerRingInner, planetRingInner, houseRingInner]) {
@@ -348,24 +343,23 @@ class _WheelWidget extends pw.Widget {
       final radius = planet.radiusFraction * half;
       final pos = _polar(planet.angle, radius, cx, cy);
 
-      final svgImage = pw.SvgImage(
-        svg: svgStr,
-        width: glyphSize,
-        height: glyphSize,
-        colorFilter: const PdfColor.fromInt(0xFF000000),
-      );
-
-      svgImage.layout(
-        context,
-        pw.BoxConstraints.tightFor(width: glyphSize, height: glyphSize),
-      );
-      svgImage.box = PdfRect(
-        pos.x - glyphSize / 2,
-        pos.y - glyphSize / 2,
-        glyphSize,
-        glyphSize,
-      );
-      svgImage.paint(context);
+      pw.SvgImage(
+          svg: svgStr,
+          width: glyphSize,
+          height: glyphSize,
+          colorFilter: const PdfColor.fromInt(0xFF000000),
+        )
+        ..layout(
+          context,
+          pw.BoxConstraints.tightFor(width: glyphSize, height: glyphSize),
+        )
+        ..box = PdfRect(
+          pos.x - glyphSize / 2,
+          pos.y - glyphSize / 2,
+          glyphSize,
+          glyphSize,
+        )
+        ..paint(context);
 
       if (uncertainty?.isUncertain(planet.bodyName) ?? false) {
         final tildeSize = glyphSize * 0.6;

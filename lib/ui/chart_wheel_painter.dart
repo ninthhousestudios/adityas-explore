@@ -41,9 +41,10 @@ class ChartWheelPainter extends CustomPainter {
       ..strokeWidth = 0.5;
 
     // Concentric circles.
-    canvas.drawCircle(center, half * outerRingInner, ringPaint);
-    canvas.drawCircle(center, half * planetRingInner, ringPaint);
-    canvas.drawCircle(center, half * houseRingInner, ringPaint);
+    canvas
+      ..drawCircle(center, half * outerRingInner, ringPaint)
+      ..drawCircle(center, half * planetRingInner, ringPaint)
+      ..drawCircle(center, half * houseRingInner, ringPaint);
 
     // Outer edge.
     final outerEdgePaint = Paint()
@@ -66,8 +67,8 @@ class ChartWheelPainter extends CustomPainter {
   void _drawHouseLabels(Canvas canvas, Offset center, double half) {
     final textColor = color.withValues(alpha: 0.6);
     final cuspColor = color.withValues(alpha: 0.5);
-    final arabicRadius = (houseRingOuter + houseRingInner) / 2 + 0.025;
-    final romanRadius = (houseRingOuter + houseRingInner) / 2 - 0.025;
+    const arabicRadius = (houseRingOuter + houseRingInner) / 2 + 0.025;
+    const romanRadius = (houseRingOuter + houseRingInner) / 2 - 0.025;
 
     // Arabic whole-sign house numbers at sign midpoints.
     for (var i = 0; i < 12; i++) {

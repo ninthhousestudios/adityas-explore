@@ -38,12 +38,13 @@ const _sentryDsn =
 Future<void> main() async {
   await SentryFlutter.init(
     (options) {
-      options.dsn = _sentryDsn;
-      options.tracesSampleRate = 0.2;
-      options.environment = const String.fromEnvironment(
-        'SENTRY_ENVIRONMENT',
-        defaultValue: 'production',
-      );
+      options
+        ..dsn = _sentryDsn
+        ..tracesSampleRate = 0.2
+        ..environment = const String.fromEnvironment(
+          'SENTRY_ENVIRONMENT',
+          defaultValue: 'production',
+        );
     },
     appRunner: () {
       WidgetsFlutterBinding.ensureInitialized();
@@ -772,7 +773,7 @@ class _ExplorePage extends StatelessWidget {
     final color = isDark ? Colors.white : Colors.black;
     final cardBg = isDark ? const Color(0xF0151015) : const Color(0xF0F5F1EA);
 
-    showDialog(
+    showDialog<void>(
       context: context,
       builder: (context) => Center(
         child: Container(

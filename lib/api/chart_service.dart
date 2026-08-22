@@ -64,7 +64,7 @@ abstract interface class EntitlementClient {
 typedef TokenProvider = Future<String?> Function({bool forceRefresh});
 
 class ChartService implements EntitlementClient {
-  static final String _baseUrl = const String.fromEnvironment(
+  static const String _baseUrl = String.fromEnvironment(
     'API_BASE_URL',
     defaultValue: _defaultBaseUrl,
   );
@@ -72,9 +72,8 @@ class ChartService implements EntitlementClient {
   final http.Client _client;
   final TokenProvider _tokenProvider;
 
-  ChartService({required TokenProvider tokenProvider, http.Client? client})
-    : _tokenProvider = tokenProvider,
-      _client = client ?? http.Client();
+  ChartService({required this._tokenProvider, http.Client? client})
+    : _client = client ?? http.Client();
 
   Map<String, String> _headers(String token) => {
     'Authorization': 'Bearer $token',

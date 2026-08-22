@@ -61,7 +61,7 @@ class PlacesApiException implements Exception {
 }
 
 class PlacesService {
-  static final String _baseUrl = const String.fromEnvironment(
+  static const String _baseUrl = String.fromEnvironment(
     'API_BASE_URL',
     defaultValue: _defaultBaseUrl,
   );

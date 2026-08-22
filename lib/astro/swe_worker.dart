@@ -19,7 +19,7 @@ void sweWorkerEntry(List<Object?> args) {
     final fnArgs = msg[1];
     final replyPort = msg[2] as SendPort;
     try {
-      final result = await fn(fnArgs);
+      final result = await Function.apply(fn, [fnArgs]);
       replyPort.send(['ok', result]);
     } catch (e) {
       replyPort.send(['error', e.toString()]);
