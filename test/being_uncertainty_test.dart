@@ -79,9 +79,9 @@ void main() {
   });
 
   group('BeingUncertainty', () {
-    final beingA = Being(name: 'Indra', type: BeingType.aditya, signNumber: 1);
-    final beingB = Being(name: 'Surya', type: BeingType.aditya, signNumber: 5);
-    final beingC = Being(name: 'Vritra', type: BeingType.naga, signNumber: 3);
+    const beingA = Being(name: 'Indra', type: BeingType.aditya, signNumber: 1);
+    const beingB = Being(name: 'Surya', type: BeingType.aditya, signNumber: 5);
+    const beingC = Being(name: 'Vritra', type: BeingType.naga, signNumber: 3);
 
     test('none has no uncertainty for any planet', () {
       expect(BeingUncertainty.none.isUncertain('venus'), false);
@@ -95,7 +95,7 @@ void main() {
     });
 
     test('isTrimsamsaUncertain true when multiple options', () {
-      final u = BeingUncertainty(
+      const u = BeingUncertainty(
         trimsamsaOptions: {
           'venus': [beingA, beingB],
         },
@@ -105,7 +105,7 @@ void main() {
     });
 
     test('isTrimsamsaUncertain false when single option', () {
-      final u = BeingUncertainty(
+      const u = BeingUncertainty(
         trimsamsaOptions: {
           'venus': [beingA],
         },
@@ -114,7 +114,7 @@ void main() {
     });
 
     test('isHoraUncertain true when multiple options', () {
-      final u = BeingUncertainty(
+      const u = BeingUncertainty(
         horaOptions: {
           'mars': [beingA, beingC],
         },
@@ -124,14 +124,14 @@ void main() {
     });
 
     test('isUncertain true if either trimsamsa or hora uncertain', () {
-      final trimsamsaOnly = BeingUncertainty(
+      const trimsamsaOnly = BeingUncertainty(
         trimsamsaOptions: {
           'venus': [beingA, beingB],
         },
       );
       expect(trimsamsaOnly.isUncertain('venus'), true);
 
-      final horaOnly = BeingUncertainty(
+      const horaOnly = BeingUncertainty(
         horaOptions: {
           'venus': [beingA, beingC],
         },
@@ -140,7 +140,7 @@ void main() {
     });
 
     test('trimsamsaFor returns options list', () {
-      final u = BeingUncertainty(
+      const u = BeingUncertainty(
         trimsamsaOptions: {
           'venus': [beingA, beingB],
         },
@@ -150,7 +150,7 @@ void main() {
     });
 
     test('horaFor returns options list', () {
-      final u = BeingUncertainty(
+      const u = BeingUncertainty(
         horaOptions: {
           'jupiter': [beingA, beingC],
         },
