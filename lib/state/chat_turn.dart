@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'clock.dart';
 import 'conversation.dart';
 import 'delta_throttle.dart';
 import 'entitlement.dart';
@@ -61,9 +62,15 @@ class TurnReconnecting extends ChatTurn {
 }
 
 /// The turn completed cleanly. [usage] settles billing (usage-at-end).
+///
+/// [usage] is `null` when the generation reached [DoneEvent] but no
+/// [UsageEvent] ever arrived — a billing *gap* the ledger must reconcile,
+/// deliberately distinct from an explicit [TurnUsage.zero] (a server-reported
+/// zero-cost turn). Never collapse the gap into zero: a dropped/reordered usage
+/// event would then be indistinguishable from a legitimately free turn.
 class TurnDone extends ChatTurn {
   final String text;
-  final TurnUsage usage;
+  final TurnUsage? usage;
 
   const TurnDone({required this.text, required this.usage});
 }
@@ -119,7 +126,19 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
 
   StreamSubscription<TurnEvent>? _sub;
   int _reconnects = 0;
+
+  // A cancelled turn keeps its subscription open to receive the server's
+  // trailing usage/done (non-refunding settlement). `_cancelling` is the latch
+  // for that window: set on [cancel], cleared only once the stopped turn
+  // settles. While it is set the turn is still busy — [send] must refuse — or a
+  // fresh turn would tear down the subscription and lose the trailing usage.
   bool _cancelling = false;
+
+  // Fires at `access_until` to end an in-flight turn the instant entitlement
+  // lapses. Driven by the injected [Clock] (delay) + a real [Timer]; the
+  // [chatAvailableProvider] listen only reacts to provider *changes*, which
+  // never fire on the wall-clock boundary by themselves.
+  Timer? _expiryTimer;
 
   @override
   ChatTurn build() {
@@ -138,15 +157,20 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
       ..onDispose(() {
         _closeSub();
         _throttle.cancel();
+        _cancelExpiryTimer();
       });
 
     return const TurnIdle();
   }
 
   /// Send a user message, opening a new turn. No-op if a turn is already active
-  /// (one turn at a time) or the message is blank.
+  /// (one turn at a time), if a cancelled turn is still settling, or if the
+  /// message is blank.
   void send(String text) {
-    if (_isActive) return;
+    // `_cancelling`: a cancelled turn awaiting its trailing usage/done still
+    // owns the transport subscription. Opening a new turn now would reset it and
+    // drop the stopped turn's (billable) usage.
+    if (_isActive || _cancelling) return;
     // UX gate; the backend is the authoritative entitlement check. Defense in
     // depth against opening a turn the server will refuse anyway.
     if (ref.read(chatAvailableProvider) != true) {
@@ -165,11 +189,21 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
         .appendUser(message);
     _resetTurn();
     state = const TurnConnecting();
-    _subscribe(
-      _transport.start(
+    // Stream creation can throw synchronously (e.g. no transport wired, bad
+    // request). Catch it here so the turn ends in a terminal error rather than
+    // stranding an active state with no subscription (which would silently
+    // swallow every later send).
+    final Stream<TurnEvent> events;
+    try {
+      events = _transport.start(
         TurnRequest(text: message, parentMessageId: userMessage.id),
-      ),
-    );
+      );
+    } catch (error) {
+      _fail('Failed to start the turn: $error');
+      return;
+    }
+    _subscribe(events);
+    _scheduleExpiry();
   }
 
   /// Stop the turn. Maps to a server-side stop, not merely closing the client
@@ -179,6 +213,7 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     if (!_isActive) return;
     _cancelling = true;
     _throttle.cancel();
+    _cancelExpiryTimer();
     // Reflect the stop immediately; the subscription stays open to receive the
     // server's trailing usage/done for the stopped turn.
     state = TurnCancelled(text: _buffer.toString(), usage: _usage);
@@ -210,7 +245,14 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
         _finish();
         return;
       case ErrorEvent(:final message):
-        _fail(message);
+        // A server error on a turn the user already stopped settles the cancel
+        // (keep TurnCancelled + whatever usage arrived); it does not un-cancel
+        // into TurnError.
+        if (_cancelling) {
+          _settleCancelled();
+        } else {
+          _fail(message);
+        }
         return;
       case ToolStartEvent():
       case ToolEndEvent():
@@ -228,7 +270,13 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
   /// `cancelOnError` already tore this subscription down; resume on a fresh one.
   void _onStreamError(Object error, StackTrace stackTrace) {
     _sub = null;
-    if (_cancelling || _isTerminal(state)) return;
+    if (_cancelling) {
+      // The stopped turn's stream broke before (or after) settling — the
+      // settlement window is over. Release the latch so a new turn can open.
+      _cancelling = false;
+      return;
+    }
+    if (_isTerminal(state)) return;
     if (_reconnects >= _maxReconnects) {
       _fail('Stream failed after $_maxReconnects reconnect attempts: $error');
       return;
@@ -240,14 +288,30 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
       cursor: _cursor,
       attempt: _reconnects,
     );
-    _subscribe(_transport.resume(_cursor ?? ''));
+    // As with start(), resume() can throw synchronously; fail terminally rather
+    // than strand the turn in TurnReconnecting with no subscription.
+    final Stream<TurnEvent> events;
+    try {
+      events = _transport.resume(_cursor ?? '');
+    } catch (resumeError) {
+      _fail('Reconnect failed: $resumeError');
+      return;
+    }
+    _subscribe(events);
   }
 
   /// The stream closed before a terminal event → the generation broke. Usage
   /// precedes done, so it typically never arrived — the turn is unbilled from
   /// the client's view and the ledger tolerates the gap.
   void _onStreamDone() {
-    if (_cancelling || _isTerminal(state)) return;
+    if (_cancelling) {
+      // The stopped turn's stream closed — settlement is over (usage arrived on
+      // it, or never). Release the latch; the TurnCancelled state stands.
+      _cancelling = false;
+      _closeSub();
+      return;
+    }
+    if (_isTerminal(state)) return;
     _fail('Stream closed before completing.');
   }
 
@@ -262,15 +326,16 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
   }
 
   void _finish() {
-    _closeSub();
-    _throttle.cancel();
     if (_cancelling) {
-      state = TurnCancelled(text: _buffer.toString(), usage: _usage);
+      _settleCancelled();
     } else {
-      state = TurnDone(
-        text: _buffer.toString(),
-        usage: _usage ?? const TurnUsage.zero(),
-      );
+      _closeSub();
+      _throttle.cancel();
+      _cancelExpiryTimer();
+      // `_usage` stays null when done arrived without a usage event: a billing
+      // gap, NOT a zero-cost turn. TurnDone.usage is nullable precisely so the
+      // ledger can tell the two apart (see TurnDone).
+      state = TurnDone(text: _buffer.toString(), usage: _usage);
     }
     if (_buffer.isNotEmpty) {
       ref
@@ -279,9 +344,20 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     }
   }
 
+  /// Close out a turn the user stopped: keep [TurnCancelled] with whatever usage
+  /// settled, and release the `_cancelling` latch so a new turn may open.
+  void _settleCancelled() {
+    _cancelling = false;
+    _closeSub();
+    _throttle.cancel();
+    _cancelExpiryTimer();
+    state = TurnCancelled(text: _buffer.toString(), usage: _usage);
+  }
+
   void _fail(String message) {
     _closeSub();
     _throttle.cancel();
+    _cancelExpiryTimer();
     state = TurnError(message: message, cursor: _cursor, usage: _usage);
   }
 
@@ -292,6 +368,7 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     if (!_isActive) return;
     _closeSub();
     _throttle.cancel();
+    _cancelExpiryTimer();
     unawaited(_transport.cancel());
     state = TurnError(
       message: 'Access expired during the turn.',
@@ -300,9 +377,31 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     );
   }
 
+  /// Arm the mid-turn expiry timer at the current `access_until`. The delay is
+  /// measured with the injected [Clock] so tests are deterministic; the [Timer]
+  /// fires [_expire] at the boundary. No deadline (signed out / no entitlement)
+  /// → no timer. An already-past deadline expires the turn at once.
+  void _scheduleExpiry() {
+    _cancelExpiryTimer();
+    final deadline = ref.read(accessDeadlineProvider);
+    if (deadline == null) return;
+    final delay = deadline.difference(ref.read(clockProvider).now());
+    if (delay <= Duration.zero) {
+      _expire();
+      return;
+    }
+    _expiryTimer = Timer(delay, _expire);
+  }
+
+  void _cancelExpiryTimer() {
+    _expiryTimer?.cancel();
+    _expiryTimer = null;
+  }
+
   void _resetTurn() {
     _closeSub();
     _throttle.cancel();
+    _cancelExpiryTimer();
     _buffer.clear();
     _cursor = null;
     _usage = null;

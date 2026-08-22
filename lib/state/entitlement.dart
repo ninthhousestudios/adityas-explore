@@ -64,3 +64,16 @@ final chatAvailableProvider = Provider<bool>((ref) {
 
   return accessUntil.isAfter(ref.watch(clockProvider).now());
 });
+
+/// The current user's `access_until` deadline, or `null` when there is none
+/// (signed out, no entitlement, or still loading).
+///
+/// The absolute-time seam the chat turn schedules its mid-turn expiry timer
+/// against — the "production trigger near expiry" [chatAvailableProvider] defers
+/// to adityas/explore/44. [chatAvailableProvider] answers "available *now*?";
+/// this answers "until *when*?" so the turn can arm a [clockProvider]-based
+/// timer at exactly the boundary rather than waiting for an unrelated recompute.
+/// Tests override it with a fixed deadline (no need to wire the fetch graph).
+final accessDeadlineProvider = Provider<DateTime?>(
+  (ref) => ref.watch(entitlementProvider).value?.accessUntil,
+);

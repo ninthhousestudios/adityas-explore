@@ -1,11 +1,13 @@
 import 'dart:async';
 
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:explore/state/auth.dart';
 import 'package:explore/state/chat_turn.dart';
+import 'package:explore/state/clock.dart';
 import 'package:explore/state/conversation.dart';
 import 'package:explore/state/delta_throttle.dart';
 import 'package:explore/state/entitlement.dart';
@@ -55,6 +57,30 @@ class _FakeTransport implements TurnTransport {
   void dropStream(Object error) => _current.addError(error);
 }
 
+/// A transport whose [start] (and, after the first drop, [resume]) throws
+/// synchronously — stream creation itself fails.
+class _ThrowingTransport implements TurnTransport {
+  @override
+  Stream<TurnEvent> start(TurnRequest request) => throw StateError('no wire');
+
+  @override
+  Stream<TurnEvent> resume(String cursor) => throw StateError('no wire');
+
+  @override
+  Future<void> cancel() async {}
+}
+
+/// An advanceable [Clock] for deterministic expiry timing.
+class _FakeClock implements Clock {
+  DateTime _now;
+  _FakeClock(this._now);
+
+  @override
+  DateTime now() => _now;
+
+  void advance(Duration by) => _now = _now.add(by);
+}
+
 /// A controllable stand-in for [chatAvailableProvider], so a turn test can flip
 /// entitlement mid-stream without wiring the whole auth/entitlement/clock graph
 /// (that derivation is covered by entitlement_test.dart).
@@ -85,7 +111,11 @@ class _StubAuth extends AuthNotifier {
   User? build() => _user;
 }
 
-ProviderContainer _container(_FakeTransport transport) {
+ProviderContainer _container(
+  TurnTransport transport, {
+  DateTime? deadline,
+  Clock? clock,
+}) {
   final container = ProviderContainer(
     overrides: [
       authProvider.overrideWith(() => _StubAuth(_stubUser)),
@@ -94,6 +124,11 @@ ProviderContainer _container(_FakeTransport transport) {
         () => const ImmediateThrottle(),
       ),
       chatAvailableProvider.overrideWith((ref) => ref.watch(_gateProvider)),
+      // No time-based deadline by default: the turn schedules no expiry timer,
+      // so tests that flip the boolean gate stay unaffected. A time-expiry test
+      // supplies an explicit deadline + advanceable clock.
+      accessDeadlineProvider.overrideWithValue(deadline),
+      if (clock != null) clockProvider.overrideWithValue(clock),
     ],
   );
   addTearDown(container.dispose);
@@ -137,7 +172,7 @@ void main() {
     final done = container.read(chatTurnProvider);
     expect(done, isA<TurnDone>());
     expect((done as TurnDone).text, 'Hello');
-    expect(done.usage.totalTokens, 15);
+    expect(done.usage?.totalTokens, 15);
 
     // The completed reply is committed to the conversation (user then assistant).
     final convo = container.read(conversationProvider);
@@ -280,5 +315,101 @@ void main() {
 
     expect(transport.starts, 1); // the second send did not open a turn
     expect(transport.lastRequest?.text, 'first');
+  });
+
+  test(
+    'send after cancel, before trailing usage, does not lose the billing',
+    () async {
+      final transport = _FakeTransport();
+      final container = _container(transport);
+      final notifier = container.read(chatTurnProvider.notifier)..send('hi');
+
+      transport.emit(const DeltaEvent('partial', 'e1'));
+      await _pump();
+      await notifier.cancel();
+      expect(container.read(chatTurnProvider), isA<TurnCancelled>());
+
+      // The user immediately tries to send again while the stopped turn is still
+      // settling (no trailing usage yet). It must be refused — a fresh turn here
+      // would tear down the subscription and drop the (billable) usage.
+      notifier.send('again');
+      expect(transport.starts, 1); // no new turn opened
+      expect(transport.resumes, 0);
+
+      // The server's trailing usage still lands on the cancelled turn.
+      transport.emit(
+        const UsageEvent(TurnUsage(inputTokens: 3, outputTokens: 4), 'e2'),
+      );
+      await _pump();
+      final settling = container.read(chatTurnProvider);
+      expect((settling as TurnCancelled).usage?.totalTokens, 7);
+
+      // Once the stopped turn settles (done), a new send is allowed again.
+      transport.emit(const DoneEvent('e3'));
+      await _pump();
+      notifier.send('now ok');
+      await _pump();
+      expect(transport.starts, 2);
+      expect(transport.lastRequest?.text, 'now ok');
+    },
+  );
+
+  test('done without a usage event surfaces a billing gap, not zero', () async {
+    final transport = _FakeTransport();
+    final container = _container(transport);
+
+    container.read(chatTurnProvider.notifier).send('hi');
+    transport.emit(const DeltaEvent('answer', 'e1'));
+    await _pump();
+    // Clean done, but the usage event was dropped/never sent.
+    transport.emit(const DoneEvent('e2'));
+    await _pump();
+
+    final done = container.read(chatTurnProvider);
+    expect(done, isA<TurnDone>());
+    // A gap (null) — NOT TurnUsage.zero(), which would read as a free turn.
+    expect((done as TurnDone).usage, isNull);
+    expect(done.text, 'answer');
+  });
+
+  test('synchronous transport.start() throw ends the turn in error', () {
+    final container = _container(_ThrowingTransport());
+
+    // Must not let the exception escape send() and strand the turn in a live
+    // TurnConnecting with no subscription — it ends terminally in TurnError.
+    container.read(chatTurnProvider.notifier).send('hi');
+
+    final errored = container.read(chatTurnProvider);
+    expect(errored, isA<TurnError>());
+    expect((errored as TurnError).message, contains('Failed to start'));
+
+    // Terminal, not stranded-active: a follow-up send is accepted (opens a new
+    // turn, which then also fails through the same throwing transport).
+    container.read(chatTurnProvider.notifier).send('again');
+    expect(container.read(chatTurnProvider), isA<TurnError>());
+  });
+
+  test('crossing access_until mid-turn fires expiry via the injected clock', () {
+    fakeAsync((async) {
+      final transport = _FakeTransport();
+      final clock = _FakeClock(DateTime.utc(2026, 1, 1, 12, 0, 0));
+      final deadline = clock.now().add(const Duration(minutes: 5));
+      final container = _container(transport, deadline: deadline, clock: clock);
+
+      container.read(chatTurnProvider.notifier).send('hi');
+      transport.emit(const DeltaEvent('mid', 'e1'));
+      async.flushMicrotasks();
+      expect(container.read(chatTurnProvider), isA<TurnStreaming>());
+
+      // Wall time crosses access_until with no other provider change — only the
+      // scheduled timer can end the turn.
+      clock.advance(const Duration(minutes: 5, seconds: 1));
+      async.elapse(const Duration(minutes: 5, seconds: 1));
+
+      final errored = container.read(chatTurnProvider);
+      expect(errored, isA<TurnError>());
+      expect((errored as TurnError).message, contains('expired'));
+      expect(transport.cancels, 1); // best-effort server stop
+    });
   });
 }
