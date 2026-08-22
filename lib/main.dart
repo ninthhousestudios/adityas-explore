@@ -89,6 +89,12 @@ class _ExploreAppState extends ConsumerState<ExploreApp> {
   int _calcToken = 0;
 
   List<SavedChartSummary> _savedCharts = [];
+  // Bumped on every auth transition (see the authProvider listener in build).
+  // _refreshSavedCharts captures it and drops a late list response whose epoch
+  // is stale — otherwise an in-flight list for a signed-out/previous user could
+  // repopulate or overwrite _savedCharts after an auth change (cross-account
+  // leak). Same last-write-wins guard as _calcToken, keyed on auth instead.
+  int _authEpoch = 0;
   final ChartService _chartService = ChartService(
     tokenProvider: ({forceRefresh = false}) async {
       final auth = Supabase.instance.client.auth;
@@ -217,12 +223,13 @@ class _ExploreAppState extends ConsumerState<ExploreApp> {
   }
 
   Future<void> _refreshSavedCharts() async {
+    final epoch = _authEpoch;
     try {
       final charts = await _chartService.list();
-      if (!mounted) return;
+      if (!mounted || epoch != _authEpoch) return;
       setState(() => _savedCharts = charts);
     } on ChartApiException catch (e) {
-      if (e.statusCode == 401 && mounted) {
+      if (e.statusCode == 401 && mounted && epoch == _authEpoch) {
         setState(() => _savedCharts = []);
       }
       debugPrint('Error fetching saved charts: $e');
@@ -447,6 +454,9 @@ class _ExploreAppState extends ConsumerState<ExploreApp> {
     // The initial load lives in _boot; this is only read post-boot, so
     // authProvider's `Supabase.instance` access is always valid here.
     ref.listen<User?>(authProvider, (previous, user) {
+      // Invalidate any in-flight _refreshSavedCharts from the previous auth
+      // state before reacting, so a late list response can't clobber this one.
+      _authEpoch++;
       if (user != null) {
         _refreshSavedCharts();
       } else {
