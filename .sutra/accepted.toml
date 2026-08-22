@@ -1,0 +1,5 @@
+[[waiver]]
+constraint = "builtin:cycles"
+file = "lib/astro/ephemeris_service.dart"
+rationale = "Conditional import pattern (dart:library.js_interop) — ephemeris_service.dart conditionally imports the native impl, which implements the abstract class. Structural cycle, not architectural."
+by = "josh"

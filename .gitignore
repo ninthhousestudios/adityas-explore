@@ -17,6 +17,7 @@ migrate_working_dir/
 !.sutra/rules.toml
 !.sutra/aliases.toml
 !.sutra/owners.toml
+.sentry-env
 opencode.json
 docs/build-and-deploy-to-zola.md
 docs/uxui-for-cards-sharing-physical.md

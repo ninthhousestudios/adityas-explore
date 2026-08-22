@@ -15,13 +15,17 @@ if [ -n "$(git status --porcelain)" ]; then
 fi
 echo "==> deploying $(git rev-parse --short HEAD) on $(git branch --show-current)"
 
-flutter build web --release --base-href=/explore/
+# --source-maps forces dart2js to emit .map files even in release; without it
+# Sentry has nothing to symbolicate against and every minified error reads
+# "Field '' has not been initialized". The maps are uploaded to Sentry below
+# and stripped before deploy, so they never reach the CDN.
+flutter build web --release --base-href=/explore/ --source-maps
 
 # Flutter emits a NOTICES file (third-party licenses) with no extension.
 # Cloudflare WAF challenges extensionless requests, producing a 403 that
 # surfaces as an uncaught error in Sentry. The app has no license page,
 # so the file is unnecessary.
-mv build/web/NOTICES /tmp/flutter-notices-$$
+mv build/web/assets/NOTICES /tmp/flutter-notices-$$
 
 # The Swiss Ephemeris web glue ships as a swisseph_rs package asset. If it is
 # missing, the build resolved against the wrong swisseph_rs (or a stale
@@ -38,6 +42,25 @@ for f in "$WASM_DIR/swisseph_ffi.js" "$WASM_DIR/swisseph_ffi.wasm"; do
     exit 1
   fi
 done
+
+# Upload dart2js source maps to Sentry so minified stack traces symbolicate.
+# `inject` writes matching Debug IDs into the JS and its map, which bind the
+# two together — no release string has to line up. Skipped when
+# SENTRY_AUTH_TOKEN is unset, so a plain deploy still works without it.
+if [ -n "${SENTRY_AUTH_TOKEN:-}" ]; then
+  echo "==> uploading source maps to Sentry"
+  npx --yes @sentry/cli sourcemaps inject build/web
+  npx --yes @sentry/cli sourcemaps upload \
+    --org "${SENTRY_ORG:?set SENTRY_ORG for source map upload}" \
+    --project "${SENTRY_PROJECT:?set SENTRY_PROJECT for source map upload}" \
+    build/web
+else
+  echo "warning: SENTRY_AUTH_TOKEN unset — skipping source map upload" >&2
+fi
+
+# Don't publish Dart source to the CDN; Sentry already has the maps. The Debug
+# IDs injected above live in the .js files, not the maps, so they survive this.
+find build/web -name '*.map' -delete
 
 npx --yes wrangler pages deploy build/web \
   --project-name 84beings-explore
