@@ -1,0 +1,5 @@
+# Declares custom test tags so `flutter test` doesn't warn about them.
+tags:
+  # Live network smoke tests — opt-in, require SMOKE_EMAIL / SMOKE_PASSWORD.
+  # Run with: flutter test --tags smoke
+  smoke:
