@@ -296,8 +296,7 @@ class _ExploreAppState extends ConsumerState<ExploreApp> {
 
     final toml = TomlChartFormat.encode(chartData);
     final bytes = Uint8List.fromList(utf8.encode(toml));
-    final safeName = chartData.name.replaceAll(RegExp(r'[^\w\-.]'), '_');
-    await saveFileBytes('$safeName.toml', bytes);
+    await saveFileBytes('${chartFileStem(chartData.name)}.toml', bytes);
   }
 
   Future<void> _downloadPdf() async {
@@ -313,11 +312,7 @@ class _ExploreAppState extends ConsumerState<ExploreApp> {
         uncertainty: _uncertainty,
       );
       if (!mounted) return;
-      final safeName = (chartData?.name ?? 'chart').replaceAll(
-        RegExp(r'[^\w\-.]'),
-        '_',
-      );
-      await saveFileBytes('$safeName-chart.pdf', bytes);
+      await saveFileBytes('${chartFileStem(chartData?.name)}-chart.pdf', bytes);
     } on Exception catch (e) {
       if (mounted) _showSnackBar('Error exporting PDF: $e');
     } finally {

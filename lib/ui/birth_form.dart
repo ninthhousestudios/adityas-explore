@@ -232,9 +232,11 @@ class _BirthFormState extends State<BirthForm> {
       final chartData = _buildChartData();
       final toml = TomlChartFormat.encode(chartData);
       final bytes = Uint8List.fromList(utf8.encode(toml));
-      final safeName = chartData.name.replaceAll(RegExp(r'[^\w\-.]'), '_');
 
-      final saved = await saveFileBytes('$safeName.toml', bytes);
+      final saved = await saveFileBytes(
+        '${chartFileStem(chartData.name)}.toml',
+        bytes,
+      );
 
       if (saved && mounted) {
         setState(() => _chartSaved = true);
