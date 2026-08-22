@@ -186,8 +186,19 @@ class _ChartWheelState extends State<ChartWheel>
 
   void _resizePopup(Offset delta, double areaW, double areaH) => setState(() {
     final r = _popupWindowRect(areaW, areaH);
+    // Center-anchored resize: the box grows/shrinks symmetrically about its
+    // center, so it stays put where it opened (centered) instead of drifting
+    // by its top-left. The handle is at the bottom-right, so the corner moves
+    // by `delta` while the opposite corner mirrors it — hence 2× on the size
+    // to keep the handle tracking the cursor.
+    final w = (r.width + 2 * delta.dx)
+        .clamp(_kPopupMinW, max(_kPopupMinW, areaW))
+        .toDouble();
+    final h = (r.height + 2 * delta.dy)
+        .clamp(_kPopupMinH, max(_kPopupMinH, areaH))
+        .toDouble();
     _popupRect = _clampPopupRect(
-      Rect.fromLTWH(r.left, r.top, r.width + delta.dx, r.height + delta.dy),
+      Rect.fromCenter(center: r.center, width: w, height: h),
       areaW,
       areaH,
     );
