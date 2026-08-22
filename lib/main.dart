@@ -7,6 +7,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -28,6 +29,7 @@ import 'ui/account_button.dart';
 import 'ui/theme.dart';
 import 'api/chart_service.dart';
 import 'export/chart_pdf.dart';
+import 'state/auth.dart';
 
 const _sentryDsn =
     'https://0decc8fd44d76a8374d3dc45f055f584@o4511643365933056.ingest.us.sentry.io/4511643403878400';
@@ -45,12 +47,12 @@ Future<void> main() async {
     appRunner: () {
       WidgetsFlutterBinding.ensureInitialized();
       SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-      runApp(const ExploreApp());
+      runApp(const ProviderScope(child: ExploreApp()));
     },
   );
 }
 
-class ExploreApp extends StatefulWidget {
+class ExploreApp extends ConsumerStatefulWidget {
   const ExploreApp({
     super.key,
     this.authOptions = const FlutterAuthClientOptions(),
@@ -65,10 +67,10 @@ class ExploreApp extends StatefulWidget {
   final FlutterAuthClientOptions authOptions;
 
   @override
-  State<ExploreApp> createState() => _ExploreAppState();
+  ConsumerState<ExploreApp> createState() => _ExploreAppState();
 }
 
-class _ExploreAppState extends State<ExploreApp> {
+class _ExploreAppState extends ConsumerState<ExploreApp> {
   bool _useLight = false;
   double _zoom = 1.0;
   bool _booted = false;
@@ -86,9 +88,7 @@ class _ExploreAppState extends State<ExploreApp> {
   bool _exportingPdf = false;
   int _calcToken = 0;
 
-  User? _user;
   List<SavedChartSummary> _savedCharts = [];
-  StreamSubscription<AuthState>? _authSub;
   final ChartService _chartService = ChartService(
     tokenProvider: ({forceRefresh = false}) async {
       final auth = Supabase.instance.client.auth;
@@ -109,12 +109,6 @@ class _ExploreAppState extends State<ExploreApp> {
   void initState() {
     super.initState();
     _boot();
-  }
-
-  @override
-  void dispose() {
-    _authSub?.cancel();
-    super.dispose();
   }
 
   void _showSnackBar(String message) {
@@ -140,8 +134,10 @@ class _ExploreAppState extends State<ExploreApp> {
       _zoom = _prefs.getDouble('zoom') ?? 1.0;
       _waitlistSigned = _prefs.getBool('waitlist_signed') ?? false;
       final auth = Supabase.instance.client.auth;
-      // Validate stored session before subscribing — a stale refresh token
-      // causes an uncaught async throw from the SDK's background refresh.
+      // Validate stored session before the app subscribes (via authProvider) —
+      // a stale refresh token causes an uncaught async throw from the SDK's
+      // background refresh. This stays boot logic; the ongoing subscription
+      // now lives in authProvider.
       if (auth.currentSession != null) {
         try {
           await auth.refreshSession();
@@ -150,26 +146,9 @@ class _ExploreAppState extends State<ExploreApp> {
           await auth.signOut();
         }
       }
-      _user = auth.currentUser;
-      _authSub = auth.onAuthStateChange.listen(
-        (data) {
-          if (!mounted) return;
-          final user = data.session?.user;
-          setState(() => _user = user);
-          if (user != null) {
-            _refreshSavedCharts();
-          } else {
-            setState(() => _savedCharts = []);
-          }
-        },
-        onError: (Object e) {
-          if (e is AuthApiException) {
-            dev.log('Auth error, signing out: ${e.code}', name: 'AUTH');
-            auth.signOut();
-          }
-        },
-      );
-      if (_user != null) unawaited(_refreshSavedCharts());
+      // Initial saved-charts load if already signed in. Later sign-in/sign-out
+      // is handled by the ref.listen(authProvider) in build.
+      if (auth.currentUser != null) unawaited(_refreshSavedCharts());
 
       if (!mounted) return;
       setState(() => _booted = true);
@@ -177,7 +156,7 @@ class _ExploreAppState extends State<ExploreApp> {
       unawaited(AssetPreloader.precacheStaticAssets(context));
 
       final chartParam = Uri.base.queryParameters['chart'];
-      if (chartParam != null && _user != null) {
+      if (chartParam != null && auth.currentUser != null) {
         unawaited(_loadSavedChart(chartParam));
       }
     } catch (e, s) {
@@ -463,6 +442,17 @@ class _ExploreAppState extends State<ExploreApp> {
         home: const Scaffold(body: Center(child: CircularProgressIndicator())),
       );
     }
+
+    // Single auth reaction: refresh saved charts on sign-in, clear on sign-out.
+    // The initial load lives in _boot; this is only read post-boot, so
+    // authProvider's `Supabase.instance` access is always valid here.
+    ref.listen<User?>(authProvider, (previous, user) {
+      if (user != null) {
+        _refreshSavedCharts();
+      } else {
+        setState(() => _savedCharts = []);
+      }
+    });
 
     return MaterialApp(
       title: 'The Adityas — Explore',

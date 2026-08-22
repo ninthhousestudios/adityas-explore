@@ -1,12 +1,12 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../api/chart_service.dart';
 import '../navigate.dart' if (dart.library.js_interop) '../navigate_web.dart';
+import '../state/auth.dart';
 
-class AccountButton extends StatefulWidget {
+class AccountButton extends ConsumerStatefulWidget {
   final bool hasChart;
   final List<SavedChartSummary> savedCharts;
   final VoidCallback? onSaveChartToServer;
@@ -21,32 +21,14 @@ class AccountButton extends StatefulWidget {
   });
 
   @override
-  State<AccountButton> createState() => _AccountButtonState();
+  ConsumerState<AccountButton> createState() => _AccountButtonState();
 }
 
-class _AccountButtonState extends State<AccountButton> {
-  User? _user;
-  late final StreamSubscription<AuthState> _authSub;
-
-  @override
-  void initState() {
-    super.initState();
-    _user = Supabase.instance.client.auth.currentUser;
-    _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
-      if (!mounted) return;
-      setState(() => _user = data.session?.user);
-    });
-  }
-
-  @override
-  void dispose() {
-    _authSub.cancel();
-    super.dispose();
-  }
-
+class _AccountButtonState extends ConsumerState<AccountButton> {
   @override
   Widget build(BuildContext context) {
-    if (_user != null) {
+    final user = ref.watch(authProvider);
+    if (user != null) {
       final atLimit = widget.savedCharts.length >= 25;
       return PopupMenuButton<String>(
         icon: const Icon(Icons.person),
@@ -62,7 +44,7 @@ class _AccountButtonState extends State<AccountButton> {
           PopupMenuItem(
             enabled: false,
             child: Text(
-              _user!.email ?? 'Signed in',
+              user.email ?? 'Signed in',
               style: TextStyle(
                 color: Theme.of(
                   context,
@@ -144,35 +126,23 @@ class _AccountButtonState extends State<AccountButton> {
   }
 }
 
-class _SignInDialog extends StatefulWidget {
+class _SignInDialog extends ConsumerStatefulWidget {
   const _SignInDialog();
 
   @override
-  State<_SignInDialog> createState() => _SignInDialogState();
+  ConsumerState<_SignInDialog> createState() => _SignInDialogState();
 }
 
-class _SignInDialogState extends State<_SignInDialog> {
+class _SignInDialogState extends ConsumerState<_SignInDialog> {
   final _emailCtl = TextEditingController();
   final _passwordCtl = TextEditingController();
   bool _isSignUp = false;
   bool _loading = false;
   String? _message;
   bool _isError = true;
-  late final StreamSubscription<AuthState> _authSub;
-
-  @override
-  void initState() {
-    super.initState();
-    _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
-      if (data.event == AuthChangeEvent.signedIn && mounted) {
-        Navigator.of(context).pop();
-      }
-    });
-  }
 
   @override
   void dispose() {
-    _authSub.cancel();
     _emailCtl.dispose();
     _passwordCtl.dispose();
     super.dispose();
@@ -206,7 +176,7 @@ class _SignInDialogState extends State<_SignInDialog> {
         });
       } else {
         await client.auth.signInWithPassword(email: email, password: password);
-        // Dialog closes via onAuthStateChange listener
+        // Dialog closes via the authProvider listener in build (user -> non-null)
       }
     } on AuthException catch (e) {
       if (!mounted) return;
@@ -227,6 +197,11 @@ class _SignInDialogState extends State<_SignInDialog> {
 
   @override
   Widget build(BuildContext context) {
+    // Close the dialog once sign-in lands (user transitions null -> non-null).
+    ref.listen<User?>(authProvider, (previous, user) {
+      if (user != null) Navigator.of(context).pop();
+    });
+
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final color = isDark ? Colors.white : Colors.black;
     final cardBg = isDark ? const Color(0xF0151015) : const Color(0xF0F5F1EA);
