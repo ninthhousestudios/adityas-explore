@@ -34,9 +34,36 @@ class ChartApiException implements Exception {
   String toString() => message;
 }
 
+/// The user's access entitlement, read from the backend DB — never from JWT
+/// claims (a backend invariant; see the tier-1 notes § Content access levels).
+///
+/// A single `access_until` timestamp is the whole entitlement model: one-time
+/// purchases (and a future opt-in subscription) extend it, and the chat gate
+/// reads only this one field. `null` = no active access.
+class Entitlement {
+  final DateTime? accessUntil;
+
+  const Entitlement({required this.accessUntil});
+  const Entitlement.none() : accessUntil = null;
+
+  Entitlement.fromJson(Map<String, dynamic> json)
+    : accessUntil = json['access_until'] == null
+          ? null
+          : DateTime.parse(json['access_until'] as String);
+}
+
+/// Reads the current user's [Entitlement] from the backend.
+///
+/// An interface so the entitlement providers can be driven by a scripted fake
+/// in headless tests (no network, no clock). The production implementation is
+/// [ChartService.fetchEntitlement].
+abstract interface class EntitlementClient {
+  Future<Entitlement> fetchEntitlement();
+}
+
 typedef TokenProvider = Future<String?> Function({bool forceRefresh});
 
-class ChartService {
+class ChartService implements EntitlementClient {
   static final String _baseUrl = const String.fromEnvironment(
     'API_BASE_URL',
     defaultValue: _defaultBaseUrl,
@@ -118,6 +145,26 @@ class ChartService {
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     return data['chart_toml'] as String;
+  }
+
+  /// GET `/v1/entitlement` → the current user's [Entitlement].
+  ///
+  /// Reads `access_until` from the backend DB (never the JWT). Wire contract
+  /// coordinated with adityas/backend; response shape is
+  /// `{ "access_until": <RFC3339> | null }`.
+  @override
+  Future<Entitlement> fetchEntitlement() async {
+    final uri = Uri.parse('$_baseUrl/v1/entitlement');
+    final response = await _request(
+      (headers) => _client.get(uri, headers: headers),
+    );
+
+    if (response.statusCode != 200) {
+      throw ChartApiException(_parseError(response), response.statusCode);
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return Entitlement.fromJson(data);
   }
 
   String _parseError(http.Response response) {

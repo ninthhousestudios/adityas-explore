@@ -30,6 +30,7 @@ import 'ui/theme.dart';
 import 'api/chart_service.dart';
 import 'export/chart_pdf.dart';
 import 'state/auth.dart';
+import 'state/backend.dart';
 
 const _sentryDsn =
     'https://0decc8fd44d76a8374d3dc45f055f584@o4511643365933056.ingest.us.sentry.io/4511643403878400';
@@ -95,15 +96,11 @@ class _ExploreAppState extends ConsumerState<ExploreApp> {
   // repopulate or overwrite _savedCharts after an auth change (cross-account
   // leak). Same last-write-wins guard as _calcToken, keyed on auth instead.
   int _authEpoch = 0;
-  final ChartService _chartService = ChartService(
-    tokenProvider: ({forceRefresh = false}) async {
-      final auth = Supabase.instance.client.auth;
-      if (forceRefresh) {
-        await auth.refreshSession();
-      }
-      return auth.currentSession?.accessToken;
-    },
-  );
+  // The shared authenticated backend client (see state/backend.dart). Read
+  // lazily from the provider so chart CRUD and the entitlement fetch use one
+  // instance. Safe pre-boot: construction touches no Supabase.instance, only
+  // the token closure does (at request time, always post-boot).
+  ChartService get _chartService => ref.read(chartServiceProvider);
   final _messengerKey = GlobalKey<ScaffoldMessengerState>();
   final _navigatorKey = GlobalKey<NavigatorState>();
 
