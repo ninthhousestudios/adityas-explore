@@ -25,7 +25,10 @@ import '../ui/popup_state.dart';
 /// An immutable snapshot of the overlay layer.
 class OverlayLayer {
   /// The drill-down stack; the last element is the popup on screen. Empty means
-  /// nothing is shown.
+  /// nothing is shown. Always unmodifiable — [OverlayController]'s methods are
+  /// the only mutation path, so a consumer holding this list (e.g. the shared,
+  /// no-`BuildContext` chat seam) can't mutate it in place and bypass state
+  /// publication, which would leave watchers un-rebuilt and the invariant stale.
   final List<PopupState> stack;
 
   /// Desktop floating-window geometry. `null` means the user hasn't moved or
@@ -56,17 +59,20 @@ class OverlayController extends Notifier<OverlayLayer> {
 
   /// Open a fresh root popup, replacing any existing stack and resetting the
   /// floating-window geometry to its centered default.
-  void open(PopupState popup) => state = OverlayLayer(stack: [popup]);
+  void open(PopupState popup) =>
+      state = OverlayLayer(stack: List.unmodifiable([popup]));
 
   /// Drill down one level, preserving the window geometry so it stays put.
-  void push(PopupState popup) =>
-      state = OverlayLayer(stack: [...state.stack, popup], rect: state.rect);
+  void push(PopupState popup) => state = OverlayLayer(
+    stack: List.unmodifiable([...state.stack, popup]),
+    rect: state.rect,
+  );
 
   /// Go back one level; a no-op when the stack is empty.
   void pop() {
     if (state.stack.isEmpty) return;
     state = OverlayLayer(
-      stack: state.stack.sublist(0, state.stack.length - 1),
+      stack: List.unmodifiable(state.stack.sublist(0, state.stack.length - 1)),
       rect: state.rect,
     );
   }
