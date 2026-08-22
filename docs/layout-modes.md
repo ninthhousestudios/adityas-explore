@@ -48,8 +48,13 @@ The clean rule that resolves the rest:
 | **Persistent panels** | Soul Stances, Your Beings, Shop/Waitlist CTAs, (future) Chat | Dock and reflow with the mode. Toggle on/off. Never overlap each other. |
 | **Transient popups** | being detail, planet detail, being-type detail | Float above everything, overlap freely, z-ordered. Draggable + resizable. |
 
-The transient layer already exists as `_popupStack` + `overlay_shell.dart` +
-`_buildOverlay`. We are extending it (drag/resize), not inventing it.
+The transient layer lives in `overlayControllerProvider`
+(`lib/state/overlay.dart`) — the popup stack + floating-window geometry — with
+`overlay_shell.dart` + `_ChartWheelState._buildOverlay` rendering it. It was
+lifted out of widget state so the chat tool-call path (`show_being`) can drive
+it with no `BuildContext` (adityas/explore/45; docs/chat-state-architecture.md
+§ Overlay ripple). This move changed *where the transient stack lives*, not the
+two-layer rule above.
 
 ## Modes
 

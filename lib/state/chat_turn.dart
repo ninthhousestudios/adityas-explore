@@ -256,9 +256,19 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
         return;
       case ToolStartEvent():
       case ToolEndEvent():
+        // This is the `show_being` dispatch point. The seam exists —
+        // `ref.read(overlayControllerProvider.notifier).showBeing(being)` opens
+        // a being popup with no BuildContext (docs/chat-state-architecture.md
+        // § Overlay ripple) — but it can't be driven yet: ToolEndEvent carries
+        // only the tool *name*, not its arguments, so there is no being to
+        // resolve. Wiring it needs the transport to carry tool args (the
+        // sibling SSE task) and the chat PRD to fix the being identifier's
+        // shape. Until then the event is a no-op; the cursor was already
+        // advanced, so a resume skips past it.
+        break;
       case CitationEvent():
       case UnknownEvent():
-        // v1 has no tool/citation UI, and an unrecognized event is ignored for
+        // v1 has no citation UI, and an unrecognized event is ignored for
         // forward compatibility (explore is a shipped binary). The cursor was
         // already advanced, so a resume skips past them.
         break;

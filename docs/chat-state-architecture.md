@@ -49,8 +49,9 @@ problem, not a style one, and it is what forces reactive state that lives
    (only the streaming-text widget), not one `setState` on a fat `State` that
    rebuilds the whole panel.
 3. Tool-driven UI: `show_being(slug)` must open the existing transient overlay,
-   which today is `_ChartWheelState._popupStack` / `_openPopup` (widget state).
-   The stream handler needs to reach it **without callback-threading**.
+   which was `_ChartWheelState._popupStack` / `_openPopup` widget state (lifted
+   to `overlayControllerProvider` in /45). The stream handler needs to reach it
+   **without callback-threading**.
 4. Entitlement is a single `access_until` timestamp read from the backend DB
    (never JWT claims), cached and invalidatable. `chatAvailable` is derived from
    auth + entitlement, and expiry mid-stream is a real application state.
@@ -228,11 +229,21 @@ we haven't committed to is the wrong trade.
 streaming feature to a layout refactor and blocks a shippable chat on an
 uncommitted AI-driven-UI feature.
 
-When the lift happens (task /45): `overlayControllerProvider` owns the popup
-stack; `_ChartWheelState.build` reads it instead of local `_popupStack`; the
-tool-call path pushes a `BeingFromName` popup (see `lib/ui/popup_state.dart`) via
-the provider. The transient-vs-persistent split in `layout-modes.md` is
-unchanged — this moves *where the transient stack lives*, not the two-layer rule.
+**Landed (task /45).** `overlayControllerProvider` (`lib/state/overlay.dart`)
+owns the popup stack + floating-window geometry; `_ChartWheelState` watches it
+and drives it through the notifier (`open` / `push` / `pop` / `close` / `drag` /
+`resize`). The transient-vs-persistent split in `layout-modes.md` is unchanged —
+this moved *where the transient stack lives*, not the two-layer rule.
+
+The `show_being` seam is **ready but not driven**:
+`OverlayController.showBeing(BeingRef)` opens a `BeingFromName` popup with no
+`BuildContext`, callable from the chat stream handler (a Notifier holding
+`ref`). It stays dormant because `ToolEndEvent`
+(`lib/state/turn_transport.dart`) carries only the tool *name*, not its
+arguments — so there is no being to resolve yet. Wiring the dispatch needs the
+transport to carry tool args (the sibling SSE task) and the chat PRD to fix the
+being identifier's shape. The dispatch point is marked in `chat_turn.dart`'s
+`ToolEndEvent` handler.
 
 ---
 
@@ -245,7 +256,6 @@ Only auth / entitlement / chat / overlay move to Riverpod. These **do not**:
   `_loading` / `_message` / `_isError` flags.
 - `_zoom` (and min/max/step), theme (`_useLight`).
 - Hover state (`_hoveredPlanet`, `_hoveredCusp`).
-- `_popupRect` drag/resize geometry (until the overlay lift, task /45).
 - Chart calculation state (`_chartData`, `_chart`, `_uncertainty`,
   `_calculating`, `_calcToken`), PDF export (`_exportingPdf`), boot
   (`_booted`, `_bootError`), and the messenger/navigator keys.

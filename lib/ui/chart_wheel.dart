@@ -2,10 +2,12 @@ import 'dart:math';
 
 import 'package:arrow_core/arrow_core.dart' as arrow;
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../astro/being_uncertainty.dart';
 import '../navigate.dart' if (dart.library.js_interop) '../navigate_web.dart';
+import '../state/overlay.dart';
 import 'aditya_data.dart';
 import 'being_overlay.dart';
 import 'being_type_detail_overlay.dart';
@@ -30,7 +32,7 @@ extension CapitalizeString on String {
       isNotEmpty ? '${this[0].toUpperCase()}${substring(1)}' : '';
 }
 
-class ChartWheel extends StatefulWidget {
+class ChartWheel extends ConsumerStatefulWidget {
   final arrow.Chart chart;
   final BeingUncertainty? uncertainty;
   final bool waitlistSigned;
@@ -45,22 +47,13 @@ class ChartWheel extends StatefulWidget {
   });
 
   @override
-  State<ChartWheel> createState() => _ChartWheelState();
+  ConsumerState<ChartWheel> createState() => _ChartWheelState();
 }
 
-class _ChartWheelState extends State<ChartWheel>
+class _ChartWheelState extends ConsumerState<ChartWheel>
     with SingleTickerProviderStateMixin {
   PlacedPlanet? _hoveredPlanet;
   PlacedCusp? _hoveredCusp;
-
-  final List<PopupState> _popupStack = [];
-
-  /// Geometry of the floating detail-popup window on desktop. `null` means the
-  /// user hasn't moved/resized it yet, so it renders at a centered default (see
-  /// `_popupWindowRect`). Reset whenever a fresh root popup opens or all close,
-  /// but preserved across drill-down (push/pop) so the window stays put. The
-  /// transient layer is the desktop concern only — mobile stays a modal.
-  Rect? _popupRect;
 
   /// Desktop layout as data: which persistent panels are visible + the mode.
   /// `build` derives panel placement from this instead of hardcoded
@@ -95,6 +88,12 @@ class _ChartWheelState extends State<ChartWheel>
 
   @override
   void dispose() {
+    // The overlay now lives in a keepAlive provider, not this State. Reset it
+    // when the chart view tears down (chart → null / app teardown) so a stale
+    // popup can't leak onto the next chart — reproducing the old lifecycle
+    // where the stack lived exactly as long as this State. Mode switches don't
+    // unmount ChartWheel, so this only fires on a genuine chart teardown.
+    ref.read(overlayControllerProvider.notifier).close();
     _modeAnim.dispose();
     super.dispose();
   }
@@ -132,77 +131,19 @@ class _ChartWheelState extends State<ChartWheel>
     }
   }
 
-  void _closeOverlay() => setState(() {
-    _popupStack.clear();
-    _popupRect = null;
-  });
+  // The transient popup stack + floating-window geometry now live in
+  // overlayControllerProvider (lib/state/overlay.dart) so the chat tool-call
+  // path can drive them with no BuildContext. These stay as thin forwarders so
+  // the panel/wheel callback sites (onOpen / onPush / onClose) are unchanged.
+  void _closeOverlay() => ref.read(overlayControllerProvider.notifier).close();
 
-  void _openPopup(PopupState state) => setState(() {
-    _popupStack
-      ..clear()
-      ..add(state);
-    _popupRect = null;
-  });
+  void _openPopup(PopupState popup) =>
+      ref.read(overlayControllerProvider.notifier).open(popup);
 
-  void _pushPopup(PopupState state) => setState(() => _popupStack.add(state));
+  void _pushPopup(PopupState popup) =>
+      ref.read(overlayControllerProvider.notifier).push(popup);
 
-  void _popPopup() => setState(() {
-    if (_popupStack.isNotEmpty) _popupStack.removeLast();
-  });
-
-  // --- Floating popup geometry (desktop transient layer) -------------------
-
-  static const double _kPopupMinW = 300;
-  static const double _kPopupMinH = 220;
-  static const double _kPopupDefaultW = 460;
-  static const double _kPopupDefaultH = 560;
-
-  /// The popup window rect for a desktop area of [areaW]×[areaH]: the stored
-  /// geometry, or a centered default when unset, always clamped on-screen so a
-  /// viewport resize can't strand it.
-  Rect _popupWindowRect(double areaW, double areaH) {
-    final r = _popupRect ?? _defaultPopupRect(areaW, areaH);
-    return _clampPopupRect(r, areaW, areaH);
-  }
-
-  Rect _defaultPopupRect(double areaW, double areaH) {
-    final w = min(_kPopupDefaultW, areaW - 32);
-    final h = min(_kPopupDefaultH, areaH - 32);
-    return Rect.fromLTWH((areaW - w) / 2, (areaH - h) / 2, w, h);
-  }
-
-  Rect _clampPopupRect(Rect r, double areaW, double areaH) {
-    final w = r.width.clamp(_kPopupMinW, max(_kPopupMinW, areaW)).toDouble();
-    final h = r.height.clamp(_kPopupMinH, max(_kPopupMinH, areaH)).toDouble();
-    final left = r.left.clamp(0.0, max(0.0, areaW - w)).toDouble();
-    final top = r.top.clamp(0.0, max(0.0, areaH - h)).toDouble();
-    return Rect.fromLTWH(left, top, w, h);
-  }
-
-  void _dragPopup(Offset delta, double areaW, double areaH) => setState(() {
-    final r = _popupWindowRect(areaW, areaH);
-    _popupRect = _clampPopupRect(r.shift(delta), areaW, areaH);
-  });
-
-  void _resizePopup(Offset delta, double areaW, double areaH) => setState(() {
-    final r = _popupWindowRect(areaW, areaH);
-    // Center-anchored resize: the box grows/shrinks symmetrically about its
-    // center, so it stays put where it opened (centered) instead of drifting
-    // by its top-left. The handle is at the bottom-right, so the corner moves
-    // by `delta` while the opposite corner mirrors it — hence 2× on the size
-    // to keep the handle tracking the cursor.
-    final w = (r.width + 2 * delta.dx)
-        .clamp(_kPopupMinW, max(_kPopupMinW, areaW))
-        .toDouble();
-    final h = (r.height + 2 * delta.dy)
-        .clamp(_kPopupMinH, max(_kPopupMinH, areaH))
-        .toDouble();
-    _popupRect = _clampPopupRect(
-      Rect.fromCenter(center: r.center, width: w, height: h),
-      areaW,
-      areaH,
-    );
-  });
+  void _popPopup() => ref.read(overlayControllerProvider.notifier).pop();
 
   @override
   void didUpdateWidget(ChartWheel oldWidget) {
@@ -281,6 +222,11 @@ class _ChartWheelState extends State<ChartWheel>
         ? Colors.black.withValues(alpha: 0.5)
         : Colors.white.withValues(alpha: 0.5);
 
+    // The transient popup layer, watched at the top of build so any open/push/
+    // pop/drag/resize rebuilds the wheel (LayoutBuilder is a nested closure, so
+    // the watch stays here, not inside it).
+    final overlay = ref.watch(overlayControllerProvider);
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final side = min(constraints.maxWidth, constraints.maxHeight);
@@ -303,7 +249,7 @@ class _ChartWheelState extends State<ChartWheel>
           return Stack(
             children: [
               Center(child: wheel),
-              if (_planets.isNotEmpty && _popupStack.isEmpty)
+              if (_planets.isNotEmpty && overlay.isEmpty)
                 Positioned(
                   left: 16,
                   right: 16,
@@ -315,7 +261,7 @@ class _ChartWheelState extends State<ChartWheel>
                     onYourBeings: () => _openPopup(YourBeingsPopup()),
                   ),
                 ),
-              if (_popupStack.isNotEmpty) _buildOverlay(color, isDark),
+              if (overlay.isNotEmpty) _buildOverlay(overlay, color, isDark),
             ],
           );
         }
@@ -411,14 +357,19 @@ class _ChartWheelState extends State<ChartWheel>
               // Transient popup layer floats above everything, over the whole
               // desktop area (not confined to the chart square). Draggable +
               // resizable — see docs/layout-modes.md.
-              if (_popupStack.isNotEmpty)
+              if (overlay.isNotEmpty)
                 _buildOverlay(
+                  overlay,
                   color,
                   isDark,
                   floating: FloatingConfig(
-                    rect: _popupWindowRect(w, side),
-                    onDrag: (d) => _dragPopup(d, w, side),
-                    onResize: (d) => _resizePopup(d, w, side),
+                    rect: overlayWindowRect(overlay.rect, w, side),
+                    onDrag: (d) => ref
+                        .read(overlayControllerProvider.notifier)
+                        .drag(d, w, side),
+                    onResize: (d) => ref
+                        .read(overlayControllerProvider.notifier)
+                        .resize(d, w, side),
                   ),
                 ),
             ],
@@ -910,11 +861,18 @@ class _ChartWheelState extends State<ChartWheel>
   /// Builds the top popup. When [floating] is supplied (desktop) the three
   /// detail popups render as a draggable + resizable window; the uncertainty
   /// chooser and mobile panel sheets stay modal regardless.
-  Widget _buildOverlay(Color color, bool isDark, {FloatingConfig? floating}) {
-    final canGoBack = _popupStack.length > 1;
+  Widget _buildOverlay(
+    OverlayLayer overlay,
+    Color color,
+    bool isDark, {
+    FloatingConfig? floating,
+  }) {
+    final top = overlay.top;
+    if (top == null) return const SizedBox.shrink();
+    final canGoBack = overlay.depth > 1;
     final onBack = canGoBack ? _popPopup : null;
 
-    return switch (_popupStack.last) {
+    return switch (top) {
       BeingFromPlanet(:final planet) => _buildBeingShell(
         color,
         isDark,
