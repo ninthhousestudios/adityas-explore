@@ -381,34 +381,20 @@ class _ChartWheelState extends State<ChartWheel>
                     ),
                   ),
                 ),
-              // Bottom control bar: the always-visible panels menu (show/hide
-              // each persistent panel — the primary visibility affordance, so a
-              // user who closed every panel can bring them back) beside the
-              // mode switcher (the only trigger for conversation/focus until
-              // chat lands). See docs/layout-modes.md § foundation item 4.
+              // Bottom-left settings gear: tucks the (currently dev-facing)
+              // panel-visibility and layout-mode controls behind a single
+              // affordance — Panels (show/hide each persistent panel) and Mode
+              // (explore/chat/focus) as submenus. See docs/layout-modes.md
+              // § foundation item 4.
               Positioned(
-                left: 0,
-                right: 0,
+                left: 8,
                 bottom: 8,
-                child: Center(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _PanelsMenu(
-                        layout: _layout,
-                        color: color,
-                        backdropColor: backdropColor,
-                        onToggle: _togglePanel,
-                      ),
-                      const SizedBox(width: 8),
-                      _ModeSwitcher(
-                        mode: _layout.mode,
-                        color: color,
-                        backdropColor: backdropColor,
-                        onSelect: _setMode,
-                      ),
-                    ],
-                  ),
+                child: _SettingsMenu(
+                  layout: _layout,
+                  color: color,
+                  backdropColor: backdropColor,
+                  onTogglePanel: _togglePanel,
+                  onSelectMode: _setMode,
                 ),
               ),
               // Transient popup layer floats above everything, over the whole
@@ -1163,137 +1149,110 @@ class _ModeGeometry {
       );
 }
 
-/// Segmented control to flip between layout modes. Until chat lands this is the
-/// only trigger for `conversation`/`focus`; per-panel show/hide is handled
-/// separately by [_PanelsMenu] and [_ClosablePanel]. See docs/layout-modes.md.
-class _ModeSwitcher extends StatelessWidget {
-  final LayoutMode mode;
-  final Color color;
-  final Color backdropColor;
-  final ValueChanged<LayoutMode> onSelect;
-
-  const _ModeSwitcher({
-    required this.mode,
-    required this.color,
-    required this.backdropColor,
-    required this.onSelect,
-  });
-
-  static const _labels = {
-    LayoutMode.explore: 'Explore',
-    LayoutMode.conversation: 'Chat',
-    LayoutMode.focus: 'Focus',
-  };
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: backdropColor,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [for (final m in LayoutMode.values) _segment(m)],
-      ),
-    );
-  }
-
-  Widget _segment(LayoutMode m) {
-    final selected = m == mode;
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: () => onSelect(m),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(
-            color: selected
-                ? color.withValues(alpha: 0.15)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Text(
-            _labels[m]!,
-            style: TextStyle(
-              color: color.withValues(alpha: selected ? 1 : 0.6),
-              fontSize: 13,
-              fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// What a right-click panel menu item does: hide the right-clicked panel, or
-/// toggle a named one (mirroring the bottom-bar checklist).
+/// toggle a named one (mirroring the settings-menu checklist).
 enum _PanelMenuKind { hideThis, toggle }
 
-/// Always-visible pill that opens a checklist of the persistent panels, so the
-/// user can show/hide each one (and restore panels they closed). Checkmark =
-/// visible. The primary panel-visibility affordance per docs/layout-modes.md
-/// § foundation item 4 — right-click is only ever a secondary shortcut.
-class _PanelsMenu extends StatelessWidget {
+/// Bottom-left settings gear. Tucks the (currently dev-facing) layout controls
+/// behind one affordance: a `Panels` submenu (show/hide each persistent panel,
+/// so a user who closed every panel can restore them — the primary visibility
+/// affordance, right-click being only a secondary shortcut) and a `Mode`
+/// submenu (explore/chat/focus). Checkmark = active. See docs/layout-modes.md
+/// § foundation item 4.
+class _SettingsMenu extends StatelessWidget {
   final LayoutState layout;
   final Color color;
   final Color backdropColor;
-  final ValueChanged<PanelId> onToggle;
+  final ValueChanged<PanelId> onTogglePanel;
+  final ValueChanged<LayoutMode> onSelectMode;
 
-  const _PanelsMenu({
+  const _SettingsMenu({
     required this.layout,
     required this.color,
     required this.backdropColor,
-    required this.onToggle,
+    required this.onTogglePanel,
+    required this.onSelectMode,
   });
 
   @override
   Widget build(BuildContext context) {
-    return PopupMenuButton<PanelId>(
-      tooltip: 'Show or hide panels',
-      onSelected: onToggle,
-      position: PopupMenuPosition.over,
-      color: backdropColor,
-      itemBuilder: (context) => [
-        for (final id in LayoutState.toggleable)
-          CheckedPopupMenuItem<PanelId>(
-            value: id,
-            checked: layout.isVisible(id),
-            child: Text(panelLabel(id), style: TextStyle(color: color)),
+    final menuStyle = MenuStyle(
+      backgroundColor: WidgetStatePropertyAll(backdropColor),
+      side: WidgetStatePropertyAll(
+        BorderSide(color: color.withValues(alpha: 0.3)),
+      ),
+    );
+    return MenuAnchor(
+      style: menuStyle,
+      menuChildren: [
+        SubmenuButton(
+          menuStyle: menuStyle,
+          leadingIcon: Icon(
+            Icons.view_sidebar_outlined,
+            size: 18,
+            color: color,
           ),
-      ],
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: backdropColor,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: color.withValues(alpha: 0.3)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.view_sidebar_outlined, size: 16, color: color),
-            const SizedBox(width: 6),
-            Text(
-              'Panels',
-              style: TextStyle(
-                color: color,
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
+          menuChildren: [
+            for (final id in LayoutState.toggleable)
+              _checkItem(
+                label: panelLabel(id),
+                active: layout.isVisible(id),
+                onPressed: () => onTogglePanel(id),
               ),
-            ),
           ],
+          child: Text('Panels', style: TextStyle(color: color)),
+        ),
+        SubmenuButton(
+          menuStyle: menuStyle,
+          leadingIcon: Icon(Icons.dashboard_outlined, size: 18, color: color),
+          menuChildren: [
+            for (final m in LayoutMode.values)
+              _checkItem(
+                label: layoutModeLabel(m),
+                active: m == layout.mode,
+                onPressed: () => onSelectMode(m),
+              ),
+          ],
+          child: Text('Mode', style: TextStyle(color: color)),
+        ),
+      ],
+      builder: (context, controller, child) => Tooltip(
+        message: 'Settings',
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: GestureDetector(
+            onTap: () =>
+                controller.isOpen ? controller.close() : controller.open(),
+            child: Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: backdropColor,
+                shape: BoxShape.circle,
+                border: Border.all(color: color.withValues(alpha: 0.3)),
+              ),
+              child: Icon(Icons.settings_outlined, size: 18, color: color),
+            ),
+          ),
         ),
       ),
+    );
+  }
+
+  MenuItemButton _checkItem({
+    required String label,
+    required bool active,
+    required VoidCallback onPressed,
+  }) {
+    return MenuItemButton(
+      onPressed: onPressed,
+      leadingIcon: Icon(active ? Icons.check : null, size: 18, color: color),
+      child: Text(label, style: TextStyle(color: color)),
     );
   }
 }
 
 /// Wraps a persistent panel with a hover-revealed close (X) button in its top
-/// corner, so each panel can be dismissed in place. Reappears via [_PanelsMenu].
+/// corner, so each panel can be dismissed in place. Reappears via [_SettingsMenu].
 class _ClosablePanel extends StatefulWidget {
   final Widget child;
   final Color color;

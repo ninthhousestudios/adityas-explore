@@ -65,6 +65,16 @@ class ChatPanel extends StatelessWidget {
               ],
             ),
           ),
+          const SizedBox(height: 8),
+          Text(
+            'Contemplative AI chat coming soon…',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: dimColor,
+              fontSize: fontSize * 0.85,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
           const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -77,7 +87,7 @@ class ChatPanel extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    'Ask about your chart…',
+                    'Ask the Mirror…',
                     style: TextStyle(color: dimColor, fontSize: fontSize),
                   ),
                 ),

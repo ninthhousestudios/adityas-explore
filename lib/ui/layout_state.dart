@@ -95,6 +95,13 @@ class LayoutState {
       );
 }
 
+/// Human-readable label for a layout mode, for the mode-selection affordance.
+String layoutModeLabel(LayoutMode mode) => switch (mode) {
+  LayoutMode.explore => 'Explore',
+  LayoutMode.conversation => 'Chat',
+  LayoutMode.focus => 'Focus',
+};
+
 /// Human-readable label for a persistent panel, for the visibility affordance.
 String panelLabel(PanelId id) => switch (id) {
   PanelId.soulStances => 'Soul Stances',
