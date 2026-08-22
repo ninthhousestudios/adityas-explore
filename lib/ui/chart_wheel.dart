@@ -66,6 +66,12 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
   LayoutMode _prevMode = LayoutMode.explore;
   late final AnimationController _modeAnim;
 
+  /// Captured in [initState] so [dispose] can reset the overlay without reading
+  /// `ref` during teardown (unsafe once the element is deactivated — Riverpod
+  /// throws a StateError). Safe to hold because `overlayControllerProvider` is
+  /// keepAlive, so this notifier instance is stable for the State's lifetime.
+  late final OverlayController _overlayController;
+
   Map<(int, String), BeingContent>? _beingContent;
   Map<String, BeingTypeContent>? _beingTypeContent;
   Map<String, PlanetContent>? _planetContent;
@@ -77,6 +83,7 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
   @override
   void initState() {
     super.initState();
+    _overlayController = ref.read(overlayControllerProvider.notifier);
     _modeAnim = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 340),
@@ -93,7 +100,8 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
     // popup can't leak onto the next chart — reproducing the old lifecycle
     // where the stack lived exactly as long as this State. Mode switches don't
     // unmount ChartWheel, so this only fires on a genuine chart teardown.
-    ref.read(overlayControllerProvider.notifier).close();
+    // Use the cached notifier, not `ref` — reading `ref` in dispose is unsafe.
+    _overlayController.close();
     _modeAnim.dispose();
     super.dispose();
   }
