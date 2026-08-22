@@ -1,9 +1,6 @@
-import 'dart:io';
-import 'dart:typed_data';
-
-import 'package:file_picker/file_picker.dart';
 import 'package:http/http.dart' as http;
 
+import 'file_util.dart';
 import 'ui/aditya_data.dart';
 
 const _baseUrl = 'https://api.84beings.com/static/share-cards';
@@ -34,15 +31,6 @@ Future<String?> shareBeingCard({
   final aditya = adityaSigns[sign]?.name.toLowerCase() ?? 'being';
   final fileName = '$aditya-$beingType.webp';
 
-  await _saveFile(fileName, bytes);
+  await saveFileBytes(fileName, bytes, dialogTitle: 'Save share card');
   return null;
-}
-
-Future<void> _saveFile(String fileName, Uint8List bytes) async {
-  final result = await FilePicker.platform.saveFile(
-    dialogTitle: 'Save share card',
-    fileName: fileName,
-  );
-  if (result == null) return;
-  await File(result).writeAsBytes(bytes);
 }

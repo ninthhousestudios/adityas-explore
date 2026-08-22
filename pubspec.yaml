@@ -37,7 +37,7 @@ dependencies:
   web: ^1.1.0
   path_provider: ^2.1.4
   shared_preferences: ^2.3.4
-  file_picker: ^8.1.6
+  file_picker: ^12.0.0
   flutter_svg: ^2.0.17
   http: ^1.6.0
   supabase_flutter: ^2.15.0

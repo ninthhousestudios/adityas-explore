@@ -13,7 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'navigate.dart' if (dart.library.js_interop) 'navigate_web.dart';
-import 'file_util.dart' if (dart.library.js_interop) 'file_util_web.dart';
+import 'file_util.dart';
 
 import 'astro/being_uncertainty.dart';
 import 'astro/chart_calculator.dart';
@@ -370,20 +370,15 @@ class _ExploreAppState extends ConsumerState<ExploreApp> {
 
   Future<void> _openChart() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
+      final file = await FilePicker.pickFile(
         type: FileType.custom,
         allowedExtensions: ['toml', 'chtk', 'jhd'],
-        withData: true,
       );
-      if (result == null || result.files.isEmpty) return;
+      if (file == null) return;
 
-      final file = result.files.single;
-      if (file.bytes == null) {
-        debugPrint('No bytes available for ${file.name}');
-        return;
-      }
+      final bytes = await file.readAsBytes();
 
-      final chartData = ChartReader.read(file.name, file.bytes!);
+      final chartData = ChartReader.read(file.name, bytes);
       debugPrint('Loaded chart: ${chartData.name} (${file.name})');
       debugPrint('  Date: ${chartData.dateTime}');
       debugPrint('  UTC: ${chartData.utcDateTime}');

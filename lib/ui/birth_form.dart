@@ -7,7 +7,7 @@ import 'package:flutter/services.dart';
 import '../api/places_service.dart';
 import '../astro/being_uncertainty.dart'
     show TimeUncertainty, ExactTime, PeriodTime, UnknownTime;
-import '../file_util.dart' if (dart.library.js_interop) '../file_util_web.dart';
+import '../file_util.dart';
 import '../navigate.dart' if (dart.library.js_interop) '../navigate_web.dart';
 
 enum TimePrecision { exact, general, unknown }
