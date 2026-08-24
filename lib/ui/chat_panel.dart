@@ -60,6 +60,23 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
   StreamSubscription<ChatEvent>? _sub;
   bool _streaming = false;
 
+  /// Whether streamed tokens should keep the view pinned to the bottom. Flipped
+  /// off when the user scrolls up to read back, on again when they return near
+  /// the end (or send, which re-pins via [_scrollToEnd]'s force path).
+  bool _stickToBottom = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _scroll.addListener(_onScroll);
+  }
+
+  void _onScroll() {
+    if (!_scroll.hasClients) return;
+    final pos = _scroll.position;
+    _stickToBottom = pos.maxScrollExtent - pos.pixels < 80;
+  }
+
   @override
   void dispose() {
     _sub?.cancel();
@@ -80,7 +97,7 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
         ..add(assistant);
       _streaming = true;
     });
-    _scrollToEnd();
+    _scrollToEnd(force: true);
 
     final client = ref.read(solarMirrorClientProvider);
     try {
@@ -145,7 +162,8 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
   String _toolNote(String tool) =>
       tool == 'get_being' ? 'Consulting the beings…' : 'Working ($tool)…';
 
-  void _scrollToEnd() {
+  void _scrollToEnd({bool force = false}) {
+    if (!force && !_stickToBottom) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scroll.hasClients) {
         _scroll.jumpTo(_scroll.position.maxScrollExtent);

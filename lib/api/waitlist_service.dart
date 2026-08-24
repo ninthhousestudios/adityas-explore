@@ -1,13 +1,8 @@
 import 'package:http/http.dart' as http;
 
-const _defaultBaseUrl = 'https://api.84beings.com';
+import 'api_config.dart';
 
 class WaitlistService {
-  static const String _baseUrl = String.fromEnvironment(
-    'API_BASE_URL',
-    defaultValue: _defaultBaseUrl,
-  );
-
   final http.Client _client;
 
   WaitlistService({http.Client? client}) : _client = client ?? http.Client();
@@ -15,7 +10,7 @@ class WaitlistService {
   Future<String?> signup(String email) async {
     try {
       final response = await _client.post(
-        Uri.parse('$_baseUrl/v1/waitlist'),
+        Uri.parse('$apiBaseUrl/v1/waitlist'),
         headers: {'Content-Type': 'application/x-www-form-urlencoded'},
         body: {
           'email': email.trim(),

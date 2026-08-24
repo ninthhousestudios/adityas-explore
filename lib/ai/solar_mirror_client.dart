@@ -128,11 +128,20 @@ class SolarMirrorClient {
       'authorization': 'Bearer $token',
       'accept': 'text/event-stream',
     };
-    await for (final event in _parseSse(openSseByteStream(uri, headers))) {
-      final decoded = _decode(event);
-      if (decoded == null) continue;
-      yield decoded;
-      if (decoded is ChatDone) return;
+    try {
+      await for (final event in _parseSse(openSseByteStream(uri, headers))) {
+        final decoded = _decode(event);
+        if (decoded == null) continue;
+        yield decoded;
+        if (decoded is ChatDone) return;
+      }
+    } on SolarMirrorException {
+      rethrow;
+    } catch (e) {
+      // Transport/parse failures arrive as HttpException (native) or Exception
+      // (web), whose toString carries a type prefix and, on native, a
+      // ", uri = …" tail. Rewrap so the panel shows just the message.
+      throw SolarMirrorException(_cleanTransportError(e));
     }
   }
 
@@ -212,4 +221,15 @@ String _field(String data, String key) {
   } catch (_) {
     return '';
   }
+}
+
+/// Strips the leading `…Exception: ` type prefix and any trailing `, uri = …`
+/// from a transport error's `toString`, leaving just the human message.
+String _cleanTransportError(Object e) {
+  var s = e.toString();
+  final marker = s.indexOf('Exception: ');
+  if (marker != -1) s = s.substring(marker + 'Exception: '.length);
+  final uriTail = s.indexOf(', uri = ');
+  if (uriTail != -1) s = s.substring(0, uriTail);
+  return s;
 }

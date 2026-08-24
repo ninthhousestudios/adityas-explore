@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
-const _defaultBaseUrl = 'https://api.84beings.com';
+import 'api_config.dart';
 
 class PlaceAutocompleteResult {
   final String placeId;
@@ -61,18 +61,13 @@ class PlacesApiException implements Exception {
 }
 
 class PlacesService {
-  static const String _baseUrl = String.fromEnvironment(
-    'API_BASE_URL',
-    defaultValue: _defaultBaseUrl,
-  );
-
   final http.Client _client;
 
   PlacesService({http.Client? client}) : _client = client ?? http.Client();
 
   Future<List<PlaceAutocompleteResult>> autocomplete(String query) async {
     final uri = Uri.parse(
-      '$_baseUrl/v1/places/autocomplete',
+      '$apiBaseUrl/v1/places/autocomplete',
     ).replace(queryParameters: {'q': query});
 
     final response = await _client.get(uri);
@@ -93,7 +88,7 @@ class PlacesService {
     if (timestamp != null) params['timestamp'] = timestamp.toString();
 
     final uri = Uri.parse(
-      '$_baseUrl/v1/places/resolve',
+      '$apiBaseUrl/v1/places/resolve',
     ).replace(queryParameters: params);
 
     final response = await _client.get(uri);
