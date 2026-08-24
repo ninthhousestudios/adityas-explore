@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
-const _defaultBaseUrl = 'https://api.84beings.com';
+import 'api_config.dart';
 
 class SavedChartSummary {
   final String id;
@@ -64,11 +64,6 @@ abstract interface class EntitlementClient {
 typedef TokenProvider = Future<String?> Function({bool forceRefresh});
 
 class ChartService implements EntitlementClient {
-  static const String _baseUrl = String.fromEnvironment(
-    'API_BASE_URL',
-    defaultValue: _defaultBaseUrl,
-  );
-
   final http.Client _client;
   final TokenProvider _tokenProvider;
 
@@ -99,7 +94,7 @@ class ChartService implements EntitlementClient {
   }
 
   Future<List<SavedChartSummary>> list() async {
-    final uri = Uri.parse('$_baseUrl/v1/charts');
+    final uri = Uri.parse('$apiBaseUrl/v1/charts');
     final response = await _request(
       (headers) => _client.get(uri, headers: headers),
     );
@@ -115,7 +110,7 @@ class ChartService implements EntitlementClient {
   }
 
   Future<String> create(String name, String chartToml) async {
-    final uri = Uri.parse('$_baseUrl/v1/charts');
+    final uri = Uri.parse('$apiBaseUrl/v1/charts');
     final response = await _request(
       (headers) => _client.post(
         uri,
@@ -133,7 +128,7 @@ class ChartService implements EntitlementClient {
   }
 
   Future<String> fetchToml(String id) async {
-    final uri = Uri.parse('$_baseUrl/v1/charts/$id');
+    final uri = Uri.parse('$apiBaseUrl/v1/charts/$id');
     final response = await _request(
       (headers) => _client.get(uri, headers: headers),
     );
@@ -153,7 +148,7 @@ class ChartService implements EntitlementClient {
   /// `{ "access_until": <RFC3339> | null }`.
   @override
   Future<Entitlement> fetchEntitlement() async {
-    final uri = Uri.parse('$_baseUrl/v1/entitlement');
+    final uri = Uri.parse('$apiBaseUrl/v1/entitlement');
     final response = await _request(
       (headers) => _client.get(uri, headers: headers),
     );
