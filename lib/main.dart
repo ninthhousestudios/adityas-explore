@@ -744,14 +744,22 @@ class _ExplorePage extends StatelessWidget {
       body: _buildBody(context),
     );
 
-    if (useLight) return content;
-
+    // Keep a constant tree shape across themes. If the light branch returned a
+    // bare `content` and the dark branch a `Stack([Image, content])`, toggling
+    // the theme would change the child widget type under this element and tear
+    // down the whole subtree — including `_ChartWheelState`, resetting its
+    // layout mode to Explore and closing the chat box. Holding the Stack shape
+    // stable (only the background slot's child swaps) preserves that State.
     return Stack(
       fit: StackFit.expand,
       children: [
-        Image.asset(
-          'assets/images/hero-dawn-temple_seed4830.webp',
-          fit: BoxFit.cover,
+        Positioned.fill(
+          child: useLight
+              ? const SizedBox.shrink()
+              : Image.asset(
+                  'assets/images/hero-dawn-temple_seed4830.webp',
+                  fit: BoxFit.cover,
+                ),
         ),
         content,
       ],
