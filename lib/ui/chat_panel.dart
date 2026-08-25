@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:charts_dart/charts_dart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -19,11 +20,17 @@ class ChatPanel extends ConsumerStatefulWidget {
   final Color backdropColor;
   final double fontSize;
 
+  /// The currently-open chart, whose birth data rides along with each turn so
+  /// the model can speak about *this* chart's activated beings. Null → the turn
+  /// still sends, chart-less (backend yields `chart_facts` 'unavailable').
+  final ChartData? chartData;
+
   const ChatPanel({
     super.key,
     required this.color,
     required this.backdropColor,
     required this.fontSize,
+    this.chartData,
   });
 
   @override
@@ -104,6 +111,7 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
       final turnId = await client.createTurn(
         conversationId: _conversationId,
         message: text,
+        chart: widget.chartData,
       );
       _sub = client
           .streamTurn(turnId)
@@ -225,7 +233,7 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
         const SizedBox(height: 4),
         Text(
           enabled
-              ? 'Solar Mirror — skeleton streaming client'
+              ? 'Solar Prism — skeleton streaming client'
               : 'Stub — the real conversation UI lands later.',
           style: TextStyle(
             color: dimColor,

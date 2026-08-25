@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:charts_dart/charts_dart.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 
@@ -95,19 +96,27 @@ class SolarMirrorClient {
   ///
   /// [conversationId] is accepted for URL parity but unused by the throwaway
   /// backend (no persistence yet).
+  ///
+  /// [chart], when supplied, is the currently-open chart's birth data. It rides
+  /// along as the backend's `ChartInput` (adityas/explore/50 ↔ adityas/ai/35) so
+  /// the harness can compute `chart_facts` and the model can speak about the
+  /// person's own activated beings. Absent → a chart-less turn.
   Future<String> createTurn({
     required String conversationId,
     required String message,
+    ChartData? chart,
   }) async {
     final token = await _token();
     if (token == null) throw const SolarMirrorException('Not signed in');
+    final body = <String, dynamic>{'message': message};
+    if (chart != null) body['chart'] = _chartInput(chart);
     final response = await _http.post(
       Uri.parse('$apiBaseUrl/v1/ai/conversations/$conversationId/turns'),
       headers: {
         'authorization': 'Bearer $token',
         'content-type': 'application/json',
       },
-      body: jsonEncode({'message': message}),
+      body: jsonEncode(body),
     );
     if (response.statusCode != 202) {
       throw SolarMirrorException(_httpError(response));
@@ -153,6 +162,23 @@ class SolarMirrorClient {
       return 'Request failed (${response.statusCode})';
     }
   }
+}
+
+/// The open chart's civil birth data in the backend's `ChartInput` shape,
+/// which mirrors `CalculateRequest` (adityas/ai/35). `date`/`time`/`utc_offset`/
+/// `dst_offset` reuse charts_dart's canonical [ChartData.toJson] formatting
+/// (`YYYY-MM-DD` / `HH:MM:SS`); `lat`/`lon` are flattened out of the nested
+/// `location` object the backend doesn't accept here.
+Map<String, dynamic> _chartInput(ChartData chart) {
+  final json = chart.toJson();
+  return {
+    'date': json['date'],
+    'time': json['time'],
+    'lat': chart.birthLocation.latitude,
+    'lon': chart.birthLocation.longitude,
+    'utc_offset': json['utc_offset'],
+    'dst_offset': json['dst_offset'],
+  };
 }
 
 /// One SSE frame: its `event:` name and the accumulated `data:` payload.

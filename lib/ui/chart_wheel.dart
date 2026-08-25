@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:arrow_core/arrow_core.dart' as arrow;
+import 'package:charts_dart/charts_dart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -34,6 +35,10 @@ extension CapitalizeString on String {
 
 class ChartWheel extends ConsumerStatefulWidget {
   final arrow.Chart chart;
+
+  /// The raw birth data behind [chart], carried so the chat panel can send it
+  /// with each turn (the computed [chart] has lost the civil date/time/offsets).
+  final ChartData? chartData;
   final BeingUncertainty? uncertainty;
   final bool waitlistSigned;
   final VoidCallback onWaitlistSigned;
@@ -41,6 +46,7 @@ class ChartWheel extends ConsumerStatefulWidget {
   const ChartWheel({
     super.key,
     required this.chart,
+    this.chartData,
     this.uncertainty,
     this.waitlistSigned = false,
     required this.onWaitlistSigned,
@@ -341,6 +347,7 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
                           color: color,
                           backdropColor: backdropColor,
                           fontSize: panelFontSize,
+                          chartData: widget.chartData,
                         ),
                       ),
                     ),

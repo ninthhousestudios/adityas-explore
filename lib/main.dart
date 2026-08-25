@@ -853,6 +853,7 @@ class _ExplorePage extends StatelessWidget {
           ).copyWith(textScaler: TextScaler.linear(zoom)),
           child: ChartWheel(
             chart: chart!,
+            chartData: chartData,
             uncertainty: uncertainty,
             waitlistSigned: waitlistSigned,
             onWaitlistSigned: onWaitlistSigned,
