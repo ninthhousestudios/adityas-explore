@@ -47,6 +47,11 @@ done
 # `inject` writes matching Debug IDs into the JS and its map, which bind the
 # two together — no release string has to line up. Skipped when
 # SENTRY_AUTH_TOKEN is unset, so a plain deploy still works without it.
+# Load Sentry upload creds (SENTRY_AUTH_TOKEN/ORG/PROJECT) if present. The file
+# `export`s them so the sentry-cli child process inherits the auth token — a
+# bare (unexported) assignment satisfies the `-n` guard below but leaves
+# sentry-cli unauthenticated. Optional: a plain deploy still works without it.
+[ -f .sentry-env ] && source .sentry-env
 if [ -n "${SENTRY_AUTH_TOKEN:-}" ]; then
   echo "==> uploading source maps to Sentry"
   npx --yes @sentry/cli sourcemaps inject build/web

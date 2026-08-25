@@ -17,6 +17,7 @@ migrate_working_dir/
 !.sutra/rules.toml
 !.sutra/aliases.toml
 !.sutra/owners.toml
+.env
 .sentry-env
 opencode.json
 docs/build-and-deploy-to-zola.md
@@ -67,3 +68,6 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 .sentry-native/
+
+# Private ops runbook (contains real tester Supabase UUIDs)
+docs/gemini-tester-access.md
