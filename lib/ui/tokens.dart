@@ -81,6 +81,18 @@ class ExploreTokens extends ThemeExtension<ExploreTokens> {
   /// Outer edge stroke width (was 1.5).
   final double edgeStroke;
 
+  // ---- Wheel line colours ------------------------------------------------
+  /// Concentric ring-boundary stroke colour. Immersive keeps the old
+  /// `ink@0.5`; light uses an explicit warm tone, since alpha-on-black over
+  /// cream just muddies to gray instead of drawing a line.
+  final Color ringLine;
+
+  /// Radial sign-boundary stroke colour (was `ink@0.3`).
+  final Color radialLine;
+
+  /// Outer edge stroke colour (was `ink@0.6`).
+  final Color edgeLine;
+
   // ---- Wheel fills (consumed by the upcoming light-mode pass) -------------
   /// Fill for the outer sign ring. Unused today (painter strokes only);
   /// transparent placeholder until the light-mode wheel work tunes it.
@@ -127,6 +139,9 @@ class ExploreTokens extends ThemeExtension<ExploreTokens> {
     required this.ascMarker,
     required this.bubbleUser,
     required this.bubbleAgent,
+    required this.ringLine,
+    required this.radialLine,
+    required this.edgeLine,
   });
 
   /// Colour for a being subtitle/reflection label given the being's aditya
@@ -156,6 +171,9 @@ class ExploreTokens extends ThemeExtension<ExploreTokens> {
     ascMarker: Color(0xFFD4A853),
     bubbleUser: Color(0x26FFFFFF),
     bubbleAgent: Color(0x12FFFFFF),
+    ringLine: Color(0x80FFFFFF),
+    radialLine: Color(0x4DFFFFFF),
+    edgeLine: Color(0x99FFFFFF),
   );
 
   static const light = ExploreTokens(
@@ -172,15 +190,21 @@ class ExploreTokens extends ThemeExtension<ExploreTokens> {
     error: Color(0xFFE57373),
     errorBg: Color(0x33E57373),
     success: Color(0xFF4CAF50),
+    // Light gets its own stroke ladder: a heavier, defined outer edge and
+    // slightly thicker spokes, since thin strokes bloom on dark but shrink on
+    // cream.
     ringStroke: 1.0,
-    radialStroke: 0.5,
-    edgeStroke: 1.5,
+    radialStroke: 0.75,
+    edgeStroke: 2.0,
     ringOuterFill: Color(0xFFFFFFFF),
     ringPlanetFill: Color(0xFFF7F3EC),
     ringHouseFill: Color(0xFFEFEAE1),
     ascMarker: Color(0xFF8B6F37),
     bubbleUser: Color(0xFFEFEAE1),
     bubbleAgent: Color(0xFFFFFFFF),
+    ringLine: Color(0xFFD5CCBA),
+    radialLine: Color(0xFFE0D8C8),
+    edgeLine: Color(0xFFB3A382),
   );
 
   @override
@@ -207,6 +231,9 @@ class ExploreTokens extends ThemeExtension<ExploreTokens> {
     Color? ascMarker,
     Color? bubbleUser,
     Color? bubbleAgent,
+    Color? ringLine,
+    Color? radialLine,
+    Color? edgeLine,
   }) {
     return ExploreTokens(
       canvas: canvas ?? this.canvas,
@@ -231,6 +258,9 @@ class ExploreTokens extends ThemeExtension<ExploreTokens> {
       ascMarker: ascMarker ?? this.ascMarker,
       bubbleUser: bubbleUser ?? this.bubbleUser,
       bubbleAgent: bubbleAgent ?? this.bubbleAgent,
+      ringLine: ringLine ?? this.ringLine,
+      radialLine: radialLine ?? this.radialLine,
+      edgeLine: edgeLine ?? this.edgeLine,
     );
   }
 

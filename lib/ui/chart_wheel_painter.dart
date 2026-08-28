@@ -61,12 +61,12 @@ class ChartWheelPainter extends CustomPainter {
     );
 
     final ringPaint = Paint()
-      ..color = color.withValues(alpha: 0.5)
+      ..color = tokens.ringLine
       ..style = PaintingStyle.stroke
       ..strokeWidth = tokens.ringStroke;
 
     final radialPaint = Paint()
-      ..color = color.withValues(alpha: 0.3)
+      ..color = tokens.radialLine
       ..style = PaintingStyle.stroke
       ..strokeWidth = tokens.radialStroke;
 
@@ -78,7 +78,7 @@ class ChartWheelPainter extends CustomPainter {
 
     // Outer edge.
     final outerEdgePaint = Paint()
-      ..color = color.withValues(alpha: 0.6)
+      ..color = tokens.edgeLine
       ..style = PaintingStyle.stroke
       ..strokeWidth = tokens.edgeStroke;
     canvas.drawCircle(center, half * outerRingOuter, outerEdgePaint);
