@@ -91,29 +91,7 @@ class ChartWheelPainter extends CustomPainter {
       canvas.drawLine(inner, outer, radialPaint);
     }
 
-    _drawAscMarker(canvas, center, half);
     _drawHouseLabels(canvas, center, half);
-  }
-
-  /// Draws a single gold radial tick across the outer ring at the ascendant
-  /// degree — the lone gold accent on the wheel surface. No-op when the marker
-  /// colour is transparent (immersive).
-  void _drawAscMarker(Canvas canvas, Offset center, double half) {
-    if (tokens.ascMarker.a == 0) return;
-    final asc = cusps.where((c) => c.house == 1);
-    if (asc.isEmpty) return;
-    final angle = asc.first.angle;
-    final inner = polarToCartesian(angle, half * outerRingInner, center);
-    final outer = polarToCartesian(angle, half * outerRingOuter, center);
-    canvas.drawLine(
-      inner,
-      outer,
-      Paint()
-        ..color = tokens.ascMarker
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = tokens.edgeStroke + 1.5
-        ..strokeCap = StrokeCap.round,
-    );
   }
 
   /// Fills the annulus between [outerFrac] and [innerFrac] (fractions of

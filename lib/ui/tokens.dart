@@ -112,13 +112,6 @@ class ExploreTokens extends ThemeExtension<ExploreTokens> {
   /// Fill for the house ring.
   final Color ringHouseFill;
 
-  /// Ascendant marker colour — the one gold accent on the wheel surface (a
-  /// radial tick at the ascendant degree). Gold in immersive (`#D4A853`, where
-  /// it reads best against the dark photo); transparent (unused) in light per
-  /// Josh's call. `brand.md` calls gold a scalpel; this is the single
-  /// sanctioned wheel use.
-  final Color ascMarker;
-
   // ---- Chat bubbles ------------------------------------------------------
   /// Fill behind a user chat message. Translucent white over the immersive
   /// photo; an explicit warm tone in light mode (never `ink@alpha`, which
@@ -149,7 +142,6 @@ class ExploreTokens extends ThemeExtension<ExploreTokens> {
     required this.ringOuterFill,
     required this.ringPlanetFill,
     required this.ringHouseFill,
-    required this.ascMarker,
     required this.bubbleUser,
     required this.bubbleAgent,
     required this.ringLine,
@@ -182,7 +174,6 @@ class ExploreTokens extends ThemeExtension<ExploreTokens> {
     ringOuterFill: Color(0x00000000),
     ringPlanetFill: Color(0x00000000),
     ringHouseFill: Color(0x00000000),
-    ascMarker: Color(0xFFD4A853),
     bubbleUser: Color(0x26FFFFFF),
     bubbleAgent: Color(0x12FFFFFF),
     ringLine: Color(0x80FFFFFF),
@@ -214,7 +205,6 @@ class ExploreTokens extends ThemeExtension<ExploreTokens> {
     ringOuterFill: Color(0xFFFFFFFF),
     ringPlanetFill: Color(0xFFF7F3EC),
     ringHouseFill: Color(0xFFEFEAE1),
-    ascMarker: Color(0x00000000),
     bubbleUser: Color(0xFFEFEAE1),
     bubbleAgent: Color(0xFFFFFFFF),
     ringLine: Color(0xFFD5CCBA),
@@ -244,7 +234,6 @@ class ExploreTokens extends ThemeExtension<ExploreTokens> {
     Color? ringOuterFill,
     Color? ringPlanetFill,
     Color? ringHouseFill,
-    Color? ascMarker,
     Color? bubbleUser,
     Color? bubbleAgent,
     Color? ringLine,
@@ -272,7 +261,6 @@ class ExploreTokens extends ThemeExtension<ExploreTokens> {
       ringOuterFill: ringOuterFill ?? this.ringOuterFill,
       ringPlanetFill: ringPlanetFill ?? this.ringPlanetFill,
       ringHouseFill: ringHouseFill ?? this.ringHouseFill,
-      ascMarker: ascMarker ?? this.ascMarker,
       bubbleUser: bubbleUser ?? this.bubbleUser,
       bubbleAgent: bubbleAgent ?? this.bubbleAgent,
       ringLine: ringLine ?? this.ringLine,
