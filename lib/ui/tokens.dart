@@ -100,12 +100,6 @@ class ExploreTokens extends ThemeExtension<ExploreTokens> {
   /// Outer edge stroke colour (was `ink@0.6`).
   final Color edgeLine;
 
-  /// Opacity of the Aditya glyph watermarks in the outer ring segments —
-  /// ornament that is also content. `0` in immersive (that mode owns the photo
-  /// and stays untouched); a low value in light. Tuned to read as ornament,
-  /// not noise; kept as a token so the exact level is easy to dial.
-  final double glyphWatermarkOpacity;
-
   // ---- Wheel fills (consumed by the upcoming light-mode pass) -------------
   /// Fill for the outer sign ring. Unused today (painter strokes only);
   /// transparent placeholder until the light-mode wheel work tunes it.
@@ -159,7 +153,6 @@ class ExploreTokens extends ThemeExtension<ExploreTokens> {
     required this.ringLine,
     required this.radialLine,
     required this.edgeLine,
-    required this.glyphWatermarkOpacity,
   });
 
   /// Colour for a being subtitle/reflection label given the being's aditya
@@ -196,7 +189,6 @@ class ExploreTokens extends ThemeExtension<ExploreTokens> {
     ringLine: Color(0x80FFFFFF),
     radialLine: Color(0x4DFFFFFF),
     edgeLine: Color(0x99FFFFFF),
-    glyphWatermarkOpacity: 0.0,
   );
 
   static const light = ExploreTokens(
@@ -229,7 +221,6 @@ class ExploreTokens extends ThemeExtension<ExploreTokens> {
     ringLine: Color(0xFFD5CCBA),
     radialLine: Color(0xFFE0D8C8),
     edgeLine: Color(0xFFB3A382),
-    glyphWatermarkOpacity: 0.05,
   );
 
   @override
@@ -260,7 +251,6 @@ class ExploreTokens extends ThemeExtension<ExploreTokens> {
     Color? ringLine,
     Color? radialLine,
     Color? edgeLine,
-    double? glyphWatermarkOpacity,
   }) {
     return ExploreTokens(
       canvas: canvas ?? this.canvas,
@@ -289,8 +279,6 @@ class ExploreTokens extends ThemeExtension<ExploreTokens> {
       ringLine: ringLine ?? this.ringLine,
       radialLine: radialLine ?? this.radialLine,
       edgeLine: edgeLine ?? this.edgeLine,
-      glyphWatermarkOpacity:
-          glyphWatermarkOpacity ?? this.glyphWatermarkOpacity,
     );
   }
 

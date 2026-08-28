@@ -416,15 +416,6 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
               ),
             ),
           ),
-          if (tokens.glyphWatermarkOpacity > 0)
-            for (var s = 1; s <= 12; s++)
-              _buildSignWatermark(
-                s,
-                half,
-                center,
-                color,
-                tokens.glyphWatermarkOpacity,
-              ),
           for (var s = 1; s <= 12; s++) _buildSignGlyph(s, half, center, color),
           for (final planet in _planets)
             _buildPlanetGlyph(planet, half, center, color, glyphSize),
@@ -630,38 +621,6 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
         // hidden in explore, so this is never reached today.
         return const SizedBox.shrink();
     }
-  }
-
-  /// Faint Aditya glyph behind each sign's name in the outer ring — ornament
-  /// sourced from the system rather than pasted decoration. Non-interactive so
-  /// it never intercepts hover/taps meant for the name letters or planets.
-  Widget _buildSignWatermark(
-    int sign,
-    double half,
-    Offset center,
-    Color color,
-    double opacity,
-  ) {
-    final angle = signMidAngle(sign, _ascSign);
-    final radius = signMidRadius(half);
-    final pos = polarToCartesian(angle, radius, center);
-    final glyphSize = half * 0.13;
-    final data = adityaSigns[sign]!;
-    return Positioned(
-      left: pos.dx - glyphSize / 2,
-      top: pos.dy - glyphSize / 2,
-      child: IgnorePointer(
-        child: SvgPicture.asset(
-          data.glyph,
-          width: glyphSize,
-          height: glyphSize,
-          colorFilter: ColorFilter.mode(
-            color.withValues(alpha: opacity),
-            BlendMode.srcIn,
-          ),
-        ),
-      ),
-    );
   }
 
   Widget _buildSignGlyph(int sign, double half, Offset center, Color color) {
