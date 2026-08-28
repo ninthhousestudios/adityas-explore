@@ -38,8 +38,10 @@ class ExploreTokens extends ThemeExtension<ExploreTokens> {
   final Color scrim;
 
   // ---- Ink ---------------------------------------------------------------
-  /// Primary foreground — pure white (immersive) / black (light), at ~10 sites.
-  /// Deliberately NOT the brand text ink, to preserve today's appearance; call
+  /// Primary foreground — pure white (immersive) / brand ink `#1a1520`
+  /// (light), at ~10 sites. Light was pure black through the token refactor to
+  /// preserve appearance; the light-mode visual pass moves it to brand ink so
+  /// the wheel and copy stop reading as harsh default-black on cream. Call
   /// sites keep their `.withValues(alpha:)` derivations off this.
   final Color ink;
 
@@ -182,7 +184,7 @@ class ExploreTokens extends ThemeExtension<ExploreTokens> {
     cardBg: Color(0xF0F5F1EA),
     wheelBackdrop: Color(0xFFFBF8F2),
     scrim: Color(0x33000000),
-    ink: Color(0xFF000000),
+    ink: Color(0xFF1A1520),
     gold: Color(0xFF8B6F37),
     onGold: Color(0xFFFFFFFF),
     beingLabelUsesGold: false,
