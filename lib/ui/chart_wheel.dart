@@ -1169,6 +1169,13 @@ class _SettingsMenu extends StatelessWidget {
     );
     return MenuAnchor(
       style: menuStyle,
+      // Lift the popup off the bottom-left corner. Anchored flush at the corner,
+      // a submenu can't fit below its row, so Flutter flips it *fully above* the
+      // parent (bottom-of-submenu = top-of-parent) — the misalignment. Raising
+      // the whole menu ~84px gives each 3-item submenu room to open beside its
+      // parent row, top-aligned. The root menu flips upward and (uniquely)
+      // honours alignmentOffset.dy on that flip, so a positive dy moves it up.
+      alignmentOffset: const Offset(0, 84),
       menuChildren: [
         SubmenuButton(
           style: buttonStyle,
