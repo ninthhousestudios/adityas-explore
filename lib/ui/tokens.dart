@@ -95,6 +95,15 @@ class ExploreTokens extends ThemeExtension<ExploreTokens> {
   /// Ascendant marker colour.
   final Color ascMarker;
 
+  // ---- Chat bubbles ------------------------------------------------------
+  /// Fill behind a user chat message. Translucent white over the immersive
+  /// photo; an explicit warm tone in light mode (never `ink@alpha`, which
+  /// desaturates the cream toward the gray blob the light pass removes).
+  final Color bubbleUser;
+
+  /// Fill behind an assistant chat message.
+  final Color bubbleAgent;
+
   const ExploreTokens({
     required this.canvas,
     required this.surface,
@@ -116,6 +125,8 @@ class ExploreTokens extends ThemeExtension<ExploreTokens> {
     required this.ringPlanetFill,
     required this.ringHouseFill,
     required this.ascMarker,
+    required this.bubbleUser,
+    required this.bubbleAgent,
   });
 
   /// Colour for a being subtitle/reflection label given the being's aditya
@@ -143,13 +154,15 @@ class ExploreTokens extends ThemeExtension<ExploreTokens> {
     ringPlanetFill: Color(0x00000000),
     ringHouseFill: Color(0x00000000),
     ascMarker: Color(0xFFD4A853),
+    bubbleUser: Color(0x26FFFFFF),
+    bubbleAgent: Color(0x12FFFFFF),
   );
 
   static const light = ExploreTokens(
     canvas: Color(0xFFF5F1EA),
     surface: Color(0xFFFFFFFF),
     cardBg: Color(0xF0F5F1EA),
-    wheelBackdrop: Color(0x80FFFFFF),
+    wheelBackdrop: Color(0xFFFBF8F2),
     scrim: Color(0x33000000),
     ink: Color(0xFF000000),
     gold: Color(0xFF8B6F37),
@@ -166,6 +179,8 @@ class ExploreTokens extends ThemeExtension<ExploreTokens> {
     ringPlanetFill: Color(0xFFF7F3EC),
     ringHouseFill: Color(0xFFEFEAE1),
     ascMarker: Color(0xFF8B6F37),
+    bubbleUser: Color(0xFFEFEAE1),
+    bubbleAgent: Color(0xFFFFFFFF),
   );
 
   @override
@@ -190,6 +205,8 @@ class ExploreTokens extends ThemeExtension<ExploreTokens> {
     Color? ringPlanetFill,
     Color? ringHouseFill,
     Color? ascMarker,
+    Color? bubbleUser,
+    Color? bubbleAgent,
   }) {
     return ExploreTokens(
       canvas: canvas ?? this.canvas,
@@ -212,6 +229,8 @@ class ExploreTokens extends ThemeExtension<ExploreTokens> {
       ringPlanetFill: ringPlanetFill ?? this.ringPlanetFill,
       ringHouseFill: ringHouseFill ?? this.ringHouseFill,
       ascMarker: ascMarker ?? this.ascMarker,
+      bubbleUser: bubbleUser ?? this.bubbleUser,
+      bubbleAgent: bubbleAgent ?? this.bubbleAgent,
     );
   }
 

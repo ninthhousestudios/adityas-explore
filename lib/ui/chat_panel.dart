@@ -281,7 +281,9 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
         decoration: BoxDecoration(
           color: m.isError
               ? context.tokens.errorBg
-              : color.withValues(alpha: m.fromUser ? 0.15 : 0.07),
+              : (m.fromUser
+                    ? context.tokens.bubbleUser
+                    : context.tokens.bubbleAgent),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
