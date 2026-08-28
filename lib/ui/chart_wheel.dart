@@ -1175,7 +1175,7 @@ class _SettingsMenu extends StatelessWidget {
       padding: const WidgetStatePropertyAll(EdgeInsets.all(6)),
       alignment: AlignmentDirectional.bottomEnd,
     );
-    const submenuOffset = Offset(6, -138);
+    const submenuOffset = Offset(6, -120);
     final buttonStyle = ButtonStyle(
       shape: WidgetStatePropertyAll(
         RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
