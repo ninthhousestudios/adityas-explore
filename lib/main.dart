@@ -764,7 +764,7 @@ class _ExplorePage extends StatelessWidget {
       children: [
         Positioned.fill(
           child: useLight
-              ? const SizedBox.shrink()
+              ? const _LightCanvas()
               : Image.asset(
                   'assets/images/hero-dawn-temple_seed4830.webp',
                   fit: BoxFit.cover,
@@ -985,6 +985,27 @@ class _SaveChartDialogState extends State<_SaveChartDialog> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The light-mode page canvas. Immersive mode fills the background slot with
+/// the temple photo; light mode fills it with this — a warm paper field rather
+/// than a flat cream slab. The scaffold's cream shows through; this layers a
+/// faint grain over it so it reads as paper, not a `#F5F1EA` fill.
+class _LightCanvas extends StatelessWidget {
+  const _LightCanvas();
+
+  @override
+  Widget build(BuildContext context) {
+    return const DecoratedBox(
+      decoration: BoxDecoration(
+        image: DecorationImage(
+          image: AssetImage('assets/images/paper-grain.png'),
+          repeat: ImageRepeat.repeat,
+          opacity: 0.035,
         ),
       ),
     );
