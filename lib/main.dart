@@ -1001,14 +1001,31 @@ class _LightCanvas extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const DecoratedBox(
-      decoration: BoxDecoration(
-        image: DecorationImage(
-          image: AssetImage('assets/images/paper-grain.png'),
-          repeat: ImageRepeat.repeat,
-          opacity: 0.035,
+    return const Stack(
+      fit: StackFit.expand,
+      children: [
+        DecoratedBox(
+          decoration: BoxDecoration(
+            image: DecorationImage(
+              image: AssetImage('assets/images/paper-grain.png'),
+              repeat: ImageRepeat.repeat,
+              opacity: 0.035,
+            ),
+          ),
         ),
-      ),
+        // Warm vignette over the grain: a slight radial darkening toward the
+        // edges (brand ink at ~8%) so the wheel sits in a field rather than on
+        // a flat slab.
+        DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: RadialGradient(
+              radius: 1.0,
+              colors: [Color(0x00000000), Color(0x141A1520)],
+              stops: [0.6, 1.0],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
