@@ -106,7 +106,10 @@ class ExploreTokens extends ThemeExtension<ExploreTokens> {
   /// Fill for the house ring.
   final Color ringHouseFill;
 
-  /// Ascendant marker colour.
+  /// Ascendant marker colour — the one gold accent on the wheel surface (a
+  /// radial tick at the ascendant degree). Gold in light, transparent (unused)
+  /// in immersive so that mode is left untouched. `brand.md` calls gold a
+  /// scalpel; this is the single sanctioned wheel use.
   final Color ascMarker;
 
   // ---- Chat bubbles ------------------------------------------------------
@@ -170,7 +173,10 @@ class ExploreTokens extends ThemeExtension<ExploreTokens> {
     ringOuterFill: Color(0x00000000),
     ringPlanetFill: Color(0x00000000),
     ringHouseFill: Color(0x00000000),
-    ascMarker: Color(0xFFD4A853),
+    // Transparent in immersive: the wheel there is already atmospheric and the
+    // light pass must leave it visually unchanged. The gold ascendant tick is a
+    // light-mode-only accent (see ascMarker doc).
+    ascMarker: Color(0x00000000),
     bubbleUser: Color(0x26FFFFFF),
     bubbleAgent: Color(0x12FFFFFF),
     ringLine: Color(0x80FFFFFF),
