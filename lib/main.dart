@@ -14,6 +14,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'navigate.dart' if (dart.library.js_interop) 'navigate_web.dart';
 import 'file_util.dart';
+import 'observability.dart';
 
 import 'astro/being_uncertainty.dart';
 import 'astro/chart_calculator.dart';
@@ -45,6 +46,9 @@ Future<void> main() async {
           'SENTRY_ENVIRONMENT',
           defaultValue: 'production',
         );
+      // Content-free observability (I19, bug #4): no PII, no request/response
+      // bodies, and a beforeSend scrub belt — see observability.dart.
+      applyContentFreeSentryPolicy(options);
     },
     appRunner: () {
       WidgetsFlutterBinding.ensureInitialized();
