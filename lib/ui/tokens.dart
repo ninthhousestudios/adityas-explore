@@ -63,9 +63,10 @@ class ExploreTokens extends ThemeExtension<ExploreTokens> {
   /// (light).
   final FontWeight beingLabelWeight;
 
-  /// Brand heading face (Cormorant Garamond) for Aditya names and headings.
-  /// `null` in immersive so that mode keeps its default sans and stays
-  /// visually unchanged; the serif is the light-mode 'reading' treatment.
+  /// Brand heading face (Cormorant Garamond) for Aditya names and headings,
+  /// in both modes — the serif is the brand's heading voice, not a light-mode
+  /// affordation. Kept nullable so a mode could opt out, but both currently set
+  /// it.
   final String? serifFamily;
 
   // ---- Status ------------------------------------------------------------
@@ -112,9 +113,10 @@ class ExploreTokens extends ThemeExtension<ExploreTokens> {
   final Color ringHouseFill;
 
   /// Ascendant marker colour — the one gold accent on the wheel surface (a
-  /// radial tick at the ascendant degree). Gold in light, transparent (unused)
-  /// in immersive so that mode is left untouched. `brand.md` calls gold a
-  /// scalpel; this is the single sanctioned wheel use.
+  /// radial tick at the ascendant degree). Gold in immersive (`#D4A853`, where
+  /// it reads best against the dark photo); transparent (unused) in light per
+  /// Josh's call. `brand.md` calls gold a scalpel; this is the single
+  /// sanctioned wheel use.
   final Color ascMarker;
 
   // ---- Chat bubbles ------------------------------------------------------
@@ -170,7 +172,7 @@ class ExploreTokens extends ThemeExtension<ExploreTokens> {
     onGold: Color(0xFF000000),
     beingLabelUsesGold: true,
     beingLabelWeight: FontWeight.normal,
-    serifFamily: null,
+    serifFamily: 'Cormorant Garamond',
     error: Color(0xFFE57373),
     errorBg: Color(0x33E57373),
     success: Color(0xFF4CAF50),
@@ -180,10 +182,7 @@ class ExploreTokens extends ThemeExtension<ExploreTokens> {
     ringOuterFill: Color(0x00000000),
     ringPlanetFill: Color(0x00000000),
     ringHouseFill: Color(0x00000000),
-    // Transparent in immersive: the wheel there is already atmospheric and the
-    // light pass must leave it visually unchanged. The gold ascendant tick is a
-    // light-mode-only accent (see ascMarker doc).
-    ascMarker: Color(0x00000000),
+    ascMarker: Color(0xFFD4A853),
     bubbleUser: Color(0x26FFFFFF),
     bubbleAgent: Color(0x12FFFFFF),
     ringLine: Color(0x80FFFFFF),
@@ -215,7 +214,7 @@ class ExploreTokens extends ThemeExtension<ExploreTokens> {
     ringOuterFill: Color(0xFFFFFFFF),
     ringPlanetFill: Color(0xFFF7F3EC),
     ringHouseFill: Color(0xFFEFEAE1),
-    ascMarker: Color(0xFF8B6F37),
+    ascMarker: Color(0x00000000),
     bubbleUser: Color(0xFFEFEAE1),
     bubbleAgent: Color(0xFFFFFFFF),
     ringLine: Color(0xFFD5CCBA),
