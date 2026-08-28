@@ -1158,6 +1158,24 @@ class _SettingsMenu extends StatelessWidget {
       ),
       padding: const WidgetStatePropertyAll(EdgeInsets.all(6)),
     );
+    // Submenus open *upward* from the bottom-left corner: bottomEnd alignment
+    // places the panel's origin at the parent row's bottom, and the negative
+    // dy raises it by roughly its own height so the last item (e.g. Focus)
+    // lands level with its parent row (Mode) instead of the whole flyout
+    // flipping to float above it. The dy magnitude ≈ a 3-item panel's height;
+    // it's the nudge knob if the bottom item sits a touch high or low.
+    final submenuStyle = MenuStyle(
+      backgroundColor: WidgetStatePropertyAll(backdropColor),
+      side: WidgetStatePropertyAll(
+        BorderSide(color: color.withValues(alpha: 0.3)),
+      ),
+      shape: WidgetStatePropertyAll(
+        RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      ),
+      padding: const WidgetStatePropertyAll(EdgeInsets.all(6)),
+      alignment: AlignmentDirectional.bottomEnd,
+    );
+    const submenuOffset = Offset(6, -138);
     final buttonStyle = ButtonStyle(
       shape: WidgetStatePropertyAll(
         RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -1169,17 +1187,11 @@ class _SettingsMenu extends StatelessWidget {
     );
     return MenuAnchor(
       style: menuStyle,
-      // Lift the popup off the bottom-left corner. Anchored flush at the corner,
-      // a submenu can't fit below its row, so Flutter flips it *fully above* the
-      // parent (bottom-of-submenu = top-of-parent) — the misalignment. Raising
-      // the whole menu ~84px gives each 3-item submenu room to open beside its
-      // parent row, top-aligned. The root menu flips upward and (uniquely)
-      // honours alignmentOffset.dy on that flip, so a positive dy moves it up.
-      alignmentOffset: const Offset(0, 84),
       menuChildren: [
         SubmenuButton(
           style: buttonStyle,
-          menuStyle: menuStyle,
+          menuStyle: submenuStyle,
+          alignmentOffset: submenuOffset,
           leadingIcon: Icon(
             Icons.view_sidebar_outlined,
             size: 18,
@@ -1198,7 +1210,8 @@ class _SettingsMenu extends StatelessWidget {
         ),
         SubmenuButton(
           style: buttonStyle,
-          menuStyle: menuStyle,
+          menuStyle: submenuStyle,
+          alignmentOffset: submenuOffset,
           leadingIcon: Icon(Icons.dashboard_outlined, size: 18, color: color),
           menuChildren: [
             for (final m in LayoutMode.values)
