@@ -12,14 +12,16 @@ import 'chat_stream.dart' if (dart.library.js_interop) 'chat_stream_web.dart';
 
 /// Supabase user ids allowed to use the wired skeleton chat client.
 ///
-/// This mirrors the backend `BEING_REPORT_ALLOWLIST` gate (adityas/ai/3): the
-/// chat *panel* is open to everyone (it doubles as the layout-mode stub), but
-/// the wired client only talks to the backend for Josh + Laura. Client-side this
+/// This mirrors the backend preview-path gate (`/v1/ai/preview/*`, adityas/ai/3
+/// remounted by adityas/ai/51 — being_report ∪ gemini_test): the chat *panel* is
+/// open to everyone (it doubles as the layout-mode stub), but the wired client
+/// only talks to the backend for the allowlisted accounts below. Client-side this
 /// is only a UX gate — the backend independently enforces the same allowlist, so
 /// a determined non-allowlisted user gets a 403, not tokens.
 const chatAllowlist = <String>{
   '01214259-228c-46a9-bb3d-e229c8c4cb3f', // josh@ninthhouse.studio
-  'be96b3d3-5c64-40d2-ae77-73d6883d14a2', // info@lvbarat.com
+  '2e0010eb-0810-42f9-8c42-563342203813', // weburnalltimes@gmail.com (Josh, preview testing)
+  'be96b3d3-5c64-40d2-ae77-73d6883d14a2', // info@lvbarat.com (Laura)
 };
 
 /// True when the signed-in user may use the wired chat client.
@@ -92,7 +94,7 @@ class SolarMirrorClient {
   final Future<String?> Function({bool forceRefresh}) _token;
   final http.Client _http;
 
-  /// `POST /v1/ai/conversations/{id}/turns` → the new turn's id.
+  /// `POST /v1/ai/preview/conversations/{id}/turns` → the new turn's id.
   ///
   /// [conversationId] is accepted for URL parity but unused by the throwaway
   /// backend (no persistence yet).
@@ -111,7 +113,9 @@ class SolarMirrorClient {
     final body = <String, dynamic>{'message': message};
     if (chart != null) body['chart'] = _chartInput(chart);
     final response = await _http.post(
-      Uri.parse('$apiBaseUrl/v1/ai/conversations/$conversationId/turns'),
+      Uri.parse(
+        '$apiBaseUrl/v1/ai/preview/conversations/$conversationId/turns',
+      ),
       headers: {
         'authorization': 'Bearer $token',
         'content-type': 'application/json',
@@ -125,14 +129,14 @@ class SolarMirrorClient {
     return data['turn_id'] as String;
   }
 
-  /// `GET /v1/ai/turns/{turn_id}/stream` → the decoded event stream.
+  /// `GET /v1/ai/preview/turns/{turn_id}/stream` → the decoded event stream.
   ///
   /// Emits [ChatDelta]s live as the model streams, plus tool markers, and
   /// terminates on [ChatDone] (or [ChatError] followed by [ChatDone]).
   Stream<ChatEvent> streamTurn(String turnId) async* {
     final token = await _token();
     if (token == null) throw const SolarMirrorException('Not signed in');
-    final uri = Uri.parse('$apiBaseUrl/v1/ai/turns/$turnId/stream');
+    final uri = Uri.parse('$apiBaseUrl/v1/ai/preview/turns/$turnId/stream');
     final headers = {
       'authorization': 'Bearer $token',
       'accept': 'text/event-stream',
