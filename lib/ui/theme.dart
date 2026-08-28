@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'tokens.dart';
+
 const _lightBg = Color(0xFFF5F1EA);
 
 ThemeData immersiveTheme() {
@@ -25,10 +27,22 @@ ThemeData immersiveTheme() {
       ),
       elevation: 8,
     ),
-    colorScheme: ColorScheme.fromSeed(
-      seedColor: const Color(0xFF6B4E9B),
-      brightness: Brightness.dark,
-    ),
+    extensions: const [ExploreTokens.immersive],
+    // fromSeed stays the base so the un-overridden roles stay internally
+    // consistent; the key brand roles are pinned so untouched Material widgets
+    // stop rendering generated purple.
+    colorScheme:
+        ColorScheme.fromSeed(
+          seedColor: const Color(0xFF6B4E9B),
+          brightness: Brightness.dark,
+        ).copyWith(
+          primary: ExploreTokens.immersive.gold,
+          onPrimary: ExploreTokens.immersive.onGold,
+          secondary: ExploreTokens.immersive.gold,
+          surface: ExploreTokens.immersive.surface,
+          onSurface: ExploreTokens.immersive.ink,
+          error: ExploreTokens.immersive.error,
+        ),
   );
 }
 
@@ -50,9 +64,18 @@ ThemeData lightTheme() {
       ),
       elevation: 8,
     ),
-    colorScheme: ColorScheme.fromSeed(
-      seedColor: const Color(0xFF6B4E9B),
-      brightness: Brightness.light,
-    ),
+    extensions: const [ExploreTokens.light],
+    colorScheme:
+        ColorScheme.fromSeed(
+          seedColor: const Color(0xFF6B4E9B),
+          brightness: Brightness.light,
+        ).copyWith(
+          primary: ExploreTokens.light.gold,
+          onPrimary: ExploreTokens.light.onGold,
+          secondary: ExploreTokens.light.gold,
+          surface: ExploreTokens.light.surface,
+          onSurface: ExploreTokens.light.ink,
+          error: ExploreTokens.light.error,
+        ),
   );
 }
