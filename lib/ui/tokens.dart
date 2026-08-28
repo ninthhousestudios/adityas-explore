@@ -162,9 +162,9 @@ class ExploreTokens extends ThemeExtension<ExploreTokens> {
     ringStroke: 1.0,
     radialStroke: 0.5,
     edgeStroke: 1.5,
-    ringOuterFill: Color(0x00000000),
-    ringPlanetFill: Color(0x00000000),
-    ringHouseFill: Color(0x00000000),
+    ringOuterFill: Color(0xFFFFFFFF),
+    ringPlanetFill: Color(0xFFF7F3EC),
+    ringHouseFill: Color(0xFFEFEAE1),
     ascMarker: Color(0xFF8B6F37),
   );
 

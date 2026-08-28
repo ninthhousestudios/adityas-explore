@@ -31,6 +31,35 @@ class ChartWheelPainter extends CustomPainter {
       Paint()..color = tokens.wheelBackdrop,
     );
 
+    // Per-ring warm fills give the concentric structure weight without leaning
+    // on hairlines. Painted as true annuli (even-odd) so the center well keeps
+    // showing the backdrop. Transparent in immersive mode, so these are no-ops
+    // there and the backdrop-over-photo look is preserved.
+    _fillRing(
+      canvas,
+      center,
+      half,
+      outerRingOuter,
+      outerRingInner,
+      tokens.ringOuterFill,
+    );
+    _fillRing(
+      canvas,
+      center,
+      half,
+      planetRingOuter,
+      planetRingInner,
+      tokens.ringPlanetFill,
+    );
+    _fillRing(
+      canvas,
+      center,
+      half,
+      houseRingOuter,
+      houseRingInner,
+      tokens.ringHouseFill,
+    );
+
     final ringPaint = Paint()
       ..color = color.withValues(alpha: 0.5)
       ..style = PaintingStyle.stroke
@@ -63,6 +92,24 @@ class ChartWheelPainter extends CustomPainter {
     }
 
     _drawHouseLabels(canvas, center, half);
+  }
+
+  /// Fills the annulus between [outerFrac] and [innerFrac] (fractions of
+  /// [half]) with [fill]. No-op when [fill] is fully transparent.
+  void _fillRing(
+    Canvas canvas,
+    Offset center,
+    double half,
+    double outerFrac,
+    double innerFrac,
+    Color fill,
+  ) {
+    if (fill.a == 0) return;
+    final path = Path()
+      ..addOval(Rect.fromCircle(center: center, radius: half * outerFrac))
+      ..addOval(Rect.fromCircle(center: center, radius: half * innerFrac))
+      ..fillType = PathFillType.evenOdd;
+    canvas.drawPath(path, Paint()..color = fill);
   }
 
   void _drawHouseLabels(Canvas canvas, Offset center, double half) {
