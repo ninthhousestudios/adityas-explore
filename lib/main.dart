@@ -806,6 +806,7 @@ class _ExplorePage extends StatelessWidget {
                         color: color,
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
+                        fontFamily: t.serifFamily,
                       ),
                     ),
                     Expanded(

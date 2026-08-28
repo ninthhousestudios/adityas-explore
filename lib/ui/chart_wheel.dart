@@ -738,6 +738,7 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
                     color: color,
                     fontSize: fontSize,
                     fontWeight: FontWeight.w500,
+                    fontFamily: context.tokens.serifFamily,
                   ),
                 ),
               ),

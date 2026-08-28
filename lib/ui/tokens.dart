@@ -63,6 +63,11 @@ class ExploreTokens extends ThemeExtension<ExploreTokens> {
   /// (light).
   final FontWeight beingLabelWeight;
 
+  /// Brand heading face (Cormorant Garamond) for Aditya names and headings.
+  /// `null` in immersive so that mode keeps its default sans and stays
+  /// visually unchanged; the serif is the light-mode 'reading' treatment.
+  final String? serifFamily;
+
   // ---- Status ------------------------------------------------------------
   /// Error text/foreground. Unifies the three ad-hoc error reds.
   final Color error;
@@ -138,6 +143,7 @@ class ExploreTokens extends ThemeExtension<ExploreTokens> {
     required this.onGold,
     required this.beingLabelUsesGold,
     required this.beingLabelWeight,
+    required this.serifFamily,
     required this.error,
     required this.errorBg,
     required this.success,
@@ -171,6 +177,7 @@ class ExploreTokens extends ThemeExtension<ExploreTokens> {
     onGold: Color(0xFF000000),
     beingLabelUsesGold: true,
     beingLabelWeight: FontWeight.normal,
+    serifFamily: null,
     error: Color(0xFFE57373),
     errorBg: Color(0x33E57373),
     success: Color(0xFF4CAF50),
@@ -203,6 +210,7 @@ class ExploreTokens extends ThemeExtension<ExploreTokens> {
     onGold: Color(0xFFFFFFFF),
     beingLabelUsesGold: false,
     beingLabelWeight: FontWeight.bold,
+    serifFamily: 'Cormorant Garamond',
     error: Color(0xFFE57373),
     errorBg: Color(0x33E57373),
     success: Color(0xFF4CAF50),
@@ -236,6 +244,7 @@ class ExploreTokens extends ThemeExtension<ExploreTokens> {
     Color? onGold,
     bool? beingLabelUsesGold,
     FontWeight? beingLabelWeight,
+    String? serifFamily,
     Color? error,
     Color? errorBg,
     Color? success,
@@ -264,6 +273,7 @@ class ExploreTokens extends ThemeExtension<ExploreTokens> {
       onGold: onGold ?? this.onGold,
       beingLabelUsesGold: beingLabelUsesGold ?? this.beingLabelUsesGold,
       beingLabelWeight: beingLabelWeight ?? this.beingLabelWeight,
+      serifFamily: serifFamily ?? this.serifFamily,
       error: error ?? this.error,
       errorBg: errorBg ?? this.errorBg,
       success: success ?? this.success,

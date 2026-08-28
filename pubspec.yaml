@@ -64,3 +64,16 @@ flutter:
     - assets/glyphs/planets/
     - assets/text/
     - assets/fonts/
+  fonts:
+    # Brand heading face (SIL OFL, see assets/fonts/Cormorant-OFL.txt). Applied
+    # to Aditya names and headings in light mode via the serifFamily token.
+    - family: Cormorant Garamond
+      fonts:
+        - asset: assets/fonts/CormorantGaramond-Regular.otf
+          weight: 400
+        - asset: assets/fonts/CormorantGaramond-Medium.otf
+          weight: 500
+        - asset: assets/fonts/CormorantGaramond-SemiBold.otf
+          weight: 600
+        - asset: assets/fonts/CormorantGaramond-Bold.otf
+          weight: 700
