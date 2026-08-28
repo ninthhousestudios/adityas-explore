@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'tokens.dart';
+
 /// Geometry + gesture wiring that turns [OverlayShell] into a draggable +
 /// resizable floating window (the desktop transient layer). When absent, the
 /// shell renders as a centered modal — the mobile / fallback behavior. See
@@ -24,7 +26,6 @@ class FloatingConfig {
 
 class OverlayShell extends StatelessWidget {
   final Color color;
-  final bool isDark;
   final VoidCallback onClose;
   final VoidCallback? onBack;
   final Widget? headerLeading;
@@ -37,7 +38,6 @@ class OverlayShell extends StatelessWidget {
   const OverlayShell({
     super.key,
     required this.color,
-    required this.isDark,
     required this.onClose,
     this.onBack,
     this.headerLeading,
@@ -48,9 +48,10 @@ class OverlayShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cardBg = isDark ? const Color(0xF0151015) : const Color(0xF0F5F1EA);
+    final t = context.tokens;
+    final cardBg = t.cardBg;
     final floating = this.floating;
-    if (floating != null) return _buildFloating(cardBg, floating);
+    if (floating != null) return _buildFloating(cardBg, t.scrim, floating);
     return _buildModal(context, cardBg);
   }
 
@@ -142,7 +143,7 @@ class OverlayShell extends StatelessWidget {
   /// Floating window: draggable title bar, resize handle at the bottom-right,
   /// no scrim (the chart behind stays interactive). Height is bounded by the
   /// rect, so the body uses [Expanded] and scrolls within.
-  Widget _buildFloating(Color cardBg, FloatingConfig f) {
+  Widget _buildFloating(Color cardBg, Color scrim, FloatingConfig f) {
     final r = f.rect;
     return Positioned(
       left: r.left,
@@ -155,11 +156,7 @@ class OverlayShell extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: color.withValues(alpha: 0.3)),
           boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.5 : 0.2),
-              blurRadius: 24,
-              offset: const Offset(0, 8),
-            ),
+            BoxShadow(color: scrim, blurRadius: 24, offset: const Offset(0, 8)),
           ],
         ),
         child: ClipRRect(

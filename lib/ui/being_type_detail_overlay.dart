@@ -3,10 +3,10 @@ import 'package:flutter/material.dart';
 import 'being_type_content.dart';
 import 'overlay_shell.dart';
 import 'stable_asset_image.dart';
+import 'tokens.dart';
 
 class BeingTypeDetailOverlay extends StatelessWidget {
   final Color color;
-  final bool isDark;
   final String type;
   final Map<String, BeingTypeContent>? contentMap;
   final VoidCallback onClose;
@@ -16,7 +16,6 @@ class BeingTypeDetailOverlay extends StatelessWidget {
   const BeingTypeDetailOverlay({
     super.key,
     required this.color,
-    required this.isDark,
     required this.type,
     required this.contentMap,
     required this.onClose,
@@ -28,10 +27,10 @@ class BeingTypeDetailOverlay extends StatelessWidget {
   Widget build(BuildContext context) {
     final content = contentMap?[type];
     final emblemPath = beingTypeEmblemPath(type);
+    final t = context.tokens;
 
     return OverlayShell(
       color: color,
-      isDark: isDark,
       onClose: onClose,
       onBack: onBack,
       floating: floating,
@@ -45,10 +44,10 @@ class BeingTypeDetailOverlay extends StatelessWidget {
                 Text(
                   content.subtitle,
                   style: TextStyle(
-                    color: isDark ? const Color(0xFFD4A855) : color,
+                    color: t.beingLabel(color),
                     fontSize: 16,
                     fontStyle: FontStyle.italic,
-                    fontWeight: isDark ? null : FontWeight.bold,
+                    fontWeight: t.beingLabelWeight,
                   ),
                 ),
                 const SizedBox(height: 16),

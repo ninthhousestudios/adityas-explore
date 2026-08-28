@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../ai/solar_mirror_client.dart';
+import 'tokens.dart';
 
 /// Chat panel for the `conversation` layout mode.
 ///
@@ -270,7 +271,7 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
 
   Widget _bubble(_ChatMessage m, Color color, Color dimColor, double fontSize) {
     final hasText = m.text.isNotEmpty;
-    final textColor = m.isError ? const Color(0xFFE57373) : color;
+    final textColor = m.isError ? context.tokens.error : color;
     return Align(
       alignment: m.fromUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
@@ -279,7 +280,7 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
         constraints: const BoxConstraints(maxWidth: 320),
         decoration: BoxDecoration(
           color: m.isError
-              ? const Color(0x33E57373)
+              ? context.tokens.errorBg
               : color.withValues(alpha: m.fromUser ? 0.15 : 0.07),
           borderRadius: BorderRadius.circular(12),
         ),

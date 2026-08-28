@@ -7,6 +7,7 @@ import 'aditya_data.dart';
 import 'being_content.dart';
 import 'chart_wheel_layout.dart';
 import 'stable_asset_image.dart';
+import 'tokens.dart';
 
 ({Widget? leading, String title})? beingOverlayHeader({
   required Color color,
@@ -68,7 +69,6 @@ import 'stable_asset_image.dart';
 
 class BeingOverlayBody extends StatelessWidget {
   final Color color;
-  final bool isDark;
   final PlacedPlanet? planet;
   final ({String name, String type, String planet, int sign})? being;
   final Map<(int, String), BeingContent>? beingContent;
@@ -79,7 +79,6 @@ class BeingOverlayBody extends StatelessWidget {
   const BeingOverlayBody({
     super.key,
     required this.color,
-    required this.isDark,
     this.planet,
     this.being,
     this.beingContent,
@@ -99,6 +98,7 @@ class BeingOverlayBody extends StatelessWidget {
     final imagePath = beingImagePath(beingSign, beingType);
     final glyphPath = beingTypeGlyphPath(beingType);
     final dimColor = color.withValues(alpha: 0.6);
+    final t = context.tokens;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -127,7 +127,6 @@ class BeingOverlayBody extends StatelessWidget {
             beingName: beingName,
             planetName: planetName,
             color: color,
-            isDark: isDark,
           ),
         ),
         const SizedBox(height: 16),
@@ -149,10 +148,10 @@ class BeingOverlayBody extends StatelessWidget {
             child: Text(
               content.subtitle,
               style: TextStyle(
-                color: isDark ? const Color(0xFFD4A855) : color,
+                color: t.beingLabel(color),
                 fontSize: 16,
                 fontStyle: FontStyle.italic,
-                fontWeight: isDark ? null : FontWeight.bold,
+                fontWeight: t.beingLabelWeight,
               ),
             ),
           ),
@@ -171,7 +170,7 @@ class BeingOverlayBody extends StatelessWidget {
               child: Text(
                 'Reflection',
                 style: TextStyle(
-                  color: isDark ? const Color(0xFFD4A855) : color,
+                  color: t.beingLabel(color),
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                 ),
@@ -358,7 +357,6 @@ class _ShareBeingButton extends StatefulWidget {
   final String beingName;
   final String planetName;
   final Color color;
-  final bool isDark;
 
   const _ShareBeingButton({
     required this.sign,
@@ -366,7 +364,6 @@ class _ShareBeingButton extends StatefulWidget {
     required this.beingName,
     required this.planetName,
     required this.color,
-    required this.isDark,
   });
 
   @override
@@ -400,10 +397,9 @@ class _ShareBeingButtonState extends State<_ShareBeingButton> {
 
   @override
   Widget build(BuildContext context) {
-    final accent = widget.isDark
-        ? const Color(0xFFD4A853)
-        : const Color(0xFF8B6F37);
-    final errorColor = Colors.red.shade300;
+    final t = context.tokens;
+    final accent = t.gold;
+    final errorColor = t.error;
     return GestureDetector(
       onTap: _share,
       behavior: HitTestBehavior.opaque,

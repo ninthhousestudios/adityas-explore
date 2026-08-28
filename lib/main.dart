@@ -28,6 +28,7 @@ import 'ui/boot_error_screen.dart';
 import 'ui/chart_wheel.dart';
 import 'ui/account_button.dart';
 import 'ui/theme.dart';
+import 'ui/tokens.dart';
 import 'api/chart_service.dart';
 import 'export/chart_pdf.dart';
 import 'state/auth.dart';
@@ -77,7 +78,7 @@ class ExploreApp extends ConsumerStatefulWidget {
 }
 
 class _ExploreAppState extends ConsumerState<ExploreApp> {
-  bool _useLight = false;
+  ExploreTheme _theme = ExploreTheme.immersive;
   double _zoom = 1.0;
   bool _booted = false;
   String? _bootError;
@@ -138,7 +139,7 @@ class _ExploreAppState extends ConsumerState<ExploreApp> {
       _prefs = results[1] as SharedPreferences;
       _ephemerisService = await createEphemerisService(currentSweEphePath);
       _calculator = ChartCalculator(_ephemerisService);
-      _useLight = _prefs.getBool('useLight') ?? false;
+      _theme = readThemePreference(_prefs);
       _zoom = _prefs.getDouble('zoom') ?? 1.0;
       _waitlistSigned = _prefs.getBool('waitlist_signed') ?? false;
       final auth = Supabase.instance.client.auth;
@@ -194,8 +195,12 @@ class _ExploreAppState extends ConsumerState<ExploreApp> {
   }
 
   void _toggleTheme() {
-    setState(() => _useLight = !_useLight);
-    _prefs.setBool('useLight', _useLight);
+    setState(() {
+      _theme = _theme == ExploreTheme.light
+          ? ExploreTheme.immersive
+          : ExploreTheme.light;
+    });
+    unawaited(writeThemePreference(_prefs, _theme));
   }
 
   void _onWaitlistSigned() {
@@ -459,12 +464,12 @@ class _ExploreAppState extends ConsumerState<ExploreApp> {
     return MaterialApp(
       title: 'The Adityas — Explore',
       debugShowCheckedModeBanner: false,
-      theme: _useLight ? lightTheme() : immersiveTheme(),
+      theme: _theme == ExploreTheme.light ? lightTheme() : immersiveTheme(),
       scaffoldMessengerKey: _messengerKey,
       navigatorKey: _navigatorKey,
       navigatorObservers: [SentryNavigatorObserver()],
       home: _ExplorePage(
-        useLight: _useLight,
+        useLight: _theme == ExploreTheme.light,
         onToggleTheme: _toggleTheme,
         zoom: _zoom,
         onZoomIn: _zoomIn,
@@ -771,9 +776,9 @@ class _ExplorePage extends StatelessWidget {
   }
 
   void _showAbout(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final color = isDark ? Colors.white : Colors.black;
-    final cardBg = isDark ? const Color(0xF0151015) : const Color(0xF0F5F1EA);
+    final t = context.tokens;
+    final color = t.ink;
+    final cardBg = t.cardBg;
 
     showDialog<void>(
       context: context,
@@ -829,10 +834,7 @@ class _ExplorePage extends StatelessWidget {
                 const SizedBox(height: 12),
                 SelectableText(
                   'https://github.com/ninthhousestudios/adityas-explore',
-                  style: TextStyle(
-                    color: isDark ? const Color(0xFFD4A855) : Colors.blue[800],
-                    fontSize: 13,
-                  ),
+                  style: TextStyle(color: t.gold, fontSize: 13),
                   textAlign: TextAlign.center,
                 ),
               ],
@@ -902,9 +904,9 @@ class _SaveChartDialogState extends State<_SaveChartDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final color = isDark ? Colors.white : Colors.black;
-    final cardBg = isDark ? const Color(0xF0151015) : const Color(0xF0F5F1EA);
+    final t = context.tokens;
+    final color = t.ink;
+    final cardBg = t.cardBg;
 
     return Center(
       child: Container(
@@ -944,11 +946,7 @@ class _SaveChartDialogState extends State<_SaveChartDialog> {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   focusedBorder: OutlineInputBorder(
-                    borderSide: BorderSide(
-                      color: isDark
-                          ? const Color(0xFFD4A853)
-                          : const Color(0xFF8B6F37),
-                    ),
+                    borderSide: BorderSide(color: t.gold),
                     borderRadius: BorderRadius.circular(8),
                   ),
                 ),
@@ -978,10 +976,8 @@ class _SaveChartDialogState extends State<_SaveChartDialog> {
                       }
                     },
                     style: FilledButton.styleFrom(
-                      backgroundColor: isDark
-                          ? const Color(0xFFD4A853)
-                          : const Color(0xFF8B6F37),
-                      foregroundColor: isDark ? Colors.black : Colors.white,
+                      backgroundColor: t.gold,
+                      foregroundColor: t.onGold,
                     ),
                     child: const Text('Save'),
                   ),

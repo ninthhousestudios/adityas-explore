@@ -10,10 +10,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// object instead of a handful of individual colour fields.
 ///
 /// Values reproduce today's rendered colours EXACTLY, except the four
-/// deliberate `docs/brand.md` drift corrections (see the task): the `D4A855`
-/// gold typo collapses into [gold], the Material `blue[800]` light-mode link
-/// resolves to [gold], and the three ad-hoc reds / one ad-hoc green collapse
-/// into [error]/[errorBg]/[success].
+/// deliberate `docs/brand.md` drift corrections (see the task): the typo'd gold
+/// collapses into [gold], the Material-blue light-mode link resolves to [gold],
+/// and the three ad-hoc error reds / one ad-hoc success green collapse into
+/// [error]/[errorBg]/[success].
 @immutable
 class ExploreTokens extends ThemeExtension<ExploreTokens> {
   // ---- Surfaces -----------------------------------------------------------
@@ -25,48 +25,50 @@ class ExploreTokens extends ThemeExtension<ExploreTokens> {
   /// Elevated surface (brand Surface).
   final Color surface;
 
-  /// Frosted card/panel fill. Was `isDark ? 0xF0151015 : 0xF0F5F1EA` at 7 sites.
+  /// Frosted card/panel fill. Replaces the copy-pasted `0xF0151015` /
+  /// `0xF0F5F1EA` pair at 7 sites.
   final Color cardBg;
 
   /// Semi-transparent disc painted behind the chart wheel so it pops over
   /// background imagery. Was `black@0.5 / white@0.5`.
   final Color wheelBackdrop;
 
-  /// Drop-shadow / scrim colour under floating cards. Was
-  /// `Colors.black.withValues(alpha: isDark ? 0.5 : 0.2)`.
+  /// Drop-shadow / scrim colour under floating cards. Black at 50% (immersive)
+  /// / 20% (light).
   final Color scrim;
 
   // ---- Ink ---------------------------------------------------------------
-  /// Primary foreground. Was `isDark ? Colors.white : Colors.black` at ~10
-  /// sites. Kept as pure white/black (NOT brand text ink) to preserve today's
-  /// appearance; call sites keep their `.withValues(alpha:)` derivations.
+  /// Primary foreground — pure white (immersive) / black (light), at ~10 sites.
+  /// Deliberately NOT the brand text ink, to preserve today's appearance; call
+  /// sites keep their `.withValues(alpha:)` derivations off this.
   final Color ink;
 
   // ---- Accent ------------------------------------------------------------
-  /// Brand gold accent. Was `isDark ? D4A853 : 8B6F37` (and the `D4A855` typo).
+  /// Brand gold accent — `#D4A853` (immersive) / `#8B6F37` (light). Collapses
+  /// the copy-pasted gold pairs and the typo'd variant that drifted at 4 sites.
   final Color gold;
 
-  /// Foreground on a gold-filled button. Was `isDark ? black : white`.
+  /// Foreground on a gold-filled button — black (immersive) / white (light).
   final Color onGold;
 
   // ---- Being labels ------------------------------------------------------
   /// Being subtitle/reflection labels use gold in immersive mode but the
-  /// being's own aditya colour in light mode. Encodes the theme half of
-  /// `isDark ? gold : beingColor`; see [beingLabel].
+  /// being's own aditya colour in light mode. Encodes the theme half of that
+  /// choice; the being colour is runtime data, so resolve via [beingLabel].
   final bool beingLabelUsesGold;
 
-  /// Weight for being labels. Was `isDark ? null : FontWeight.bold` — immersive
-  /// inherits (w400), light bolds.
+  /// Weight for being labels — normal/w400 (immersive, inherited) vs bold
+  /// (light).
   final FontWeight beingLabelWeight;
 
   // ---- Status ------------------------------------------------------------
-  /// Error text/foreground. Unifies `E57373`, `redAccent`, `red.shade300`.
+  /// Error text/foreground. Unifies the three ad-hoc error reds.
   final Color error;
 
   /// Error surface tint (error @ 20%).
   final Color errorBg;
 
-  /// Success foreground. Unifies the ad-hoc `Colors.green`.
+  /// Success foreground. Unifies the one ad-hoc success green.
   final Color success;
 
   // ---- Wheel strokes -----------------------------------------------------
@@ -117,7 +119,7 @@ class ExploreTokens extends ThemeExtension<ExploreTokens> {
   });
 
   /// Colour for a being subtitle/reflection label given the being's aditya
-  /// [beingColor]. Replaces the `isDark ? gold : beingColor` ternary.
+  /// [beingColor]. Replaces the per-theme gold-vs-being-colour ternary.
   Color beingLabel(Color beingColor) => beingLabelUsesGold ? gold : beingColor;
 
   static const immersive = ExploreTokens(

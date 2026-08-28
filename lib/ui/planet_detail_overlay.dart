@@ -8,7 +8,6 @@ import 'stable_asset_image.dart';
 
 class PlanetDetailOverlay extends StatelessWidget {
   final Color color;
-  final bool isDark;
   final String planetName;
   final Map<String, PlanetContent>? contentMap;
   final VoidCallback onClose;
@@ -18,7 +17,6 @@ class PlanetDetailOverlay extends StatelessWidget {
   const PlanetDetailOverlay({
     super.key,
     required this.color,
-    required this.isDark,
     required this.planetName,
     required this.contentMap,
     required this.onClose,
@@ -34,7 +32,6 @@ class PlanetDetailOverlay extends StatelessWidget {
 
     return OverlayShell(
       color: color,
-      isDark: isDark,
       onClose: onClose,
       onBack: onBack,
       floating: floating,

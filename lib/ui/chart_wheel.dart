@@ -25,6 +25,7 @@ import 'planet_detail_overlay.dart';
 import 'popup_state.dart';
 import 'soul_stances_panel.dart';
 import 'mobile_chart_buttons.dart';
+import 'tokens.dart';
 import 'uncertainty_chooser.dart';
 import 'waitlist_cta.dart';
 
@@ -230,11 +231,9 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final color = isDark ? Colors.white : Colors.black;
-    final backdropColor = isDark
-        ? Colors.black.withValues(alpha: 0.5)
-        : Colors.white.withValues(alpha: 0.5);
+    final tokens = context.tokens;
+    final color = tokens.ink;
+    final backdropColor = tokens.wheelBackdrop;
 
     // The transient popup layer, watched at the top of build so any open/push/
     // pop/drag/resize rebuilds the wheel (LayoutBuilder is a nested closure, so
@@ -259,7 +258,7 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
         if (isMobile) {
           // Explore-size wheel; `_buildWheel` also populates `_planets`, which
           // the mobile buttons below read.
-          final wheel = _buildWheel(side, color, backdropColor);
+          final wheel = _buildWheel(side, tokens);
           return Stack(
             children: [
               Center(child: wheel),
@@ -275,7 +274,7 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
                     onYourBeings: () => _openPopup(YourBeingsPopup()),
                   ),
                 ),
-              if (overlay.isNotEmpty) _buildOverlay(overlay, color, isDark),
+              if (overlay.isNotEmpty) _buildOverlay(overlay, color),
             ],
           );
         }
@@ -295,7 +294,7 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
         // the mode (they only show in explore); the chart is what reflows.
         final panelWidth = panelMargin - 16;
         final panelFontSize = (side / 2) * 0.032;
-        final chartWheel = _buildWheel(g.chartSide, color, backdropColor);
+        final chartWheel = _buildWheel(g.chartSide, tokens);
         return SizedBox(
           width: w,
           height: side,
@@ -376,7 +375,6 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
                 _buildOverlay(
                   overlay,
                   color,
-                  isDark,
                   floating: FloatingConfig(
                     rect: overlayWindowRect(overlay.rect, w, side),
                     onDrag: (d) => ref
@@ -397,7 +395,8 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
   /// Builds the chart wheel sized to [wheelSide]. Recomputes `_planets` for
   /// that size (positions scale with the wheel) as a side effect; panels read
   /// `_planets` afterwards but only for being-type data, not positions.
-  Widget _buildWheel(double wheelSide, Color color, Color backdropColor) {
+  Widget _buildWheel(double wheelSide, ExploreTokens tokens) {
+    final color = tokens.ink;
     final half = wheelSide / 2;
     final center = Offset(half, half);
     final glyphSize = half * 0.065;
@@ -411,8 +410,7 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
           Positioned.fill(
             child: CustomPaint(
               painter: ChartWheelPainter(
-                color: color,
-                backdropColor: backdropColor,
+                tokens: tokens,
                 ascSign: _ascSign,
                 cusps: _cusps,
               ),
@@ -537,13 +535,11 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
     Offset globalPos,
   ) async {
     final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final color = isDark ? Colors.white : Colors.black;
+    final tokens = context.tokens;
+    final color = tokens.ink;
     final selected = await showMenu<(_PanelMenuKind, PanelId)>(
       context: context,
-      color: isDark
-          ? Colors.black.withValues(alpha: 0.5)
-          : Colors.white.withValues(alpha: 0.5),
+      color: tokens.wheelBackdrop,
       position: RelativeRect.fromRect(
         Rect.fromLTWH(globalPos.dx, globalPos.dy, 0, 0),
         Offset.zero & overlay.size,
@@ -878,8 +874,7 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
   /// chooser and mobile panel sheets stay modal regardless.
   Widget _buildOverlay(
     OverlayLayer overlay,
-    Color color,
-    bool isDark, {
+    Color color, {
     FloatingConfig? floating,
   }) {
     final top = overlay.top;
@@ -890,21 +885,18 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
     return switch (top) {
       BeingFromPlanet(:final planet) => _buildBeingShell(
         color,
-        isDark,
         planet: planet,
         onBack: onBack,
         floating: floating,
       ),
       BeingFromName(:final being) => _buildBeingShell(
         color,
-        isDark,
         being: being,
         onBack: onBack,
         floating: floating,
       ),
       BeingTypePopup(:final type) => BeingTypeDetailOverlay(
         color: color,
-        isDark: isDark,
         type: type,
         contentMap: _beingTypeContent,
         onClose: _closeOverlay,
@@ -913,7 +905,6 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
       ),
       PlanetPopup(:final planet) => PlanetDetailOverlay(
         color: color,
-        isDark: isDark,
         planetName: planet,
         contentMap: _planetContent,
         onClose: _closeOverlay,
@@ -922,7 +913,6 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
       ),
       UncertaintyPopup(:final planet, :final kind) => UncertaintyChooser(
         color: color,
-        isDark: isDark,
         planetName: planet,
         kind: kind,
         options: kind == UncertainKind.hora
@@ -935,7 +925,6 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
       ),
       SoulStancesPopup() => _buildMobilePanelOverlay(
         color: color,
-        isDark: isDark,
         child: SoulStancesPanel(
           planets: _planets,
           uncertainty: widget.uncertainty,
@@ -947,7 +936,6 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
       ),
       YourBeingsPopup() => _buildMobilePanelOverlay(
         color: color,
-        isDark: isDark,
         child: BeingsPanel(
           planets: _planets,
           uncertainty: widget.uncertainty,
@@ -962,10 +950,9 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
 
   Widget _buildMobilePanelOverlay({
     required Color color,
-    required bool isDark,
     required Widget child,
   }) {
-    final cardBg = isDark ? const Color(0xF0151015) : const Color(0xF0F5F1EA);
+    final cardBg = context.tokens.cardBg;
     return GestureDetector(
       onTap: _closeOverlay,
       behavior: HitTestBehavior.opaque,
@@ -1013,8 +1000,7 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
   }
 
   Widget _buildBeingShell(
-    Color color,
-    bool isDark, {
+    Color color, {
     PlacedPlanet? planet,
     BeingRef? being,
     VoidCallback? onBack,
@@ -1027,7 +1013,6 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
     );
     return OverlayShell(
       color: color,
-      isDark: isDark,
       onClose: _closeOverlay,
       onBack: onBack,
       floating: floating,
@@ -1035,7 +1020,6 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
       title: header?.title ?? '',
       body: BeingOverlayBody(
         color: color,
-        isDark: isDark,
         planet: planet,
         being: being,
         beingContent: _beingContent,

@@ -3,10 +3,10 @@ import 'package:flutter/material.dart';
 import '../astro/being_uncertainty.dart';
 import 'being_content.dart';
 import 'popup_state.dart';
+import 'tokens.dart';
 
 class UncertaintyChooser extends StatelessWidget {
   final Color color;
-  final bool isDark;
   final String planetName;
   final UncertainKind kind;
   final List<Being> options;
@@ -18,7 +18,6 @@ class UncertaintyChooser extends StatelessWidget {
   const UncertaintyChooser({
     super.key,
     required this.color,
-    required this.isDark,
     required this.planetName,
     required this.kind,
     required this.options,
@@ -33,11 +32,10 @@ class UncertaintyChooser extends StatelessWidget {
     if (options.isEmpty) return const SizedBox.shrink();
 
     final label = kind == UncertainKind.hora ? 'soul stance' : 'being';
-    final cardBg = isDark ? const Color(0xF0151015) : const Color(0xF0F5F1EA);
+    final t = context.tokens;
+    final cardBg = t.cardBg;
     final dimColor = color.withValues(alpha: 0.6);
-    final accentColor = isDark
-        ? const Color(0xFFD4A853)
-        : const Color(0xFF8B6F37);
+    final accentColor = t.gold;
 
     return Positioned.fill(
       child: GestureDetector(

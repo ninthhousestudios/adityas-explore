@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../api/chart_service.dart';
 import '../navigate.dart' if (dart.library.js_interop) '../navigate_web.dart';
 import '../state/auth.dart';
+import 'tokens.dart';
 
 class AccountButton extends ConsumerStatefulWidget {
   final bool hasChart;
@@ -205,10 +206,10 @@ class _SignInDialogState extends ConsumerState<_SignInDialog> {
       if (user != null) Navigator.of(context).pop();
     });
 
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final color = isDark ? Colors.white : Colors.black;
-    final cardBg = isDark ? const Color(0xF0151015) : const Color(0xF0F5F1EA);
-    final accent = isDark ? const Color(0xFFD4A853) : const Color(0xFF8B6F37);
+    final t = context.tokens;
+    final color = t.ink;
+    final cardBg = t.cardBg;
+    final accent = t.gold;
 
     return Center(
       child: Container(
@@ -290,7 +291,7 @@ class _SignInDialogState extends ConsumerState<_SignInDialog> {
                   child: Text(
                     _message!,
                     style: TextStyle(
-                      color: _isError ? Colors.redAccent : Colors.green,
+                      color: _isError ? t.error : t.success,
                       fontSize: 13,
                     ),
                     textAlign: TextAlign.center,
@@ -302,7 +303,7 @@ class _SignInDialogState extends ConsumerState<_SignInDialog> {
                   onPressed: _loading ? null : _submit,
                   style: FilledButton.styleFrom(
                     backgroundColor: accent,
-                    foregroundColor: isDark ? Colors.black : Colors.white,
+                    foregroundColor: t.onGold,
                     padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
                   child: _loading
@@ -406,10 +407,10 @@ class _MyChartsDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final color = isDark ? Colors.white : Colors.black;
-    final cardBg = isDark ? const Color(0xF0151015) : const Color(0xF0F5F1EA);
-    final accent = isDark ? const Color(0xFFD4A853) : const Color(0xFF8B6F37);
+    final t = context.tokens;
+    final color = t.ink;
+    final cardBg = t.cardBg;
+    final accent = t.gold;
 
     return Center(
       child: Container(

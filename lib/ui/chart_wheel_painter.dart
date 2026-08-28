@@ -4,19 +4,20 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 import 'chart_wheel_layout.dart';
+import 'tokens.dart';
 
 class ChartWheelPainter extends CustomPainter {
-  final Color color;
-  final Color backdropColor;
+  final ExploreTokens tokens;
   final int ascSign;
   final List<PlacedCusp> cusps;
 
   ChartWheelPainter({
-    required this.color,
-    required this.backdropColor,
+    required this.tokens,
     required this.ascSign,
     required this.cusps,
   });
+
+  Color get color => tokens.ink;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -27,18 +28,18 @@ class ChartWheelPainter extends CustomPainter {
     canvas.drawCircle(
       center,
       half * outerRingOuter,
-      Paint()..color = backdropColor,
+      Paint()..color = tokens.wheelBackdrop,
     );
 
     final ringPaint = Paint()
       ..color = color.withValues(alpha: 0.5)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0;
+      ..strokeWidth = tokens.ringStroke;
 
     final radialPaint = Paint()
       ..color = color.withValues(alpha: 0.3)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.5;
+      ..strokeWidth = tokens.radialStroke;
 
     // Concentric circles.
     canvas
@@ -50,7 +51,7 @@ class ChartWheelPainter extends CustomPainter {
     final outerEdgePaint = Paint()
       ..color = color.withValues(alpha: 0.6)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5;
+      ..strokeWidth = tokens.edgeStroke;
     canvas.drawCircle(center, half * outerRingOuter, outerEdgePaint);
 
     // 12 radial lines at sign boundaries.
@@ -105,8 +106,7 @@ class ChartWheelPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(ChartWheelPainter oldDelegate) =>
-      color != oldDelegate.color ||
-      backdropColor != oldDelegate.backdropColor ||
+      tokens != oldDelegate.tokens ||
       ascSign != oldDelegate.ascSign ||
       cusps != oldDelegate.cusps;
 }

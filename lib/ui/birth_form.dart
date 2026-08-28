@@ -9,6 +9,7 @@ import '../astro/being_uncertainty.dart'
     show TimeUncertainty, ExactTime, PeriodTime, UnknownTime;
 import '../file_util.dart';
 import '../navigate.dart' if (dart.library.js_interop) '../navigate_web.dart';
+import 'tokens.dart';
 
 enum TimePrecision { exact, general, unknown }
 
@@ -576,13 +577,11 @@ class _BirthFormState extends State<BirthForm> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final color = isDark ? Colors.white : Colors.black;
-    final cardBg = isDark ? const Color(0xF0151015) : const Color(0xF0F5F1EA);
+    final t = context.tokens;
+    final color = t.ink;
+    final cardBg = t.cardBg;
     final mutedColor = color.withValues(alpha: 0.5);
-    final accentColor = isDark
-        ? const Color(0xFFD4A853)
-        : const Color(0xFF8B6F37);
+    final accentColor = t.gold;
 
     return Center(
       child: SingleChildScrollView(

@@ -1,18 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../api/waitlist_service.dart';
+import 'tokens.dart';
 
 class WaitlistDialog extends StatefulWidget {
-  final Color color;
-  final bool isDark;
   final VoidCallback onSuccess;
 
-  const WaitlistDialog({
-    super.key,
-    required this.color,
-    required this.isDark,
-    required this.onSuccess,
-  });
+  const WaitlistDialog({super.key, required this.onSuccess});
 
   @override
   State<WaitlistDialog> createState() => _WaitlistDialogState();
@@ -80,13 +74,10 @@ class _WaitlistDialogState extends State<WaitlistDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final color = widget.color;
-    final cardBg = widget.isDark
-        ? const Color(0xF0151015)
-        : const Color(0xF0F5F1EA);
-    final accentColor = widget.isDark
-        ? const Color(0xFFD4A853)
-        : const Color(0xFF8B6F37);
+    final t = context.tokens;
+    final color = t.ink;
+    final cardBg = t.cardBg;
+    final accentColor = t.gold;
 
     return Center(
       child: Container(
@@ -169,7 +160,7 @@ class _WaitlistDialogState extends State<WaitlistDialog> {
           const SizedBox(height: 8),
           Text(
             _error!,
-            style: const TextStyle(color: Colors.redAccent, fontSize: 13),
+            style: TextStyle(color: context.tokens.error, fontSize: 13),
           ),
         ],
         const SizedBox(height: 24),
@@ -179,7 +170,7 @@ class _WaitlistDialogState extends State<WaitlistDialog> {
             onPressed: _submitting ? null : _submit,
             style: FilledButton.styleFrom(
               backgroundColor: accentColor,
-              foregroundColor: widget.isDark ? Colors.black : Colors.white,
+              foregroundColor: context.tokens.onGold,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
@@ -190,7 +181,7 @@ class _WaitlistDialogState extends State<WaitlistDialog> {
                     height: 20,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: widget.isDark ? Colors.black : Colors.white,
+                      color: context.tokens.onGold,
                     ),
                   )
                 : const Text(
