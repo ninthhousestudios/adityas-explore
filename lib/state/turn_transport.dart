@@ -1,3 +1,4 @@
+import 'package:charts_dart/charts_dart.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// The turn transport seam and the internal event vocabulary the chat state
@@ -25,14 +26,20 @@ class TurnUsage {
   int get totalTokens => inputTokens + outputTokens;
 }
 
-/// What the client hands the transport to start a turn: the user's message and
-/// its place in the conversation tree (`parent_message_id`). Kept minimal — the
-/// backend owns conversation/turn identity.
+/// What the client hands the transport to start a turn: the user's message, its
+/// place in the conversation tree (`parent_message_id`), and the currently-open
+/// [chart]. Kept minimal — the backend owns conversation/turn identity.
+///
+/// [chart], when non-null, is the open chart's birth data. The transport rides
+/// it along as the backend's `ChartInput` (adityas/ai/63/65) so the harness can
+/// compute `chart_facts` and the model can speak about the person's own
+/// activated beings. Null → a chart-less turn.
 class TurnRequest {
   final String text;
   final String? parentMessageId;
+  final ChartData? chart;
 
-  const TurnRequest({required this.text, this.parentMessageId});
+  const TurnRequest({required this.text, this.parentMessageId, this.chart});
 }
 
 /// One normalized event from a generation stream.

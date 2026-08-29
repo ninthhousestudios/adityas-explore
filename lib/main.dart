@@ -32,6 +32,7 @@ import 'ui/tokens.dart';
 import 'api/chart_service.dart';
 import 'ai/sse_turn_transport.dart';
 import 'export/chart_pdf.dart';
+import 'state/active_chart.dart';
 import 'state/auth.dart';
 import 'state/backend.dart';
 import 'state/turn_transport.dart';
@@ -249,6 +250,9 @@ class _ExploreAppState extends ConsumerState<ExploreApp> {
       _uncertainty = null;
       _calculating = false;
     });
+    // Mirror the open chart into the provider graph so the chat turn attaches it
+    // to durable /v1/ai turns (adityas/ai/65). This widget is the sole writer.
+    ref.read(activeChartProvider.notifier).set(null);
   }
 
   Future<void> _refreshSavedCharts() async {
@@ -363,6 +367,7 @@ class _ExploreAppState extends ConsumerState<ExploreApp> {
         _uncertainty = null;
         _calculating = true;
       });
+      ref.read(activeChartProvider.notifier).set(chartData);
 
       final chart = await _calculator.calculate(chartData);
       if (!mounted || token != _calcToken) return;
@@ -422,6 +427,7 @@ class _ExploreAppState extends ConsumerState<ExploreApp> {
         _uncertainty = null;
         _calculating = true;
       });
+      ref.read(activeChartProvider.notifier).set(chartData);
 
       final chart = await _calculator.calculate(chartData);
       if (!mounted) return;

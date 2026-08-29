@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import '../api/api_config.dart';
 import '../state/auth.dart';
 import '../state/backend.dart';
+import 'chart_input.dart';
 // Conditional-import pair: `fetch`+`ReadableStream` on web, `dart:io` on desktop.
 import 'chat_stream.dart' if (dart.library.js_interop) 'chat_stream_web.dart';
 import 'sse.dart';
@@ -141,7 +142,7 @@ class SolarMirrorClient {
     final token = await _token();
     if (token == null) throw const SolarMirrorException('Not signed in');
     final body = <String, dynamic>{'message': message};
-    if (chart != null) body['chart'] = _chartInput(chart);
+    if (chart != null) body['chart'] = chartInputJson(chart);
     final response = await _http.post(
       Uri.parse('$apiBaseUrl$basePath/conversations/$conversationId/turns'),
       headers: {
@@ -194,23 +195,6 @@ class SolarMirrorClient {
       return 'Request failed (${response.statusCode})';
     }
   }
-}
-
-/// The open chart's civil birth data in the backend's `ChartInput` shape,
-/// which mirrors `CalculateRequest` (adityas/ai/35). `date`/`time`/`utc_offset`/
-/// `dst_offset` reuse charts_dart's canonical [ChartData.toJson] formatting
-/// (`YYYY-MM-DD` / `HH:MM:SS`); `lat`/`lon` are flattened out of the nested
-/// `location` object the backend doesn't accept here.
-Map<String, dynamic> _chartInput(ChartData chart) {
-  final json = chart.toJson();
-  return {
-    'date': json['date'],
-    'time': json['time'],
-    'lat': chart.birthLocation.latitude,
-    'lon': chart.birthLocation.longitude,
-    'utc_offset': json['utc_offset'],
-    'dst_offset': json['dst_offset'],
-  };
 }
 
 ChatEvent? _decode(SseFrame frame) {

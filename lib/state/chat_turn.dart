@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'active_chart.dart';
 import 'clock.dart';
 import 'conversation.dart';
 import 'delta_throttle.dart';
@@ -196,7 +197,13 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     final Stream<TurnEvent> events;
     try {
       events = _transport.start(
-        TurnRequest(text: message, parentMessageId: userMessage.id),
+        TurnRequest(
+          text: message,
+          parentMessageId: userMessage.id,
+          // The open chart at send time (adityas/ai/65) — grounds the answer in
+          // this person's chart_facts. Null when no chart is open ⇒ chart-less.
+          chart: ref.read(activeChartProvider),
+        ),
       );
     } catch (error) {
       _fail('Failed to start the turn: $error');

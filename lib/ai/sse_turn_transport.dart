@@ -2,8 +2,11 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import 'package:charts_dart/charts_dart.dart';
+
 import '../api/api_config.dart';
 import '../state/turn_transport.dart';
+import 'chart_input.dart';
 // Conditional-import pair: `fetch`+`ReadableStream` on web, `dart:io` on desktop.
 import 'chat_stream.dart' if (dart.library.js_interop) 'chat_stream_web.dart';
 import 'sse.dart';
@@ -36,9 +39,10 @@ class TurnTransportException implements Exception {
 /// path (persistence + `Last-Event-ID` resume, I11), NOT the throwaway preview
 /// path `SolarMirrorClient` drives.
 ///
-/// **No chart yet:** the durable turn body is message-only, so the open chart
-/// cannot ride along until `chart_facts` lands on the durable path
-/// (adityas/ai/63). Until then, durable answers are chart-less.
+/// **Chart-aware (adityas/ai/65):** when [TurnRequest.chart] is set, the open
+/// chart's birth data rides along in the turn body as the backend's `ChartInput`
+/// (`chart_facts` landed on the durable path in adityas/ai/63), so the model can
+/// speak about the person's own activated beings. Absent ⇒ a chart-less turn.
 class SseTurnTransport implements TurnTransport {
   SseTurnTransport({
     required Future<String?> Function({bool forceRefresh}) tokenProvider,
@@ -70,7 +74,12 @@ class SseTurnTransport implements TurnTransport {
   Stream<TurnEvent> start(TurnRequest request) async* {
     final token = await _requireToken();
     final conversationId = await _ensureConversation(token);
-    final turnId = await _createTurn(token, conversationId, request.text);
+    final turnId = await _createTurn(
+      token,
+      conversationId,
+      request.text,
+      request.chart,
+    );
     _turnId = turnId;
     yield* _stream(token, turnId, lastEventId: null);
   }
@@ -131,12 +140,13 @@ class SseTurnTransport implements TurnTransport {
     String token,
     String conversationId,
     String message,
+    ChartData? chart,
   ) async {
-    final response = await _postTurn(token, conversationId, message);
+    final response = await _postTurn(token, conversationId, message, chart);
     if (response.statusCode == 404) {
       _conversationId = null;
       final fresh = await _ensureConversation(token);
-      return _turnIdFrom(await _postTurn(token, fresh, message));
+      return _turnIdFrom(await _postTurn(token, fresh, message, chart));
     }
     return _turnIdFrom(response);
   }
@@ -145,7 +155,12 @@ class SseTurnTransport implements TurnTransport {
     String token,
     String conversationId,
     String message,
+    ChartData? chart,
   ) {
+    final body = <String, dynamic>{'message': message};
+    // The open chart rides along so the backend computes chart_facts (ai/63);
+    // absent ⇒ a chart-less turn. Same ChartInput shape the preview lane posts.
+    if (chart != null) body['chart'] = chartInputJson(chart);
     return _http.post(
       Uri.parse('$_baseUrl/v1/ai/conversations/$conversationId/turns'),
       headers: {
@@ -155,7 +170,7 @@ class SseTurnTransport implements TurnTransport {
         'idempotency-key':
             'explore-${DateTime.now().microsecondsSinceEpoch}-${_idempotencySeq++}',
       },
-      body: jsonEncode({'message': message}),
+      body: jsonEncode(body),
     );
   }
 

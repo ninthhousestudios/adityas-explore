@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:charts_dart/charts_dart.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -122,7 +123,7 @@ void main() {
             .start(const TurnRequest(text: 'hi'))
             .toList();
 
-        // Turn body is message-only (no chart on the durable path yet — ai/63).
+        // A chart-less TurnRequest sends message only.
         expect(bodies.single, {'message': 'hi'});
         // Conversation minted, then the turn posted under it.
         expect(posted[0].path, '/v1/ai/conversations');
@@ -140,6 +141,56 @@ void main() {
         expect(delta.text, 'Hel');
         expect(delta.eventId, '0');
         expect((events[2] as UsageEvent).usage.totalTokens, 15);
+      },
+    );
+
+    test(
+      'rides the open chart along as the backend ChartInput shape (ai/65)',
+      () async {
+        final bodies = <Map<String, dynamic>>[];
+        final mock = MockClient((request) async {
+          if (request.url.path.endsWith('/conversations')) {
+            return http.Response(jsonEncode({'conversation_id': 'c1'}), 201);
+          }
+          bodies.add(jsonDecode(request.body) as Map<String, dynamic>);
+          return http.Response(jsonEncode({'turn_id': 't1'}), 202);
+        });
+        final transport = SseTurnTransport(
+          tokenProvider: ({forceRefresh = false}) async => 'jwt',
+          baseUrl: 'https://api.test',
+          httpClient: mock,
+          byteSource: _FakeByteSource(_happyStream).call,
+        );
+
+        await transport
+            .start(
+              TurnRequest(
+                text: 'hi',
+                chart: ChartData(
+                  name: 'Test',
+                  // DateTime.utc keeps the civil wall clock intact.
+                  dateTime: DateTime.utc(1990, 1, 15, 14, 30),
+                  birthLocation: GeoLocation(
+                    city: 'NYC',
+                    latitude: 40.7,
+                    longitude: -74.0,
+                  ),
+                  utcOffsetHours: -5.0,
+                  dstOffsetHours: 1.0,
+                ),
+              ),
+            )
+            .toList();
+
+        expect(bodies.single['message'], 'hi');
+        expect(bodies.single['chart'], {
+          'date': '1990-01-15',
+          'time': '14:30:00',
+          'lat': 40.7,
+          'lon': -74.0,
+          'utc_offset': -5.0,
+          'dst_offset': 1.0,
+        });
       },
     );
 
