@@ -65,4 +65,35 @@ void main() {
     expect(bodies.single.containsKey('chart'), isFalse);
     expect(bodies.single, {'message': 'hi'});
   });
+
+  test('chatPathPrefix routes durable accounts vs preview accounts', () {
+    // josh@ninthhouse.studio → durable lane; every other allowlisted account
+    // (and any non-allowlisted id) → preview lane.
+    expect(chatPathPrefix('01214259-228c-46a9-bb3d-e229c8c4cb3f'), '/v1/ai');
+    expect(
+      chatPathPrefix('be96b3d3-5c64-40d2-ae77-73d6883d14a2'), // Laura
+      '/v1/ai/preview',
+    );
+    expect(chatPathPrefix('someone-else'), '/v1/ai/preview');
+    // The durable lane is a subset of chat access — its members can chat.
+    expect(chatAllowlist.containsAll(durableChatAllowlist), isTrue);
+  });
+
+  test('createTurn posts to the configured lane base path', () async {
+    final urls = <String>[];
+    final mock = MockClient((request) async {
+      urls.add(request.url.toString());
+      return http.Response(jsonEncode({'turn_id': 't1'}), 202);
+    });
+    final client = SolarMirrorClient(
+      tokenProvider: ({forceRefresh = false}) async => 'jwt',
+      basePath: '/v1/ai',
+      httpClient: mock,
+    );
+
+    await client.createTurn(conversationId: 'c1', message: 'hi');
+
+    expect(urls.single, endsWith('/v1/ai/conversations/c1/turns'));
+    expect(urls.single, isNot(contains('/preview/')));
+  });
 }

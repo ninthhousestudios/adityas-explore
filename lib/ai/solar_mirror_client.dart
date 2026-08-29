@@ -26,17 +26,39 @@ const chatAllowlist = <String>{
   '30cff75a-a431-4b48-bade-5528bc4e7f2f', // lorris
 };
 
+/// Accounts routed to the durable `/v1/ai` lane (backend gate: standalone
+/// `ai_chat_allowlist`, adityas/ai/51). Everyone else on [chatAllowlist] stays
+/// on the preview lane (`/v1/ai/preview`, gate: being_report ∪ gemini_test).
+///
+/// This is a subset of [chatAllowlist]: durable membership implies chat access.
+/// At final cutover the preview lane is deleted and all accounts route to
+/// `/v1/ai`.
+const durableChatAllowlist = <String>{
+  '01214259-228c-46a9-bb3d-e229c8c4cb3f', // josh@ninthhouse.studio
+};
+
+/// Backend base-path prefix for [userId]: the durable lane for
+/// [durableChatAllowlist] members, the preview lane for everyone else. Selecting
+/// per-account keeps a durable account off preview's gate (which would 403 it).
+String chatPathPrefix(String userId) =>
+    durableChatAllowlist.contains(userId) ? '/v1/ai' : '/v1/ai/preview';
+
 /// True when the signed-in user may use the wired chat client.
 final chatEnabledProvider = Provider<bool>((ref) {
   final user = ref.watch(authProvider);
   return user != null && chatAllowlist.contains(user.id);
 });
 
-/// The chat client, wired to Supabase auth for bearer tokens. keepAlive — it is
+/// The chat client, wired to Supabase auth for bearer tokens. Rebuilt on auth
+/// change so [SolarMirrorClient.basePath] tracks the signed-in account's lane;
 /// stateless apart from its `http.Client`.
-final solarMirrorClientProvider = Provider<SolarMirrorClient>(
-  (ref) => SolarMirrorClient(tokenProvider: supabaseAccessToken),
-);
+final solarMirrorClientProvider = Provider<SolarMirrorClient>((ref) {
+  final user = ref.watch(authProvider);
+  return SolarMirrorClient(
+    tokenProvider: supabaseAccessToken,
+    basePath: user == null ? '/v1/ai/preview' : chatPathPrefix(user.id),
+  );
+});
 
 /// Raised when the backend rejects a turn (non-202 POST or an SSE `error`).
 class SolarMirrorException implements Exception {
@@ -89,6 +111,7 @@ class ChatDone extends ChatEvent {
 class SolarMirrorClient {
   SolarMirrorClient({
     required Future<String?> Function({bool forceRefresh}) tokenProvider,
+    this.basePath = '/v1/ai/preview',
     http.Client? httpClient,
   }) : _token = tokenProvider,
        _http = httpClient ?? http.Client();
@@ -96,7 +119,12 @@ class SolarMirrorClient {
   final Future<String?> Function({bool forceRefresh}) _token;
   final http.Client _http;
 
-  /// `POST /v1/ai/preview/conversations/{id}/turns` → the new turn's id.
+  /// Backend base-path prefix for this client's account — `/v1/ai` (durable) or
+  /// `/v1/ai/preview` (preview). Chosen per signed-in account by
+  /// [chatPathPrefix]; both lanes share the same route suffixes below.
+  final String basePath;
+
+  /// `POST {basePath}/conversations/{id}/turns` → the new turn's id.
   ///
   /// [conversationId] is accepted for URL parity but unused by the throwaway
   /// backend (no persistence yet).
@@ -115,9 +143,7 @@ class SolarMirrorClient {
     final body = <String, dynamic>{'message': message};
     if (chart != null) body['chart'] = _chartInput(chart);
     final response = await _http.post(
-      Uri.parse(
-        '$apiBaseUrl/v1/ai/preview/conversations/$conversationId/turns',
-      ),
+      Uri.parse('$apiBaseUrl$basePath/conversations/$conversationId/turns'),
       headers: {
         'authorization': 'Bearer $token',
         'content-type': 'application/json',
@@ -131,14 +157,14 @@ class SolarMirrorClient {
     return data['turn_id'] as String;
   }
 
-  /// `GET /v1/ai/preview/turns/{turn_id}/stream` → the decoded event stream.
+  /// `GET {basePath}/turns/{turn_id}/stream` → the decoded event stream.
   ///
   /// Emits [ChatDelta]s live as the model streams, plus tool markers, and
   /// terminates on [ChatDone] (or [ChatError] followed by [ChatDone]).
   Stream<ChatEvent> streamTurn(String turnId) async* {
     final token = await _token();
     if (token == null) throw const SolarMirrorException('Not signed in');
-    final uri = Uri.parse('$apiBaseUrl/v1/ai/preview/turns/$turnId/stream');
+    final uri = Uri.parse('$apiBaseUrl$basePath/turns/$turnId/stream');
     final headers = {
       'authorization': 'Bearer $token',
       'accept': 'text/event-stream',
