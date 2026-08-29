@@ -9,6 +9,7 @@ import '../state/auth.dart';
 import '../state/backend.dart';
 // Conditional-import pair: `fetch`+`ReadableStream` on web, `dart:io` on desktop.
 import 'chat_stream.dart' if (dart.library.js_interop) 'chat_stream_web.dart';
+import 'sse.dart';
 
 /// Supabase user ids allowed to use the wired skeleton chat client.
 ///
@@ -143,7 +144,7 @@ class SolarMirrorClient {
       'accept': 'text/event-stream',
     };
     try {
-      await for (final event in _parseSse(openSseByteStream(uri, headers))) {
+      await for (final event in parseSse(openSseByteStream(uri, headers))) {
         final decoded = _decode(event);
         if (decoded == null) continue;
         yield decoded;
@@ -186,49 +187,7 @@ Map<String, dynamic> _chartInput(ChartData chart) {
   };
 }
 
-/// One SSE frame: its `event:` name and the accumulated `data:` payload.
-class _SseFrame {
-  final String event;
-  final String data;
-  const _SseFrame(this.event, this.data);
-}
-
-/// Parses a raw SSE byte stream into [_SseFrame]s. Handles multi-line `data:`,
-/// leading-space trimming, comment/keep-alive lines (`:`), and a frame left
-/// unterminated when the stream closes. Chunk boundaries are handled by the
-/// UTF-8 decoder + line splitter.
-Stream<_SseFrame> _parseSse(Stream<List<int>> bytes) async* {
-  var event = 'message';
-  final data = StringBuffer();
-  var hasData = false;
-
-  await for (final line
-      in bytes.transform(utf8.decoder).transform(const LineSplitter())) {
-    if (line.isEmpty) {
-      if (hasData) yield _SseFrame(event, data.toString());
-      event = 'message';
-      data.clear();
-      hasData = false;
-      continue;
-    }
-    if (line.startsWith(':')) continue; // comment / keep-alive ping
-    final colon = line.indexOf(':');
-    final field = colon == -1 ? line : line.substring(0, colon);
-    var value = colon == -1 ? '' : line.substring(colon + 1);
-    if (value.startsWith(' ')) value = value.substring(1);
-    switch (field) {
-      case 'event':
-        event = value;
-      case 'data':
-        if (hasData) data.write('\n');
-        data.write(value);
-        hasData = true;
-    }
-  }
-  if (hasData) yield _SseFrame(event, data.toString());
-}
-
-ChatEvent? _decode(_SseFrame frame) {
+ChatEvent? _decode(SseFrame frame) {
   switch (frame.event) {
     case 'delta':
       return ChatDelta(_field(frame.data, 'text'));
