@@ -30,9 +30,11 @@ import 'ui/account_button.dart';
 import 'ui/theme.dart';
 import 'ui/tokens.dart';
 import 'api/chart_service.dart';
+import 'ai/sse_turn_transport.dart';
 import 'export/chart_pdf.dart';
 import 'state/auth.dart';
 import 'state/backend.dart';
+import 'state/turn_transport.dart';
 
 const _sentryDsn =
     'https://0decc8fd44d76a8374d3dc45f055f584@o4511643365933056.ingest.us.sentry.io/4511643403878400';
@@ -54,7 +56,27 @@ Future<void> main() async {
     appRunner: () {
       WidgetsFlutterBinding.ensureInitialized();
       SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-      runApp(const ProviderScope(child: ExploreApp()));
+      runApp(
+        ProviderScope(
+          overrides: [
+            // The real durable SSE wire behind the TurnTransport seam (the
+            // provider throws unimplemented by default — see turn_transport.dart).
+            turnTransportProvider.overrideWith((ref) {
+              final transport = SseTurnTransport(
+                tokenProvider: supabaseAccessToken,
+              );
+              // A user change must drop the cached durable conversation, so a
+              // signed-in user never appends to the previous user's thread.
+              ref.listen(
+                authProvider.select((user) => user?.id),
+                (_, _) => transport.resetConversation(),
+              );
+              return transport;
+            }),
+          ],
+          child: const ExploreApp(),
+        ),
+      );
     },
   );
 }

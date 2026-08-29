@@ -1,30 +1,34 @@
-import 'dart:async';
-
 import 'package:charts_dart/charts_dart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../ai/solar_mirror_client.dart';
+import '../state/chat_turn.dart';
+import '../state/conversation.dart';
 import 'message_markdown.dart';
 import 'tokens.dart';
 
 /// Chat panel for the `conversation` layout mode.
 ///
 /// Anyone can open the panel — it doubles as the layout-mode stub. The *wired*
-/// chat (send + live token stream) is gated to the skeleton allowlist
-/// ([chatEnabledProvider]); everyone else sees the "coming soon" placeholder.
+/// chat (send + live token stream) is gated to the allowlist ([chatEnabledProvider],
+/// mirroring the durable server `ai_chat_allowlist`); everyone else sees the
+/// "coming soon" placeholder.
 ///
-/// Throwaway walking-skeleton client (adityas/ai/4): plain-text streaming over
-/// the two-call SSE path, local state, no history persistence — closing the
-/// panel discards the conversation. See docs/layout-modes.md.
+/// The conversation and in-flight turn live in keepAlive out-of-tree providers
+/// ([conversationProvider], [chatTurnProvider]) — NOT this widget's `State` — so
+/// they survive the panel unmounting on a layout-mode switch or a New-Chart chart
+/// swap. This widget only renders that reactive state and drives it via
+/// [ChatTurnNotifier.send]. See docs/chat-state-architecture.md.
 class ChatPanel extends ConsumerStatefulWidget {
   final Color color;
   final Color backdropColor;
   final double fontSize;
 
-  /// The currently-open chart, whose birth data rides along with each turn so
-  /// the model can speak about *this* chart's activated beings. Null → the turn
-  /// still sends, chart-less (backend yields `chart_facts` 'unavailable').
+  /// The currently-open chart. **Reserved for adityas/ai/63** (chart_facts on the
+  /// durable path): the durable turn body is message-only today, so the chart is
+  /// not yet sent and answers are chart-less. Kept plumbed so ai/63 can thread it
+  /// into the turn request without re-wiring the panel.
   final ChartData? chartData;
 
   const ChatPanel({
@@ -39,35 +43,9 @@ class ChatPanel extends ConsumerStatefulWidget {
   ConsumerState<ChatPanel> createState() => _ChatPanelState();
 }
 
-class _ChatMessage {
-  _ChatMessage({required this.fromUser, String text = ''})
-    : _buffer = StringBuffer(text);
-
-  final bool fromUser;
-  final StringBuffer _buffer;
-  bool isError = false;
-
-  /// A transient note shown dim/italic under the text ("Thinking…", a tool
-  /// lookup) — cleared once real text arrives or the turn ends.
-  String? status;
-
-  String get text => _buffer.toString();
-  void append(String s) => _buffer.write(s);
-  set text(String s) => _buffer
-    ..clear()
-    ..write(s);
-}
-
 class _ChatPanelState extends ConsumerState<ChatPanel> {
   final _input = TextEditingController();
   final _scroll = ScrollController();
-  final _messages = <_ChatMessage>[];
-
-  /// Accepted for URL parity by the backend but unused (no persistence yet).
-  final _conversationId = 'explore-${DateTime.now().millisecondsSinceEpoch}';
-
-  StreamSubscription<ChatEvent>? _sub;
-  bool _streaming = false;
 
   /// Whether streamed tokens should keep the view pinned to the bottom. Flipped
   /// off when the user scrolls up to read back, on again when they return near
@@ -88,89 +66,20 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
 
   @override
   void dispose() {
-    _sub?.cancel();
     _input.dispose();
     _scroll.dispose();
     super.dispose();
   }
 
-  Future<void> _send() async {
+  void _send() {
     final text = _input.text.trim();
-    if (text.isEmpty || _streaming) return;
+    if (text.isEmpty) return;
+    // The notifier is the single gate: it refuses a blank message, a second turn
+    // while one is active, and an unavailable-entitlement send (→ TurnError).
+    ref.read(chatTurnProvider.notifier).send(text);
     _input.clear();
-
-    final assistant = _ChatMessage(fromUser: false)..status = 'Thinking…';
-    setState(() {
-      _messages
-        ..add(_ChatMessage(fromUser: true, text: text))
-        ..add(assistant);
-      _streaming = true;
-    });
     _scrollToEnd(force: true);
-
-    final client = ref.read(solarMirrorClientProvider);
-    try {
-      final turnId = await client.createTurn(
-        conversationId: _conversationId,
-        message: text,
-        chart: widget.chartData,
-      );
-      _sub = client
-          .streamTurn(turnId)
-          .listen(
-            (event) => _onEvent(assistant, event),
-            onError: (Object e) => _fail(assistant, e.toString()),
-            onDone: () {
-              if (mounted) setState(() => _streaming = false);
-            },
-            cancelOnError: true,
-          );
-    } catch (e) {
-      _fail(assistant, e.toString());
-    }
   }
-
-  void _onEvent(_ChatMessage assistant, ChatEvent event) {
-    if (!mounted) return;
-    setState(() {
-      switch (event) {
-        case ChatDelta(:final text):
-          assistant.status = null;
-          assistant.append(text);
-        case ChatToolStart(:final name):
-          assistant.status = _toolNote(name);
-        case ChatToolEnd():
-          assistant.status = assistant.text.isEmpty ? 'Thinking…' : null;
-        case ChatError(:final message):
-          _markError(assistant, message);
-        case ChatDone():
-          _streaming = false;
-      }
-    });
-    _scrollToEnd();
-  }
-
-  void _fail(_ChatMessage assistant, String message) {
-    if (!mounted) return;
-    setState(() {
-      _markError(assistant, message);
-      _streaming = false;
-    });
-  }
-
-  void _markError(_ChatMessage assistant, String message) {
-    assistant
-      ..status = null
-      ..isError = true;
-    if (assistant.text.isEmpty) {
-      assistant.text = message;
-    } else {
-      assistant.append('\n\n[$message]');
-    }
-  }
-
-  String _toolNote(String tool) =>
-      tool == 'get_being' ? 'Consulting the beings…' : 'Working ($tool)…';
 
   void _scrollToEnd({bool force = false}) {
     if (!force && !_stickToBottom) return;
@@ -235,7 +144,7 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
         const SizedBox(height: 4),
         Text(
           enabled
-              ? 'Solar Prism — skeleton streaming client'
+              ? 'Solar Prism — durable streaming'
               : 'Stub — the real conversation UI lands later.',
           style: TextStyle(
             color: dimColor,
@@ -250,7 +159,16 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
   // ── Wired chat (allowlisted) ─────────────────────────────────────
 
   Widget _conversation(Color color, Color dimColor, double fontSize) {
-    if (_messages.isEmpty) {
+    // Auto-scroll as the conversation grows or the in-flight turn streams.
+    ref
+      ..listen(conversationProvider, (_, _) => _scrollToEnd())
+      ..listen(chatTurnProvider, (_, _) => _scrollToEnd());
+
+    final messages = ref.watch(conversationProvider).messages;
+    final turn = ref.watch(chatTurnProvider);
+    final active = _activeTurnBubble(turn, color, dimColor, fontSize);
+
+    if (messages.isEmpty && active == null) {
       return Center(
         child: Text(
           'Ask about the Aditya beings, your Soul Stance, or any being by name.',
@@ -263,28 +181,104 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
         ),
       );
     }
+
     return ListView.builder(
       controller: _scroll,
-      itemCount: _messages.length,
-      itemBuilder: (_, i) => _bubble(_messages[i], color, dimColor, fontSize),
+      itemCount: messages.length + (active == null ? 0 : 1),
+      itemBuilder: (_, i) {
+        if (i < messages.length) {
+          return _messageBubble(messages[i], color, fontSize);
+        }
+        return active!;
+      },
     );
   }
 
-  Widget _bubble(_ChatMessage m, Color color, Color dimColor, double fontSize) {
-    final hasText = m.text.isNotEmpty;
-    final textColor = m.isError ? context.tokens.error : color;
+  /// The transient bubble for the turn currently in flight — a completed turn's
+  /// text is already committed to [conversationProvider], so this renders only
+  /// the *active* states (and a terminal error). Returns `null` when there is no
+  /// active turn to show.
+  Widget? _activeTurnBubble(
+    ChatTurn turn,
+    Color color,
+    Color dimColor,
+    double fontSize,
+  ) {
+    return switch (turn) {
+      TurnConnecting() => _agentBubble(
+        color,
+        dimColor,
+        fontSize,
+        status: 'Thinking…',
+      ),
+      TurnStreaming(:final text) => _agentBubble(
+        color,
+        dimColor,
+        fontSize,
+        text: text,
+        status: text.isEmpty ? 'Thinking…' : null,
+      ),
+      TurnReconnecting(:final text) => _agentBubble(
+        color,
+        dimColor,
+        fontSize,
+        text: text,
+        status: 'Reconnecting…',
+      ),
+      TurnError(:final message) => _errorBubble(message, fontSize),
+      TurnIdle() || TurnDone() || TurnCancelled() => null,
+    };
+  }
+
+  Widget _messageBubble(ChatMessage m, Color color, double fontSize) {
+    final fromUser = m.role == MessageRole.user;
     return Align(
-      alignment: m.fromUser ? Alignment.centerRight : Alignment.centerLeft,
+      alignment: fromUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         constraints: const BoxConstraints(maxWidth: 320),
         decoration: BoxDecoration(
-          color: m.isError
-              ? context.tokens.errorBg
-              : (m.fromUser
-                    ? context.tokens.bubbleUser
-                    : context.tokens.bubbleAgent),
+          color: fromUser
+              ? context.tokens.bubbleUser
+              : context.tokens.bubbleAgent,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        // User text renders verbatim; a completed assistant reply is markdown.
+        child: fromUser
+            ? Text(
+                m.text,
+                style: TextStyle(color: color, fontSize: fontSize),
+              )
+            : MessageMarkdown(
+                m.text,
+                style: TextStyle(color: color, fontSize: fontSize),
+                linkColor: context.tokens.gold,
+                isStreaming: false,
+              ),
+      ),
+    );
+  }
+
+  /// The in-flight assistant bubble: streamed [text] renders plain (markdown is
+  /// parsed only once the turn completes and the message lands in the list), with
+  /// an optional dim/italic [status] note beneath.
+  Widget _agentBubble(
+    Color color,
+    Color dimColor,
+    double fontSize, {
+    String text = '',
+    String? status,
+  }) {
+    final hasText = text.isNotEmpty;
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        constraints: const BoxConstraints(maxWidth: 320),
+        decoration: BoxDecoration(
+          color: context.tokens.bubbleAgent,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
@@ -292,24 +286,15 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (hasText)
-              // User-typed and error text render verbatim; assistant prose is
-              // markdown once the turn completes (plain while still streaming).
-              (m.fromUser || m.isError)
-                  ? Text(
-                      m.text,
-                      style: TextStyle(color: textColor, fontSize: fontSize),
-                    )
-                  : MessageMarkdown(
-                      m.text,
-                      style: TextStyle(color: textColor, fontSize: fontSize),
-                      linkColor: context.tokens.gold,
-                      isStreaming: _streaming && identical(m, _messages.last),
-                    ),
-            if (m.status != null)
+              Text(
+                text,
+                style: TextStyle(color: color, fontSize: fontSize),
+              ),
+            if (status != null)
               Padding(
                 padding: EdgeInsets.only(top: hasText ? 4 : 0),
                 child: Text(
-                  m.status!,
+                  status,
                   style: TextStyle(
                     color: dimColor,
                     fontSize: fontSize * 0.85,
@@ -323,7 +308,31 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
     );
   }
 
+  Widget _errorBubble(String message, double fontSize) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        constraints: const BoxConstraints(maxWidth: 320),
+        decoration: BoxDecoration(
+          color: context.tokens.errorBg,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Text(
+          message,
+          style: TextStyle(color: context.tokens.error, fontSize: fontSize),
+        ),
+      ),
+    );
+  }
+
   Widget _composer(Color color, Color dimColor, double fontSize) {
+    final turn = ref.watch(chatTurnProvider);
+    final active = switch (turn) {
+      TurnConnecting() || TurnStreaming() || TurnReconnecting() => true,
+      TurnIdle() || TurnDone() || TurnCancelled() || TurnError() => false,
+    };
     final border = OutlineInputBorder(
       borderRadius: BorderRadius.circular(12),
       borderSide: BorderSide(color: color.withValues(alpha: 0.3)),
@@ -357,11 +366,11 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
           ),
         ),
         IconButton(
-          onPressed: _streaming ? null : _send,
+          onPressed: active ? null : _send,
           icon: Icon(
             Icons.send,
             size: fontSize * 1.2,
-            color: _streaming ? dimColor : color,
+            color: active ? dimColor : color,
           ),
         ),
       ],
