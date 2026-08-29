@@ -44,6 +44,7 @@ dependencies:
   sentry_flutter: ^9.22.0
   pdf: ^3.13.0
   vector_math: ^2.2.0
+  gpt_markdown: ^1.2.1
 
 dev_dependencies:
   flutter_test:

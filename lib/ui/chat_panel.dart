@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../ai/solar_mirror_client.dart';
+import 'message_markdown.dart';
 import 'tokens.dart';
 
 /// Chat panel for the `conversation` layout mode.
@@ -291,10 +292,19 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (hasText)
-              Text(
-                m.text,
-                style: TextStyle(color: textColor, fontSize: fontSize),
-              ),
+              // User-typed and error text render verbatim; assistant prose is
+              // markdown once the turn completes (plain while still streaming).
+              (m.fromUser || m.isError)
+                  ? Text(
+                      m.text,
+                      style: TextStyle(color: textColor, fontSize: fontSize),
+                    )
+                  : MessageMarkdown(
+                      m.text,
+                      style: TextStyle(color: textColor, fontSize: fontSize),
+                      linkColor: context.tokens.gold,
+                      isStreaming: _streaming && identical(m, _messages.last),
+                    ),
             if (m.status != null)
               Padding(
                 padding: EdgeInsets.only(top: hasText ? 4 : 0),
