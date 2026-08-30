@@ -1,5 +1,7 @@
-[[waiver]]
-constraint = "builtin:cycles"
+[[ack]]
+constraint = "astro-no-cycles"
 file = "lib/astro/ephemeris_service.dart"
-rationale = "Conditional import pattern (dart:library.js_interop) — ephemeris_service.dart conditionally imports the native impl, which implements the abstract class. Structural cycle, not architectural."
+snippet = "lib/astro/ephemeris_service.dart -> lib/astro/ephemeris_service_native.dart"
+count = 1
+rationale = "Conditional-import pattern (dart.library.js_interop): ephemeris_service.dart conditionally imports the native impl, which implements the abstract EphemerisService. A structural cycle inherent to Dart's platform-conditional import, not an architectural one. (Replaces the stranded builtin:cycles waiver — now attached to a real named rule.)"
 by = "josh"

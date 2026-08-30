@@ -36,6 +36,23 @@ severity = "blocking"
 provenance = "doc:docs/chart-wheel.md"
 # UI must go through chart_calculator, not raw Swiss Ephemeris.
 
+# The reactive chat-state layer (lib/state) must not import the SSE WIRE
+# (lib/ai/sse*.dart — the parser + transport impl); it knows only the
+# TurnTransport interface it defines, injected via Riverpod (turn_transport.dart:
+# "the real SSE wire is a sibling task, deliberately NOT built here"). Mirrors
+# ui-no-raw-swe (targets the raw low-level file, not the whole layer): the shared
+# chat_access allowlist gate (lib/ai/chat_access.dart) is a cross-cutting
+# entitlement helper that lib/state/entitlement.dart legitimately imports, so it
+# is deliberately NOT covered. (chat_access arguably belongs in lib/state — a
+# placement question left to a later pass, not forced by this guard.)
+[[constraint]]
+kind = "forbidden_dep"
+from = "lib/state/**"
+to = "lib/ai/sse*.dart"
+name = "state-no-sse-wire"
+severity = "blocking"
+provenance = "checkpoint:adityas/ai/13 — doc:lib/state/turn_transport.dart; state reaches the transport only through its injected interface, never the sse* wire"
+
 # ═══════════════════════════════════════════════════════════════════
 # Cycle prevention
 # ═══════════════════════════════════════════════════════════════════
@@ -46,6 +63,18 @@ scope = "lib/api/"
 name = "api-no-cycles"
 severity = "blocking"
 provenance = "adopt:explore"
+
+# Names the ephemeris conditional-import cycle so it can be accepted against a
+# REAL constraint. The prior accepted.toml entry keyed on "builtin:cycles" —
+# not a rule name — so it suppressed nothing (stranded). The one known cycle
+# (ephemeris_service <-> ephemeris_service_native) is ack'd in accepted.toml;
+# this also guards future astro cycles.
+[[constraint]]
+kind = "no_cycles"
+scope = "lib/astro/"
+name = "astro-no-cycles"
+severity = "blocking"
+provenance = "checkpoint:adityas/ai/13 — rule-health: un-strands the builtin:cycles waiver by giving lib/astro a named no_cycles rule"
 
 # ═══════════════════════════════════════════════════════════════════
 # Fan-in limits
@@ -60,6 +89,17 @@ severity = "advisory"
 provenance = "adopt:explore"
 # Domain logic hub (current fan-in 9). Catch scope creep.
 
+# The chat-layer seam (TurnEvent / TurnTransport), consumed by chat_turn.dart and
+# implemented by lib/ai/sse_turn_transport.dart. Current fan-in 5-6; threshold 8
+# (~30% headroom) catches scope creep as more UI surfaces consume chat state.
+[[constraint]]
+kind = "max_fan_in"
+target = "lib/state/turn_transport.dart"
+threshold = 8
+name = "turn-transport-fan-in"
+severity = "advisory"
+provenance = "checkpoint:adityas/ai/13 — chat-layer seam; mirrors being-uncertainty-fan-in"
+
 # ═══════════════════════════════════════════════════════════════════
 # Forbidden patterns (vidhi/language-rules/dart.toml)
 # ═══════════════════════════════════════════════════════════════════
@@ -72,3 +112,18 @@ name = "no-ignore-comments"
 severity = "blocking"
 scope = "lib/"
 provenance = "house analysis_options.yaml baseline"
+
+# ═══════════════════════════════════════════════════════════════════
+# External package confinement
+# ═══════════════════════════════════════════════════════════════════
+# gpt_markdown is the message renderer, deliberately behind a one-file swap seam
+# (adityas/ai/12, commit 1f6cc2b) so the underlying package is a one-file change.
+# Keep it confined to that seam. First confined_external in this repo.
+
+[[constraint]]
+kind = "confined_external"
+crates = ["gpt_markdown"]
+allowed_in = ["lib/ui/message_markdown.dart"]
+name = "gpt-markdown-swap-seam"
+severity = "blocking"
+provenance = "checkpoint:adityas/ai/13 — adityas/ai/12: the message renderer is a one-file swap seam"

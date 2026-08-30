@@ -140,10 +140,12 @@ abstract interface class TurnTransport {
 
 /// The transport [chatTurnProvider] consumes.
 ///
-/// No production implementation yet — the real SSE wire is a sibling task, so
-/// this throws until one is injected. Nothing watches [chatTurnProvider] in the
-/// shipped app yet (the chat panel is still a stub), so the throw is never hit;
-/// tests override it with a fake.
+/// The default throws: the real SSE wire (`SseTurnTransport`, lib/ai) is injected
+/// as a Riverpod override at the composition root (main.dart), and the chat panel
+/// watches [chatTurnProvider] and sends through it. This provider must be
+/// overridden before use — a live override in the app, a fake in tests. Keeping
+/// the wire out of the default is what lets lib/state stay off the lib/ai wire
+/// (the state-no-sse-wire guard).
 final turnTransportProvider = Provider<TurnTransport>((ref) {
   throw UnimplementedError(
     'No real TurnTransport yet — the SSE wire is a sibling task. '

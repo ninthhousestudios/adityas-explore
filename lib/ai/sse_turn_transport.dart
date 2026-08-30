@@ -35,8 +35,12 @@ class TurnTransportException implements Exception {
 ///   3. `GET  /v1/ai/turns/{turn_id}/stream`    → SSE; a `Last-Event-ID` header resumes.
 ///
 /// Adapts the wire's SSE frames into the closed [TurnEvent] vocabulary through
-/// [decodeTurnFrame] — the notifier never sees backend JSON. The durable path
-/// adds persistence + `Last-Event-ID` resume (I11).
+/// [decodeTurnFrame] — the notifier never sees backend JSON. Resume is by
+/// `Last-Event-ID` against the server's durable event log (I11): the *server*
+/// persists the turn's events; this transport replays from an in-memory cursor
+/// ([resume]). That cursor is NOT persisted client-side — resume survives a
+/// widget unmount and a transient reconnect, but not an app relaunch (a durable
+/// cross-relaunch cursor rides on adityas/ai/64).
 ///
 /// **Chart-aware (adityas/ai/65):** when [TurnRequest.chart] is set, the open
 /// chart's birth data rides along in the turn body as the backend's `ChartInput`
