@@ -50,6 +50,14 @@ final chatEnabledProvider = Provider<bool>((ref) {
   return user != null && chatAllowlist.contains(user.id);
 });
 
+/// True when the signed-in user is routed to the durable `/v1/ai` lane rather
+/// than the preview lane. Mirrors [chatPathPrefix]'s decision so UI can label
+/// the lane accurately (an enabled account is not necessarily durable).
+final durableChatEnabledProvider = Provider<bool>((ref) {
+  final user = ref.watch(authProvider);
+  return user != null && durableChatAllowlist.contains(user.id);
+});
+
 /// The chat client, wired to Supabase auth for bearer tokens. Rebuilt on auth
 /// change so [SolarMirrorClient.basePath] tracks the signed-in account's lane;
 /// stateless apart from its `http.Client`.

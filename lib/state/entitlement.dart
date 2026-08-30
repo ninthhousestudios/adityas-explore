@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../ai/solar_mirror_client.dart';
 import '../api/chart_service.dart';
 import 'auth.dart';
 import 'backend.dart';
@@ -41,10 +42,16 @@ class EntitlementNotifier extends AsyncNotifier<Entitlement> {
 
 /// Whether the chat feature is available to the current user right now.
 ///
-/// Derived, never stored: signed in AND a non-null `access_until` still in the
-/// future per the injected [clockProvider]. Recomputes whenever auth or
-/// entitlement changes. While entitlement is still loading (or errored), this
-/// is `false` — chat is not granted until entitlement is confirmed.
+/// Derived, never stored. Available when signed in AND either:
+///   1. the account is chat-allowlisted ([chatEnabledProvider]) — the current
+///      access mechanism for both the durable and preview lanes, whose backend
+///      gates are membership lists, NOT a paid entitlement; or
+///   2. a non-null `access_until` still in the future per the injected
+///      [clockProvider] — the production path for non-allowlisted paying users.
+///
+/// Recomputes whenever auth, allowlist membership, or entitlement changes. An
+/// allowlisted tester with no purchase is available (no entitlement required);
+/// at final cutover, when the allowlists are deleted, only clause (2) remains.
 ///
 /// Time is read at compute; crossing `access_until` reflects on the next
 /// recompute. The production trigger for that recompute near expiry (a timer,
@@ -52,13 +59,17 @@ class EntitlementNotifier extends AsyncNotifier<Entitlement> {
 /// task delivers the derived logic and its clock seam.
 ///
 /// UX gate only — it decides whether to *show* the chat entry point. It is not
-/// the security boundary: the authoritative entitlement check runs server-side
-/// at the chat endpoint. A non-null `access_until` here is not proof the backend
-/// will serve a turn (per adityas security: no business logic on the client).
+/// the security boundary: the authoritative check runs server-side at the chat
+/// endpoint. Availability here is not proof the backend will serve a turn (per
+/// adityas security: no business logic on the client).
 final chatAvailableProvider = Provider<bool>((ref) {
   final user = ref.watch(authProvider);
   if (user == null) return false;
 
+  // Allowlist membership is the current access grant for both lanes.
+  if (ref.watch(chatEnabledProvider)) return true;
+
+  // Otherwise fall back to a live paid entitlement (future production path).
   final accessUntil = ref.watch(entitlementProvider).value?.accessUntil;
   if (accessUntil == null) return false;
 

@@ -96,6 +96,7 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
     final fontSize = widget.fontSize;
     final dimColor = color.withValues(alpha: 0.6);
     final enabled = ref.watch(chatEnabledProvider);
+    final durable = ref.watch(durableChatEnabledProvider);
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -107,7 +108,13 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _header(color, dimColor, fontSize, enabled: enabled),
+          _header(
+            color,
+            dimColor,
+            fontSize,
+            enabled: enabled,
+            durable: durable,
+          ),
           const SizedBox(height: 12),
           Expanded(
             child: enabled
@@ -129,6 +136,7 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
     Color dimColor,
     double fontSize, {
     required bool enabled,
+    required bool durable,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -144,7 +152,9 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
         const SizedBox(height: 4),
         Text(
           enabled
-              ? 'Solar Prism — durable streaming'
+              ? (durable
+                    ? 'Solar Prism — durable streaming'
+                    : 'Solar Prism — preview streaming')
               : 'Stub — the real conversation UI lands later.',
           style: TextStyle(
             color: dimColor,
