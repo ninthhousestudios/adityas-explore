@@ -108,22 +108,16 @@ class _ExploreAppState extends ConsumerState<ExploreApp> {
   bool _waitlistSigned = false;
 
   late SharedPreferences _prefs;
-  late EphemerisService _ephemerisService;
-  late ChartCalculator _calculator;
 
-  ChartData? _chartData;
-  arrow.Chart? _chart;
-  BeingUncertainty? _uncertainty;
-  bool _calculating = false;
   bool _exportingPdf = false;
-  int _calcToken = 0;
 
   List<SavedChartSummary> _savedCharts = [];
   // Bumped on every auth transition (see the authProvider listener in build).
   // _refreshSavedCharts captures it and drops a late list response whose epoch
   // is stale — otherwise an in-flight list for a signed-out/previous user could
   // repopulate or overwrite _savedCharts after an auth change (cross-account
-  // leak). Same last-write-wins guard as _calcToken, keyed on auth instead.
+  // leak). Same last-write-wins guard as ChartController's calc token, keyed on
+  // auth instead.
   int _authEpoch = 0;
   // The shared authenticated backend client (see state/backend.dart). Read
   // lazily from the provider so chart CRUD and the entitlement fetch use one
@@ -160,8 +154,10 @@ class _ExploreAppState extends ConsumerState<ExploreApp> {
         SharedPreferences.getInstance(),
       ]);
       _prefs = results[1] as SharedPreferences;
-      _ephemerisService = await createEphemerisService(currentSweEphePath);
-      _calculator = ChartCalculator(_ephemerisService);
+      final ephemerisService = await createEphemerisService(currentSweEphePath);
+      ref
+          .read(chartCalculatorProvider.notifier)
+          .set(ChartCalculator(ephemerisService));
       _theme = readThemePreference(_prefs);
       _zoom = _prefs.getDouble('zoom') ?? 1.0;
       _waitlistSigned = _prefs.getBool('waitlist_signed') ?? false;
@@ -244,15 +240,7 @@ class _ExploreAppState extends ConsumerState<ExploreApp> {
   }
 
   void _newChart() {
-    setState(() {
-      _chartData = null;
-      _chart = null;
-      _uncertainty = null;
-      _calculating = false;
-    });
-    // Mirror the open chart into the provider graph so the chat turn attaches it
-    // to durable /v1/ai turns (adityas/ai/65). This widget is the sole writer.
-    ref.read(activeChartProvider.notifier).set(null);
+    ref.read(chartControllerProvider.notifier).clear();
   }
 
   Future<void> _refreshSavedCharts() async {
@@ -272,7 +260,7 @@ class _ExploreAppState extends ConsumerState<ExploreApp> {
   }
 
   Future<void> _saveChartToServer() async {
-    final chartData = _chartData;
+    final chartData = ref.read(chartControllerProvider).chartData;
     if (chartData == null) return;
 
     final dialogContext = _navigatorKey.currentContext;
@@ -326,7 +314,7 @@ class _ExploreAppState extends ConsumerState<ExploreApp> {
   }
 
   Future<void> _saveChart() async {
-    final chartData = _chartData;
+    final chartData = ref.read(chartControllerProvider).chartData;
     if (chartData == null) return;
 
     final toml = TomlChartFormat.encode(chartData);
@@ -335,8 +323,9 @@ class _ExploreAppState extends ConsumerState<ExploreApp> {
   }
 
   Future<void> _downloadPdf() async {
-    final chart = _chart;
-    final chartData = _chartData;
+    final chartState = ref.read(chartControllerProvider);
+    final chart = chartState.chart;
+    final chartData = chartState.chartData;
     if (chart == null || _exportingPdf) return;
 
     setState(() => _exportingPdf = true);
@@ -344,7 +333,7 @@ class _ExploreAppState extends ConsumerState<ExploreApp> {
       final bytes = await buildChartPdf(
         chart: chart,
         chartName: chartData?.name,
-        uncertainty: _uncertainty,
+        uncertainty: chartState.uncertainty,
       );
       if (!mounted) return;
       await saveFileBytes('${chartFileStem(chartData?.name)}-chart.pdf', bytes);
@@ -359,43 +348,16 @@ class _ExploreAppState extends ConsumerState<ExploreApp> {
     ChartData chartData,
     TimeUncertainty timeUncertainty,
   ) async {
-    final token = ++_calcToken;
+    // The guarded calc pipeline lives in ChartController; this widget only
+    // surfaces errors. Precaching happens in build's ref.listen when the chart
+    // lands (the controller has no BuildContext).
     try {
-      setState(() {
-        _chartData = chartData;
-        _chart = null;
-        _uncertainty = null;
-        _calculating = true;
-      });
-      ref.read(activeChartProvider.notifier).set(chartData);
-
-      final chart = await _calculator.calculate(chartData);
-      if (!mounted || token != _calcToken) return;
-      unawaited(AssetPreloader.precacheChartAssets(context, chart));
-      final uncertainty = await computeBeingUncertainty(
-        calculator: _calculator,
-        chartData: chartData,
-        primaryChart: chart,
-        uncertainty: timeUncertainty,
-      );
-      if (!mounted || token != _calcToken) return;
-      unawaited(
-        AssetPreloader.precacheChartAssets(
-          context,
-          chart,
-          uncertainty: uncertainty,
-        ),
-      );
-      setState(() {
-        _chart = chart;
-        _uncertainty = uncertainty;
-        _calculating = false;
-      });
+      await ref
+          .read(chartControllerProvider.notifier)
+          .submit(chartData, timeUncertainty);
     } catch (e, s) {
       debugPrint('Error calculating chart: $e\n$s');
-      if (!mounted || token != _calcToken) return;
-      setState(() => _calculating = false);
-      _showSnackBar('Error: $e');
+      if (mounted) _showSnackBar('Error: $e');
     }
   }
 
@@ -421,10 +383,11 @@ class _ExploreAppState extends ConsumerState<ExploreApp> {
         chartData.dateTime.hour,
       );
 
-      // Hand off to the shared calc pipeline — it owns the setState sequence,
-      // provider mirror, and _calcToken guard, so the open path can't land a
-      // stale chart over a newer submit/open. This try only covers file-pick
-      // and parse; calc errors are handled inside _submitChart.
+      // Hand off to the shared calc pipeline (ChartController.submit via
+      // _submitChart) — it owns the state transitions and the last-write-wins
+      // token guard, so the open path can't land a stale chart over a newer
+      // submit/open. This try only covers file-pick and parse; calc errors are
+      // handled inside _submitChart.
       await _submitChart(chartData, timeUncertainty);
     } catch (e, s) {
       debugPrint('Error opening chart: $e\n$s');
@@ -463,6 +426,23 @@ class _ExploreAppState extends ConsumerState<ExploreApp> {
       }
     });
 
+    final chartState = ref.watch(chartControllerProvider);
+
+    // Precaching needs a BuildContext, so it stays in the widget rather than
+    // the controller: warm the chart's being/glyph assets when a new chart lands.
+    ref.listen<ChartState>(chartControllerProvider, (previous, next) {
+      final chart = next.chart;
+      if (chart != null && chart != previous?.chart) {
+        unawaited(
+          AssetPreloader.precacheChartAssets(
+            context,
+            chart,
+            uncertainty: next.uncertainty,
+          ),
+        );
+      }
+    });
+
     return MaterialApp(
       title: 'The Adityas — Explore',
       debugShowCheckedModeBanner: false,
@@ -481,13 +461,13 @@ class _ExploreAppState extends ConsumerState<ExploreApp> {
         onSaveChart: _saveChart,
         onDownloadPdf: _downloadPdf,
         onSubmitChart: _submitChart,
-        chartData: _chartData,
-        chart: _chart,
-        uncertainty: _uncertainty,
-        calculating: _calculating,
+        chartData: chartState.chartData,
+        chart: chartState.chart,
+        uncertainty: chartState.uncertainty,
+        calculating: chartState.calculating,
         waitlistSigned: _waitlistSigned,
         onWaitlistSigned: _onWaitlistSigned,
-        hasChart: _chartData != null,
+        hasChart: chartState.hasChart,
         savedCharts: _savedCharts,
         onSaveChartToServer: _saveChartToServer,
         onLoadSavedChart: _loadSavedChart,
