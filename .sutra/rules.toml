@@ -113,6 +113,48 @@ severity = "blocking"
 scope = "lib/"
 provenance = "house analysis_options.yaml baseline"
 
+# Strict Typing [enforced] — blocks NEW `dynamic` annotations. Duplicates the
+# analyzer's strict-casts/inference only as the edit-time intercept (the guard
+# fires before `dart analyze` runs). The 23 pre-existing sites — all JSON/HTTP
+# deserialization boundaries in lib/ai + lib/api (Map<String, dynamic> off
+# dart:convert, http response bodies) — are baselined in accepted.toml: those
+# are the catalog's sanctioned false-positive class (genuine dynamic boundaries).
+[[constraint]]
+kind = "forbidden_pattern"
+language = "dart"
+query = '((type_identifier) @match (#eq? @match "dynamic"))'
+name = "no-dynamic-type"
+severity = "blocking"
+scope = "lib/"
+provenance = "checkpoint:adityas/explore/57 — CLAUDE.md coding_discipline Strict Typing [enforced]; vidhi/language-rules/dart.toml"
+
+# Defensive Null Safety [enforced] — blocks NEW `!` null-assertions. The 24
+# pre-existing brownfield sites (regex .group()! after a matched pattern, map
+# lookups of statically-present keys, State fields set-before-shown, framework
+# callbacks) are baselined in accepted.toml; the guard's value is preventing new
+# introductions, not retro-fixing the adopted surface.
+[[constraint]]
+kind = "forbidden_pattern"
+language = "dart"
+query = '(null_assertion_expression) @match'
+name = "no-bang-null-assertion"
+severity = "blocking"
+scope = "lib/"
+provenance = "checkpoint:adityas/explore/57 — CLAUDE.md coding_discipline Defensive Null Safety [enforced]; vidhi/language-rules/dart.toml"
+
+# Errors handled or surfaced, never swallowed. Catches what the analyzer cannot:
+# empty_catches exempts `catch (_) {}`, exactly the form people write. Zero
+# violations at adoption (the one site, being_content.dart, took the sanctioned
+# one-line comment escape). Guard fires only on NEWLY introduced empty catches.
+[[constraint]]
+kind = "forbidden_pattern"
+language = "dart"
+query = '((try_statement (catch_clause) . (block) @match) (#match? @match "^\\{\\s*\\}$"))'
+name = "no-silent-empty-catch"
+severity = "blocking"
+scope = "lib/"
+provenance = "checkpoint:adityas/explore/57 — vidhi/language-rules/dart.toml (swe-dashboard/93 gap left by the analyzer)"
+
 # ═══════════════════════════════════════════════════════════════════
 # External package confinement
 # ═══════════════════════════════════════════════════════════════════

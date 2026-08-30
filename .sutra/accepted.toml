@@ -5,3 +5,408 @@ snippet = "lib/astro/ephemeris_service.dart -> lib/astro/ephemeris_service_nativ
 count = 1
 rationale = "Conditional-import pattern (dart.library.js_interop): ephemeris_service.dart conditionally imports the native impl, which implements the abstract EphemerisService. A structural cycle inherent to Dart's platform-conditional import, not an architectural one. (Replaces the stranded builtin:cycles waiver — now attached to a real named rule.)"
 by = "josh"
+
+[[ack]]
+constraint = "no-bang-null-assertion"
+file = "lib/export/chart_pdf.dart"
+symbol = "_WheelWidget::paint"
+snippet = "box!"
+count = 3
+rationale = "Brownfield adoption (adityas/explore/57): 24 pre-existing `!` null-assertion sites (regex .group()! after a matched pattern, map lookups of statically-present keys, State fields set-before-shown, framework callbacks) baselined. The blocking guard's value is preventing NEW introductions; the adopted surface is grandfathered rather than retro-fixed."
+by = "josh"
+
+[[ack]]
+constraint = "no-bang-null-assertion"
+file = "lib/export/chart_pdf.dart"
+symbol = "_buildBeingsPanel"
+snippet = "uncertainty!"
+count = 1
+rationale = "Brownfield adoption (adityas/explore/57): 24 pre-existing `!` null-assertion sites (regex .group()! after a matched pattern, map lookups of statically-present keys, State fields set-before-shown, framework callbacks) baselined. The blocking guard's value is preventing NEW introductions; the adopted surface is grandfathered rather than retro-fixed."
+by = "josh"
+
+[[ack]]
+constraint = "no-bang-null-assertion"
+file = "lib/export/chart_pdf.dart"
+symbol = "_buildSoulStancesPanel"
+snippet = "uncertainty!"
+count = 1
+rationale = "Brownfield adoption (adityas/explore/57): 24 pre-existing `!` null-assertion sites (regex .group()! after a matched pattern, map lookups of statically-present keys, State fields set-before-shown, framework callbacks) baselined. The blocking guard's value is preventing NEW introductions; the adopted surface is grandfathered rather than retro-fixed."
+by = "josh"
+
+[[ack]]
+constraint = "no-bang-null-assertion"
+file = "lib/main.dart"
+symbol = "_ExplorePage::_buildBody"
+snippet = "chart!"
+count = 1
+rationale = "Brownfield adoption (adityas/explore/57): 24 pre-existing `!` null-assertion sites (regex .group()! after a matched pattern, map lookups of statically-present keys, State fields set-before-shown, framework callbacks) baselined. The blocking guard's value is preventing NEW introductions; the adopted surface is grandfathered rather than retro-fixed."
+by = "josh"
+
+[[ack]]
+constraint = "no-bang-null-assertion"
+file = "lib/main.dart"
+symbol = "_ExplorePage::build"
+snippet = "chartData!"
+count = 1
+rationale = "Brownfield adoption (adityas/explore/57): 24 pre-existing `!` null-assertion sites (regex .group()! after a matched pattern, map lookups of statically-present keys, State fields set-before-shown, framework callbacks) baselined. The blocking guard's value is preventing NEW introductions; the adopted surface is grandfathered rather than retro-fixed."
+by = "josh"
+
+[[ack]]
+constraint = "no-bang-null-assertion"
+file = "lib/ui/account_button.dart"
+symbol = "_SignInDialogState::build"
+snippet = "_message!"
+count = 1
+rationale = "Brownfield adoption (adityas/explore/57): 24 pre-existing `!` null-assertion sites (regex .group()! after a matched pattern, map lookups of statically-present keys, State fields set-before-shown, framework callbacks) baselined. The blocking guard's value is preventing NEW introductions; the adopted surface is grandfathered rather than retro-fixed."
+by = "josh"
+
+[[ack]]
+constraint = "no-bang-null-assertion"
+file = "lib/ui/being_overlay.dart"
+symbol = "_ShareBeingButtonState::build"
+snippet = "_error!"
+count = 1
+rationale = "Brownfield adoption (adityas/explore/57): 24 pre-existing `!` null-assertion sites (regex .group()! after a matched pattern, map lookups of statically-present keys, State fields set-before-shown, framework callbacks) baselined. The blocking guard's value is preventing NEW introductions; the adopted surface is grandfathered rather than retro-fixed."
+by = "josh"
+
+[[ack]]
+constraint = "no-bang-null-assertion"
+file = "lib/ui/birth_form.dart"
+symbol = "_BirthFormState::_birthDateAsUnixSeconds"
+snippet = "_birthDate!"
+count = 1
+rationale = "Brownfield adoption (adityas/explore/57): 24 pre-existing `!` null-assertion sites (regex .group()! after a matched pattern, map lookups of statically-present keys, State fields set-before-shown, framework callbacks) baselined. The blocking guard's value is preventing NEW introductions; the adopted surface is grandfathered rather than retro-fixed."
+by = "josh"
+
+[[ack]]
+constraint = "no-bang-null-assertion"
+file = "lib/ui/birth_form.dart"
+symbol = "_BirthFormState::_birthDateAsUnixSeconds"
+snippet = "_effectiveBirthTime!"
+count = 1
+rationale = "Brownfield adoption (adityas/explore/57): 24 pre-existing `!` null-assertion sites (regex .group()! after a matched pattern, map lookups of statically-present keys, State fields set-before-shown, framework callbacks) baselined. The blocking guard's value is preventing NEW introductions; the adopted surface is grandfathered rather than retro-fixed."
+by = "josh"
+
+[[ack]]
+constraint = "no-bang-null-assertion"
+file = "lib/ui/birth_form.dart"
+symbol = "_BirthFormState::_buildChartData"
+snippet = "_birthDate!"
+count = 1
+rationale = "Brownfield adoption (adityas/explore/57): 24 pre-existing `!` null-assertion sites (regex .group()! after a matched pattern, map lookups of statically-present keys, State fields set-before-shown, framework callbacks) baselined. The blocking guard's value is preventing NEW introductions; the adopted surface is grandfathered rather than retro-fixed."
+by = "josh"
+
+[[ack]]
+constraint = "no-bang-null-assertion"
+file = "lib/ui/birth_form.dart"
+symbol = "_BirthFormState::_buildChartData"
+snippet = "_effectiveBirthTime!"
+count = 1
+rationale = "Brownfield adoption (adityas/explore/57): 24 pre-existing `!` null-assertion sites (regex .group()! after a matched pattern, map lookups of statically-present keys, State fields set-before-shown, framework callbacks) baselined. The blocking guard's value is preventing NEW introductions; the adopted surface is grandfathered rather than retro-fixed."
+by = "josh"
+
+[[ack]]
+constraint = "no-bang-null-assertion"
+file = "lib/ui/birth_form.dart"
+symbol = "_BirthFormState::_submit"
+snippet = "_selectedPeriod!"
+count = 2
+rationale = "Brownfield adoption (adityas/explore/57): 24 pre-existing `!` null-assertion sites (regex .group()! after a matched pattern, map lookups of statically-present keys, State fields set-before-shown, framework callbacks) baselined. The blocking guard's value is preventing NEW introductions; the adopted surface is grandfathered rather than retro-fixed."
+by = "josh"
+
+[[ack]]
+constraint = "no-bang-null-assertion"
+file = "lib/ui/birth_form.dart"
+symbol = "_BirthFormState::_tryParseDate"
+snippet = "d!"
+count = 1
+rationale = "Brownfield adoption (adityas/explore/57): 24 pre-existing `!` null-assertion sites (regex .group()! after a matched pattern, map lookups of statically-present keys, State fields set-before-shown, framework callbacks) baselined. The blocking guard's value is preventing NEW introductions; the adopted surface is grandfathered rather than retro-fixed."
+by = "josh"
+
+[[ack]]
+constraint = "no-bang-null-assertion"
+file = "lib/ui/birth_form.dart"
+symbol = "_BirthFormState::_tryParseDate"
+snippet = "m!"
+count = 1
+rationale = "Brownfield adoption (adityas/explore/57): 24 pre-existing `!` null-assertion sites (regex .group()! after a matched pattern, map lookups of statically-present keys, State fields set-before-shown, framework callbacks) baselined. The blocking guard's value is preventing NEW introductions; the adopted surface is grandfathered rather than retro-fixed."
+by = "josh"
+
+[[ack]]
+constraint = "no-bang-null-assertion"
+file = "lib/ui/birth_form.dart"
+symbol = "_BirthFormState::_tryParseTime"
+snippet = "h24Match.group(1)!"
+count = 1
+rationale = "Brownfield adoption (adityas/explore/57): 24 pre-existing `!` null-assertion sites (regex .group()! after a matched pattern, map lookups of statically-present keys, State fields set-before-shown, framework callbacks) baselined. The blocking guard's value is preventing NEW introductions; the adopted surface is grandfathered rather than retro-fixed."
+by = "josh"
+
+[[ack]]
+constraint = "no-bang-null-assertion"
+file = "lib/ui/birth_form.dart"
+symbol = "_BirthFormState::_tryParseTime"
+snippet = "h24Match.group(2)!"
+count = 1
+rationale = "Brownfield adoption (adityas/explore/57): 24 pre-existing `!` null-assertion sites (regex .group()! after a matched pattern, map lookups of statically-present keys, State fields set-before-shown, framework callbacks) baselined. The blocking guard's value is preventing NEW introductions; the adopted surface is grandfathered rather than retro-fixed."
+by = "josh"
+
+[[ack]]
+constraint = "no-bang-null-assertion"
+file = "lib/ui/birth_form.dart"
+symbol = "_BirthFormState::_tryParseTime"
+snippet = "match.group(1)!"
+count = 1
+rationale = "Brownfield adoption (adityas/explore/57): 24 pre-existing `!` null-assertion sites (regex .group()! after a matched pattern, map lookups of statically-present keys, State fields set-before-shown, framework callbacks) baselined. The blocking guard's value is preventing NEW introductions; the adopted surface is grandfathered rather than retro-fixed."
+by = "josh"
+
+[[ack]]
+constraint = "no-bang-null-assertion"
+file = "lib/ui/birth_form.dart"
+symbol = "_BirthFormState::_tryParseTime"
+snippet = "match.group(2)!"
+count = 1
+rationale = "Brownfield adoption (adityas/explore/57): 24 pre-existing `!` null-assertion sites (regex .group()! after a matched pattern, map lookups of statically-present keys, State fields set-before-shown, framework callbacks) baselined. The blocking guard's value is preventing NEW introductions; the adopted surface is grandfathered rather than retro-fixed."
+by = "josh"
+
+[[ack]]
+constraint = "no-bang-null-assertion"
+file = "lib/ui/birth_form.dart"
+symbol = "_BirthFormState::_tryParseTime"
+snippet = "match.group(4)!"
+count = 1
+rationale = "Brownfield adoption (adityas/explore/57): 24 pre-existing `!` null-assertion sites (regex .group()! after a matched pattern, map lookups of statically-present keys, State fields set-before-shown, framework callbacks) baselined. The blocking guard's value is preventing NEW introductions; the adopted surface is grandfathered rather than retro-fixed."
+by = "josh"
+
+[[ack]]
+constraint = "no-bang-null-assertion"
+file = "lib/ui/birth_form.dart"
+symbol = "_BirthFormState::build"
+snippet = "_searchError!"
+count = 1
+rationale = "Brownfield adoption (adityas/explore/57): 24 pre-existing `!` null-assertion sites (regex .group()! after a matched pattern, map lookups of statically-present keys, State fields set-before-shown, framework callbacks) baselined. The blocking guard's value is preventing NEW introductions; the adopted surface is grandfathered rather than retro-fixed."
+by = "josh"
+
+[[ack]]
+constraint = "no-bang-null-assertion"
+file = "lib/ui/chart_wheel.dart"
+symbol = "_ChartWheelState::_buildPlanetGlyph"
+snippet = "u!"
+count = 1
+rationale = "Brownfield adoption (adityas/explore/57): 24 pre-existing `!` null-assertion sites (regex .group()! after a matched pattern, map lookups of statically-present keys, State fields set-before-shown, framework callbacks) baselined. The blocking guard's value is preventing NEW introductions; the adopted surface is grandfathered rather than retro-fixed."
+by = "josh"
+
+[[ack]]
+constraint = "no-bang-null-assertion"
+file = "lib/ui/chart_wheel.dart"
+symbol = "_ChartWheelState::_buildSignGlyph"
+snippet = "adityaSigns[sign]!"
+count = 1
+rationale = "Brownfield adoption (adityas/explore/57): 24 pre-existing `!` null-assertion sites (regex .group()! after a matched pattern, map lookups of statically-present keys, State fields set-before-shown, framework callbacks) baselined. The blocking guard's value is preventing NEW introductions; the adopted surface is grandfathered rather than retro-fixed."
+by = "josh"
+
+[[ack]]
+constraint = "no-bang-null-assertion"
+file = "lib/ui/chat_panel.dart"
+symbol = "_ChatPanelState::_conversation"
+snippet = "active!"
+count = 1
+rationale = "Brownfield adoption (adityas/explore/57): 24 pre-existing `!` null-assertion sites (regex .group()! after a matched pattern, map lookups of statically-present keys, State fields set-before-shown, framework callbacks) baselined. The blocking guard's value is preventing NEW introductions; the adopted surface is grandfathered rather than retro-fixed."
+by = "josh"
+
+[[ack]]
+constraint = "no-bang-null-assertion"
+file = "lib/ui/overlay_shell.dart"
+symbol = "OverlayShell::_headerRow"
+snippet = "headerLeading!"
+count = 1
+rationale = "Brownfield adoption (adityas/explore/57): 24 pre-existing `!` null-assertion sites (regex .group()! after a matched pattern, map lookups of statically-present keys, State fields set-before-shown, framework callbacks) baselined. The blocking guard's value is preventing NEW introductions; the adopted surface is grandfathered rather than retro-fixed."
+by = "josh"
+
+[[ack]]
+constraint = "no-bang-null-assertion"
+file = "lib/ui/stable_asset_image.dart"
+symbol = "StableAssetImage::build"
+snippet = "errorBuilder!"
+count = 1
+rationale = "Brownfield adoption (adityas/explore/57): 24 pre-existing `!` null-assertion sites (regex .group()! after a matched pattern, map lookups of statically-present keys, State fields set-before-shown, framework callbacks) baselined. The blocking guard's value is preventing NEW introductions; the adopted surface is grandfathered rather than retro-fixed."
+by = "josh"
+
+[[ack]]
+constraint = "no-bang-null-assertion"
+file = "lib/ui/waitlist_dialog.dart"
+symbol = "_WaitlistDialogState::_buildForm"
+snippet = "_error!"
+count = 1
+rationale = "Brownfield adoption (adityas/explore/57): 24 pre-existing `!` null-assertion sites (regex .group()! after a matched pattern, map lookups of statically-present keys, State fields set-before-shown, framework callbacks) baselined. The blocking guard's value is preventing NEW introductions; the adopted surface is grandfathered rather than retro-fixed."
+by = "josh"
+
+[[ack]]
+constraint = "no-dynamic-type"
+file = "lib/ai/chart_input.dart"
+symbol = "chartInputJson"
+snippet = "dynamic"
+count = 1
+rationale = "Brownfield adoption (adityas/explore/57): all 23 pre-existing `dynamic` sites are JSON/HTTP deserialization boundaries in lib/ai + lib/api (Map<String, dynamic> off dart:convert, http response bodies) — the catalog's sanctioned false-positive class. Baselined so the blocking guard intercepts only NEW `dynamic` outside these genuine boundaries."
+by = "josh"
+
+[[ack]]
+constraint = "no-dynamic-type"
+file = "lib/ai/sse_turn_transport.dart"
+symbol = "SseTurnTransport::_ensureConversation"
+snippet = "dynamic"
+count = 1
+rationale = "Brownfield adoption (adityas/explore/57): all 23 pre-existing `dynamic` sites are JSON/HTTP deserialization boundaries in lib/ai + lib/api (Map<String, dynamic> off dart:convert, http response bodies) — the catalog's sanctioned false-positive class. Baselined so the blocking guard intercepts only NEW `dynamic` outside these genuine boundaries."
+by = "josh"
+
+[[ack]]
+constraint = "no-dynamic-type"
+file = "lib/ai/sse_turn_transport.dart"
+symbol = "SseTurnTransport::_httpError"
+snippet = "dynamic"
+count = 1
+rationale = "Brownfield adoption (adityas/explore/57): all 23 pre-existing `dynamic` sites are JSON/HTTP deserialization boundaries in lib/ai + lib/api (Map<String, dynamic> off dart:convert, http response bodies) — the catalog's sanctioned false-positive class. Baselined so the blocking guard intercepts only NEW `dynamic` outside these genuine boundaries."
+by = "josh"
+
+[[ack]]
+constraint = "no-dynamic-type"
+file = "lib/ai/sse_turn_transport.dart"
+symbol = "SseTurnTransport::_postTurn"
+snippet = "dynamic"
+count = 1
+rationale = "Brownfield adoption (adityas/explore/57): all 23 pre-existing `dynamic` sites are JSON/HTTP deserialization boundaries in lib/ai + lib/api (Map<String, dynamic> off dart:convert, http response bodies) — the catalog's sanctioned false-positive class. Baselined so the blocking guard intercepts only NEW `dynamic` outside these genuine boundaries."
+by = "josh"
+
+[[ack]]
+constraint = "no-dynamic-type"
+file = "lib/ai/sse_turn_transport.dart"
+symbol = "SseTurnTransport::_turnIdFrom"
+snippet = "dynamic"
+count = 1
+rationale = "Brownfield adoption (adityas/explore/57): all 23 pre-existing `dynamic` sites are JSON/HTTP deserialization boundaries in lib/ai + lib/api (Map<String, dynamic> off dart:convert, http response bodies) — the catalog's sanctioned false-positive class. Baselined so the blocking guard intercepts only NEW `dynamic` outside these genuine boundaries."
+by = "josh"
+
+[[ack]]
+constraint = "no-dynamic-type"
+file = "lib/ai/sse_turn_transport.dart"
+symbol = "_decodeObject"
+snippet = "dynamic"
+count = 2
+rationale = "Brownfield adoption (adityas/explore/57): all 23 pre-existing `dynamic` sites are JSON/HTTP deserialization boundaries in lib/ai + lib/api (Map<String, dynamic> off dart:convert, http response bodies) — the catalog's sanctioned false-positive class. Baselined so the blocking guard intercepts only NEW `dynamic` outside these genuine boundaries."
+by = "josh"
+
+[[ack]]
+constraint = "no-dynamic-type"
+file = "lib/ai/sse_turn_transport.dart"
+symbol = "_intField"
+snippet = "dynamic"
+count = 1
+rationale = "Brownfield adoption (adityas/explore/57): all 23 pre-existing `dynamic` sites are JSON/HTTP deserialization boundaries in lib/ai + lib/api (Map<String, dynamic> off dart:convert, http response bodies) — the catalog's sanctioned false-positive class. Baselined so the blocking guard intercepts only NEW `dynamic` outside these genuine boundaries."
+by = "josh"
+
+[[ack]]
+constraint = "no-dynamic-type"
+file = "lib/api/chart_service.dart"
+symbol = "ChartService::_parseError"
+snippet = "dynamic"
+count = 1
+rationale = "Brownfield adoption (adityas/explore/57): all 23 pre-existing `dynamic` sites are JSON/HTTP deserialization boundaries in lib/ai + lib/api (Map<String, dynamic> off dart:convert, http response bodies) — the catalog's sanctioned false-positive class. Baselined so the blocking guard intercepts only NEW `dynamic` outside these genuine boundaries."
+by = "josh"
+
+[[ack]]
+constraint = "no-dynamic-type"
+file = "lib/api/chart_service.dart"
+symbol = "ChartService::create"
+snippet = "dynamic"
+count = 1
+rationale = "Brownfield adoption (adityas/explore/57): all 23 pre-existing `dynamic` sites are JSON/HTTP deserialization boundaries in lib/ai + lib/api (Map<String, dynamic> off dart:convert, http response bodies) — the catalog's sanctioned false-positive class. Baselined so the blocking guard intercepts only NEW `dynamic` outside these genuine boundaries."
+by = "josh"
+
+[[ack]]
+constraint = "no-dynamic-type"
+file = "lib/api/chart_service.dart"
+symbol = "ChartService::fetchEntitlement"
+snippet = "dynamic"
+count = 1
+rationale = "Brownfield adoption (adityas/explore/57): all 23 pre-existing `dynamic` sites are JSON/HTTP deserialization boundaries in lib/ai + lib/api (Map<String, dynamic> off dart:convert, http response bodies) — the catalog's sanctioned false-positive class. Baselined so the blocking guard intercepts only NEW `dynamic` outside these genuine boundaries."
+by = "josh"
+
+[[ack]]
+constraint = "no-dynamic-type"
+file = "lib/api/chart_service.dart"
+symbol = "ChartService::fetchToml"
+snippet = "dynamic"
+count = 1
+rationale = "Brownfield adoption (adityas/explore/57): all 23 pre-existing `dynamic` sites are JSON/HTTP deserialization boundaries in lib/ai + lib/api (Map<String, dynamic> off dart:convert, http response bodies) — the catalog's sanctioned false-positive class. Baselined so the blocking guard intercepts only NEW `dynamic` outside these genuine boundaries."
+by = "josh"
+
+[[ack]]
+constraint = "no-dynamic-type"
+file = "lib/api/chart_service.dart"
+symbol = "ChartService::list"
+snippet = "dynamic"
+count = 2
+rationale = "Brownfield adoption (adityas/explore/57): all 23 pre-existing `dynamic` sites are JSON/HTTP deserialization boundaries in lib/ai + lib/api (Map<String, dynamic> off dart:convert, http response bodies) — the catalog's sanctioned false-positive class. Baselined so the blocking guard intercepts only NEW `dynamic` outside these genuine boundaries."
+by = "josh"
+
+[[ack]]
+constraint = "no-dynamic-type"
+file = "lib/api/chart_service.dart"
+symbol = "Entitlement::Entitlement"
+snippet = "dynamic"
+count = 1
+rationale = "Brownfield adoption (adityas/explore/57): all 23 pre-existing `dynamic` sites are JSON/HTTP deserialization boundaries in lib/ai + lib/api (Map<String, dynamic> off dart:convert, http response bodies) — the catalog's sanctioned false-positive class. Baselined so the blocking guard intercepts only NEW `dynamic` outside these genuine boundaries."
+by = "josh"
+
+[[ack]]
+constraint = "no-dynamic-type"
+file = "lib/api/chart_service.dart"
+symbol = "SavedChartSummary::SavedChartSummary"
+snippet = "dynamic"
+count = 1
+rationale = "Brownfield adoption (adityas/explore/57): all 23 pre-existing `dynamic` sites are JSON/HTTP deserialization boundaries in lib/ai + lib/api (Map<String, dynamic> off dart:convert, http response bodies) — the catalog's sanctioned false-positive class. Baselined so the blocking guard intercepts only NEW `dynamic` outside these genuine boundaries."
+by = "josh"
+
+[[ack]]
+constraint = "no-dynamic-type"
+file = "lib/api/places_service.dart"
+symbol = "PlaceAutocompleteResult::PlaceAutocompleteResult"
+snippet = "dynamic"
+count = 1
+rationale = "Brownfield adoption (adityas/explore/57): all 23 pre-existing `dynamic` sites are JSON/HTTP deserialization boundaries in lib/ai + lib/api (Map<String, dynamic> off dart:convert, http response bodies) — the catalog's sanctioned false-positive class. Baselined so the blocking guard intercepts only NEW `dynamic` outside these genuine boundaries."
+by = "josh"
+
+[[ack]]
+constraint = "no-dynamic-type"
+file = "lib/api/places_service.dart"
+symbol = "PlaceResolveResult::PlaceResolveResult"
+snippet = "dynamic"
+count = 1
+rationale = "Brownfield adoption (adityas/explore/57): all 23 pre-existing `dynamic` sites are JSON/HTTP deserialization boundaries in lib/ai + lib/api (Map<String, dynamic> off dart:convert, http response bodies) — the catalog's sanctioned false-positive class. Baselined so the blocking guard intercepts only NEW `dynamic` outside these genuine boundaries."
+by = "josh"
+
+[[ack]]
+constraint = "no-dynamic-type"
+file = "lib/api/places_service.dart"
+symbol = "PlacesService::_parseError"
+snippet = "dynamic"
+count = 1
+rationale = "Brownfield adoption (adityas/explore/57): all 23 pre-existing `dynamic` sites are JSON/HTTP deserialization boundaries in lib/ai + lib/api (Map<String, dynamic> off dart:convert, http response bodies) — the catalog's sanctioned false-positive class. Baselined so the blocking guard intercepts only NEW `dynamic` outside these genuine boundaries."
+by = "josh"
+
+[[ack]]
+constraint = "no-dynamic-type"
+file = "lib/api/places_service.dart"
+symbol = "PlacesService::autocomplete"
+snippet = "dynamic"
+count = 3
+rationale = "Brownfield adoption (adityas/explore/57): all 23 pre-existing `dynamic` sites are JSON/HTTP deserialization boundaries in lib/ai + lib/api (Map<String, dynamic> off dart:convert, http response bodies) — the catalog's sanctioned false-positive class. Baselined so the blocking guard intercepts only NEW `dynamic` outside these genuine boundaries."
+by = "josh"
+
+[[ack]]
+constraint = "no-dynamic-type"
+file = "lib/api/places_service.dart"
+symbol = "PlacesService::resolve"
+snippet = "dynamic"
+count = 1
+rationale = "Brownfield adoption (adityas/explore/57): all 23 pre-existing `dynamic` sites are JSON/HTTP deserialization boundaries in lib/ai + lib/api (Map<String, dynamic> off dart:convert, http response bodies) — the catalog's sanctioned false-positive class. Baselined so the blocking guard intercepts only NEW `dynamic` outside these genuine boundaries."
+by = "josh"

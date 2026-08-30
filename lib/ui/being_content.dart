@@ -48,7 +48,10 @@ Future<Map<(int, String), BeingContent>> loadBeingContent() async {
       for (final (type, content) in sections) {
         result[(sign, type)] = content;
       }
-    } catch (_) {}
+    } catch (_) {
+      // Best-effort per-being load: a missing or unparseable text asset just
+      // omits that being from the map rather than failing the whole build.
+    }
   }
 
   return result;

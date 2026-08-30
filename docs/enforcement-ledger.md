@@ -21,6 +21,9 @@ append with their provenance. When an accepted exception is added, record it in
 | `being-uncertainty-fan-in` | max_fan_in (advisory) | `being_uncertainty.dart` ≤ 12 | adopt:explore — domain-logic hub, current 9 |
 | `turn-transport-fan-in` | max_fan_in (advisory) | `turn_transport.dart` ≤ 8 | checkpoint:adityas/ai/13 — chat-layer seam (TurnEvent/TurnTransport), current 5-6 |
 | `no-ignore-comments` | forbidden_pattern | no `// ignore:` in `lib/` | house analysis_options.yaml baseline; vidhi/language-rules/dart.toml |
+| `no-dynamic-type` | forbidden_pattern | no `dynamic` annotations in `lib/` (23 JSON-boundary sites baselined, see (b)) | checkpoint:adityas/explore/57 — coding_discipline Strict Typing [enforced]; edit-time intercept duplicating analyzer strict-casts |
+| `no-bang-null-assertion` | forbidden_pattern | no `!` null-assertions in `lib/` (29 brownfield sites baselined, see (b)) | checkpoint:adityas/explore/57 — coding_discipline Defensive Null Safety [enforced] |
+| `no-silent-empty-catch` | forbidden_pattern | no `catch (_) {}` in `lib/` (zero-violation at adoption) | checkpoint:adityas/explore/57 — vidhi/language-rules/dart.toml; catches what `empty_catches` exempts |
 | `gpt-markdown-swap-seam` | confined_external | `gpt_markdown` only in `lib/ui/message_markdown.dart` | checkpoint:adityas/ai/13 — ai/12 one-file renderer swap seam. First confined_external in this repo (confirmed working for a Dart package) |
 
 ## (b) Accepted exceptions — `.sutra/accepted.toml`
@@ -28,6 +31,8 @@ append with their provenance. When an accepted exception is added, record it in
 | Exception | Constraint | Rationale |
 |---|---|---|
 | `ephemeris_service.dart` ↔ `ephemeris_service_native.dart` | `astro-no-cycles` (ack) | Dart platform-conditional import (`dart.library.js_interop`): the native impl implements the abstract `EphemerisService`. Structural, not architectural. |
+| 23 `dynamic` sites in `lib/ai` + `lib/api` | `no-dynamic-type` (baseline) | All JSON/HTTP deserialization boundaries (`Map<String, dynamic>` off `dart:convert`, http response bodies) — the catalog's sanctioned false-positive class. Blocking guard intercepts only NEW `dynamic` outside these. |
+| 29 `!` sites across `lib/ui`, `lib/export`, `lib/main.dart` | `no-bang-null-assertion` (baseline) | Pre-existing brownfield surface: regex `.group()!` after a matched pattern, map lookups of statically-present keys, `State` fields set-before-shown, framework callbacks. Guard's value is preventing NEW introductions, not retro-fixing the adopted surface. |
 
 ## (c) Not expressible in sutra — house analyzer baseline
 
@@ -40,9 +45,9 @@ append with their provenance. When an accepted exception is added, record it in
 
 ## Deferred — catalog guards not yet adopted
 
-| Rule (vidhi/language-rules/dart.toml) | Trigger | Tracked |
-|---|---|---|
-| `no-dynamic-type`, `no-bang-null-assertion`, `no-silent-empty-catch` | measure the full-`lib/` surface, then adopt blocking | **adityas/explore/57** |
+_None. The full Dart catalog (`vidhi/language-rules/dart.toml`) is now adopted:
+`no-ignore-comments` (ai/13) + `no-dynamic-type`, `no-bang-null-assertion`,
+`no-silent-empty-catch` (explore/57)._
 
 ## Checkpoint adityas/ai/13 — durable-chat state-layer tend (2026-08-30)
 
@@ -74,6 +79,29 @@ folding the ai/60 review. All new rules zero-violation at adoption.
 - **I11 (review gate):** resume verified across widget unmount (keepAlive
   notifier) + transient reconnect; app-relaunch durability rides on
   adityas/ai/64.
+
+## Checkpoint adityas/explore/57 — Dart catalog completion (2026-08-30)
+
+Adopted the three remaining `dart.toml` guards as **blocking**, closing the
+deferred row. Duplicate-rule principle: each duplicates an analyzer capability
+(strict-casts / strict-inference), so it earns its place only as the *edit-time*
+intercept — the guard fires before `dart analyze` runs.
+
+- **Measured** the full `lib/` surface via scratch-adopt + `sutra_constraints
+  violations` (not ripgrep — the tree-sitter `type_identifier`/
+  `null_assertion_expression` queries are exact; ripgrep over-counts `dynamic`
+  inside strings/comments and can't see `!` postfix reliably).
+- **`no-silent-empty-catch`: 1 site**, `being_content.dart:51` — a best-effort
+  per-being asset load. Fixed with the sanctioned one-line comment escape (mirrors
+  `empty_catches`), reaching **zero violations at adoption**.
+- **`no-dynamic-type`: 23 sites**, all JSON/HTTP boundaries in `lib/ai` + `lib/api`
+  — baselined (see (b)). The sanctioned false-positive class per the catalog.
+- **`no-bang-null-assertion`: 29 sites** across `lib/ui`, `lib/export`, `main.dart`
+  — baselined (see (b)). Brownfield surface grandfathered; guard blocks NEW `!`.
+- **Baseline vs waive:** `sutra_constraints action=baseline` (scope `lib/`) is the
+  bulk brownfield path — one call snapshots every current match as an `[[ack]]` in
+  `accepted.toml`, vs per-file `waive`. Blocking guard fires only on NEWLY
+  introduced matches, so the baselined surface does not tax edits to those files.
 
 ## Mechanics (so the next tend doesn't relearn them)
 
