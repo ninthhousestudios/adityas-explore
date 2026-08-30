@@ -15,9 +15,7 @@ import '../state/auth.dart';
 /// path was retired (see adityas/ai cutover).
 const chatAllowlist = <String>{
   '01214259-228c-46a9-bb3d-e229c8c4cb3f', // josh@ninthhouse.studio
-  '2e0010eb-0810-42f9-8c42-563342203813', // weburnalltimes@gmail.com (Josh)
   'be96b3d3-5c64-40d2-ae77-73d6883d14a2', // info@lvbarat.com (Laura)
-  '30cff75a-a431-4b48-bade-5528bc4e7f2f', // lorris
 };
 
 /// True when the signed-in user may use the wired chat client.
