@@ -108,7 +108,12 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
     // where the stack lived exactly as long as this State. Mode switches don't
     // unmount ChartWheel, so this only fires on a genuine chart teardown.
     // Use the cached notifier, not `ref` — reading `ref` in dispose is unsafe.
-    _overlayController.close();
+    // Defer the reset: modifying a provider synchronously here runs inside the
+    // widget-tree teardown and throws "Tried to modify a provider while the
+    // widget tree was building" (a debug-only assertion). The keepAlive notifier
+    // outlives this State, so running close() a microtask later is safe, and no
+    // new ChartWheel mounts on a chart→null teardown for it to race.
+    Future.microtask(_overlayController.close);
     _modeAnim.dispose();
     super.dispose();
   }
