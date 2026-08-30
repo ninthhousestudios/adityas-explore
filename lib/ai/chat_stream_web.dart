@@ -8,8 +8,8 @@ import 'package:web/web.dart' as web;
 /// This is the whole point of bug #3 — `package:http`/`BrowserClient` buffers an
 /// SSE response to completion instead of surfacing tokens live, so we drop to
 /// the browser `fetch` API and pull chunks off the body reader by hand. Mirrors
-/// [openSseByteStream] in chat_stream.dart; [SolarMirrorClient] shares one SSE
-/// parser over both.
+/// [openSseByteStream] in chat_stream.dart; the shared SSE parser lives in
+/// sse.dart (`parseSse`).
 Stream<List<int>> openSseByteStream(
   Uri uri,
   Map<String, String> headers,

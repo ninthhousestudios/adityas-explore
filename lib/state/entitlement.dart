@@ -1,6 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../ai/solar_mirror_client.dart';
+import '../ai/chat_access.dart';
 import '../api/chart_service.dart';
 import 'auth.dart';
 import 'backend.dart';
@@ -44,8 +44,8 @@ class EntitlementNotifier extends AsyncNotifier<Entitlement> {
 ///
 /// Derived, never stored. Available when signed in AND either:
 ///   1. the account is chat-allowlisted ([chatEnabledProvider]) — the current
-///      access mechanism for both the durable and preview lanes, whose backend
-///      gates are membership lists, NOT a paid entitlement; or
+///      access mechanism for the durable lane, whose backend gate is a
+///      membership list (`AI_CHAT_ALLOWLIST`), NOT a paid entitlement; or
 ///   2. a non-null `access_until` still in the future per the injected
 ///      [clockProvider] — the production path for non-allowlisted paying users.
 ///

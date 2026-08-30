@@ -7,7 +7,7 @@ import 'dart:io';
 /// arrives. This is the desktop half of a conditional-import pair; its web twin
 /// ([chat_stream_web.dart]) streams via `fetch`+`ReadableStream` to dodge the
 /// `package:http`/`BrowserClient` buffering bug (adityas/ai bug #3). Both only
-/// supply bytes — the shared SSE parser lives in [SolarMirrorClient].
+/// supply bytes — the shared SSE parser lives in sse.dart (`parseSse`).
 Stream<List<int>> openSseByteStream(
   Uri uri,
   Map<String, String> headers,

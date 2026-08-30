@@ -2,15 +2,14 @@ import 'dart:convert';
 
 /// Shared Server-Sent-Events framing for the chat wire.
 ///
-/// Both the throwaway preview client ([SolarMirrorClient]) and the durable
-/// [SseTurnTransport] speak SSE, so the multi-line-`data:` / comment /
-/// unterminated-frame rules live here once rather than in two copies. The byte
-/// source itself is the conditional-import pair (chat_stream.dart /
-/// chat_stream_web.dart); this only frames the bytes into [SseFrame]s.
+/// The durable `SseTurnTransport` speaks SSE, so the multi-line-`data:` /
+/// comment / unterminated-frame rules live here once. The byte source itself is
+/// the conditional-import pair (chat_stream.dart / chat_stream_web.dart); this
+/// only frames the bytes into [SseFrame]s.
 
 /// One SSE frame: its `event:` name, accumulated `data:` payload, and `id:` — the
-/// `Last-Event-ID` cursor, `null` on a frame that carries none (the preview wire
-/// sends no ids; the durable wire tags every event with its log index).
+/// `Last-Event-ID` cursor, `null` on a frame that carries none (the durable wire
+/// tags every event with its log index).
 class SseFrame {
   final String event;
   final String data;

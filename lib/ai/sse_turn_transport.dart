@@ -35,9 +35,8 @@ class TurnTransportException implements Exception {
 ///   3. `GET  /v1/ai/turns/{turn_id}/stream`    → SSE; a `Last-Event-ID` header resumes.
 ///
 /// Adapts the wire's SSE frames into the closed [TurnEvent] vocabulary through
-/// [decodeTurnFrame] — the notifier never sees backend JSON. This is the durable
-/// path (persistence + `Last-Event-ID` resume, I11), NOT the throwaway preview
-/// path `SolarMirrorClient` drives.
+/// [decodeTurnFrame] — the notifier never sees backend JSON. The durable path
+/// adds persistence + `Last-Event-ID` resume (I11).
 ///
 /// **Chart-aware (adityas/ai/65):** when [TurnRequest.chart] is set, the open
 /// chart's birth data rides along in the turn body as the backend's `ChartInput`

@@ -6,9 +6,8 @@ import 'package:charts_dart/charts_dart.dart';
 /// (`YYYY-MM-DD` / `HH:MM:SS`); `lat`/`lon` are flattened out of the nested
 /// `location` object the backend doesn't accept here.
 ///
-/// Shared by both chat transports — the throwaway preview path
-/// (`SolarMirrorClient`) and the durable `/v1/ai` path (`SseTurnTransport`,
-/// adityas/ai/65) — so a single chart→wire transform grounds both lanes.
+/// Used by the durable `/v1/ai` chat path (`SseTurnTransport`, adityas/ai/65)
+/// to ground a turn in the open chart's birth data.
 Map<String, dynamic> chartInputJson(ChartData chart) {
   final json = chart.toJson();
   return {

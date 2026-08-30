@@ -2,7 +2,7 @@ import 'package:charts_dart/charts_dart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../ai/solar_mirror_client.dart';
+import '../ai/chat_access.dart';
 import '../state/chat_turn.dart';
 import '../state/conversation.dart';
 import 'message_markdown.dart';
@@ -96,7 +96,6 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
     final fontSize = widget.fontSize;
     final dimColor = color.withValues(alpha: 0.6);
     final enabled = ref.watch(chatEnabledProvider);
-    final durable = ref.watch(durableChatEnabledProvider);
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -108,13 +107,7 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _header(
-            color,
-            dimColor,
-            fontSize,
-            enabled: enabled,
-            durable: durable,
-          ),
+          _header(color, dimColor, fontSize, enabled: enabled),
           const SizedBox(height: 12),
           Expanded(
             child: enabled
@@ -136,7 +129,6 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
     Color dimColor,
     double fontSize, {
     required bool enabled,
-    required bool durable,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -152,9 +144,7 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
         const SizedBox(height: 4),
         Text(
           enabled
-              ? (durable
-                    ? 'Solar Prism — durable streaming'
-                    : 'Solar Prism — preview streaming')
+              ? 'Solar Prism'
               : 'Stub — the real conversation UI lands later.',
           style: TextStyle(
             color: dimColor,
