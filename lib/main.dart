@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:developer' as dev;
 
 import 'package:arrow_core/arrow_core.dart' as arrow;
@@ -13,7 +12,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'navigate.dart' if (dart.library.js_interop) 'navigate_web.dart';
-import 'file_util.dart';
 import 'observability.dart';
 
 import 'astro/being_uncertainty.dart';
@@ -31,8 +29,9 @@ import 'ui/theme.dart';
 import 'ui/tokens.dart';
 import 'api/chart_service.dart';
 import 'ai/sse_turn_transport.dart';
-import 'export/chart_pdf.dart';
+import 'export/chart_files.dart';
 import 'state/active_chart.dart';
+import 'state/saved_charts.dart';
 import 'state/auth.dart';
 import 'state/backend.dart';
 import 'state/turn_transport.dart';
@@ -111,18 +110,10 @@ class _ExploreAppState extends ConsumerState<ExploreApp> {
 
   bool _exportingPdf = false;
 
-  List<SavedChartSummary> _savedCharts = [];
-  // Bumped on every auth transition (see the authProvider listener in build).
-  // _refreshSavedCharts captures it and drops a late list response whose epoch
-  // is stale — otherwise an in-flight list for a signed-out/previous user could
-  // repopulate or overwrite _savedCharts after an auth change (cross-account
-  // leak). Same last-write-wins guard as ChartController's calc token, keyed on
-  // auth instead.
-  int _authEpoch = 0;
   // The shared authenticated backend client (see state/backend.dart). Read
-  // lazily from the provider so chart CRUD and the entitlement fetch use one
-  // instance. Safe pre-boot: construction touches no Supabase.instance, only
-  // the token closure does (at request time, always post-boot).
+  // lazily from the provider so chart load and the entitlement fetch use one
+  // instance. Saved-charts list state + the auth reaction live in
+  // savedChartsProvider (state/saved_charts.dart); this widget only reads it.
   ChartService get _chartService => ref.read(chartServiceProvider);
   final _messengerKey = GlobalKey<ScaffoldMessengerState>();
   final _navigatorKey = GlobalKey<NavigatorState>();
@@ -174,9 +165,9 @@ class _ExploreAppState extends ConsumerState<ExploreApp> {
           await auth.signOut();
         }
       }
-      // Initial saved-charts load if already signed in. Later sign-in/sign-out
-      // is handled by the ref.listen(authProvider) in build.
-      if (auth.currentUser != null) unawaited(_refreshSavedCharts());
+      // Saved-charts load (initial + on every sign-in/out) is owned by
+      // savedChartsProvider (state/saved_charts.dart), which reacts to
+      // authProvider — nothing to kick off here.
 
       if (!mounted) return;
       setState(() => _booted = true);
@@ -243,22 +234,6 @@ class _ExploreAppState extends ConsumerState<ExploreApp> {
     ref.read(chartControllerProvider.notifier).clear();
   }
 
-  Future<void> _refreshSavedCharts() async {
-    final epoch = _authEpoch;
-    try {
-      final charts = await _chartService.list();
-      if (!mounted || epoch != _authEpoch) return;
-      setState(() => _savedCharts = charts);
-    } on ChartApiException catch (e) {
-      if (e.statusCode == 401 && mounted && epoch == _authEpoch) {
-        setState(() => _savedCharts = []);
-      }
-      debugPrint('Error fetching saved charts: $e');
-    } catch (e) {
-      debugPrint('Error fetching saved charts: $e');
-    }
-  }
-
   Future<void> _saveChartToServer() async {
     final chartData = ref.read(chartControllerProvider).chartData;
     if (chartData == null) return;
@@ -273,8 +248,7 @@ class _ExploreAppState extends ConsumerState<ExploreApp> {
 
     try {
       final toml = TomlChartFormat.encode(chartData);
-      await _chartService.create(name.trim(), toml);
-      await _refreshSavedCharts();
+      await ref.read(savedChartsProvider.notifier).create(name.trim(), toml);
       if (mounted) _showSnackBar('Chart "$name" saved');
     } on ChartApiException catch (e) {
       if (mounted) {
@@ -316,27 +290,21 @@ class _ExploreAppState extends ConsumerState<ExploreApp> {
   Future<void> _saveChart() async {
     final chartData = ref.read(chartControllerProvider).chartData;
     if (chartData == null) return;
-
-    final toml = TomlChartFormat.encode(chartData);
-    final bytes = Uint8List.fromList(utf8.encode(toml));
-    await saveFileBytes('${chartFileStem(chartData.name)}.toml', bytes);
+    await saveChartToml(chartData);
   }
 
   Future<void> _downloadPdf() async {
     final chartState = ref.read(chartControllerProvider);
     final chart = chartState.chart;
-    final chartData = chartState.chartData;
     if (chart == null || _exportingPdf) return;
 
     setState(() => _exportingPdf = true);
     try {
-      final bytes = await buildChartPdf(
+      await saveChartPdf(
         chart: chart,
-        chartName: chartData?.name,
+        chartName: chartState.chartData?.name,
         uncertainty: chartState.uncertainty,
       );
-      if (!mounted) return;
-      await saveFileBytes('${chartFileStem(chartData?.name)}-chart.pdf', bytes);
     } on Exception catch (e) {
       if (mounted) _showSnackBar('Error exporting PDF: $e');
     } finally {
@@ -412,20 +380,6 @@ class _ExploreAppState extends ConsumerState<ExploreApp> {
       );
     }
 
-    // Single auth reaction: refresh saved charts on sign-in, clear on sign-out.
-    // The initial load lives in _boot; this is only read post-boot, so
-    // authProvider's `Supabase.instance` access is always valid here.
-    ref.listen<User?>(authProvider, (previous, user) {
-      // Invalidate any in-flight _refreshSavedCharts from the previous auth
-      // state before reacting, so a late list response can't clobber this one.
-      _authEpoch++;
-      if (user != null) {
-        _refreshSavedCharts();
-      } else {
-        setState(() => _savedCharts = []);
-      }
-    });
-
     final chartState = ref.watch(chartControllerProvider);
 
     // Precaching needs a BuildContext, so it stays in the widget rather than
@@ -468,7 +422,7 @@ class _ExploreAppState extends ConsumerState<ExploreApp> {
         waitlistSigned: _waitlistSigned,
         onWaitlistSigned: _onWaitlistSigned,
         hasChart: chartState.hasChart,
-        savedCharts: _savedCharts,
+        savedCharts: ref.watch(savedChartsProvider),
         onSaveChartToServer: _saveChartToServer,
         onLoadSavedChart: _loadSavedChart,
       ),
