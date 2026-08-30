@@ -421,39 +421,13 @@ class _ExploreAppState extends ConsumerState<ExploreApp> {
         chartData.dateTime.hour,
       );
 
-      setState(() {
-        _chartData = chartData;
-        _chart = null;
-        _uncertainty = null;
-        _calculating = true;
-      });
-      ref.read(activeChartProvider.notifier).set(chartData);
-
-      final chart = await _calculator.calculate(chartData);
-      if (!mounted) return;
-      unawaited(AssetPreloader.precacheChartAssets(context, chart));
-      final uncertainty = await computeBeingUncertainty(
-        calculator: _calculator,
-        chartData: chartData,
-        primaryChart: chart,
-        uncertainty: timeUncertainty,
-      );
-      if (!mounted) return;
-      unawaited(
-        AssetPreloader.precacheChartAssets(
-          context,
-          chart,
-          uncertainty: uncertainty,
-        ),
-      );
-      setState(() {
-        _chart = chart;
-        _uncertainty = uncertainty;
-        _calculating = false;
-      });
+      // Hand off to the shared calc pipeline — it owns the setState sequence,
+      // provider mirror, and _calcToken guard, so the open path can't land a
+      // stale chart over a newer submit/open. This try only covers file-pick
+      // and parse; calc errors are handled inside _submitChart.
+      await _submitChart(chartData, timeUncertainty);
     } catch (e, s) {
       debugPrint('Error opening chart: $e\n$s');
-      setState(() => _calculating = false);
       if (mounted) _showSnackBar('Error: $e');
     }
   }
