@@ -8,6 +8,12 @@ import 'package:sentry_flutter/sentry_flutter.dart';
 /// content is ever logged. [scrubSentryEvent] is the structural backstop — the
 /// no-bodies policy enforced in one place rather than trusted to every call
 /// site, mirroring the backend's `server::observability`.
+///
+/// Belt scope caveat: [scrubSentryEvent] touches the request-context vector
+/// only — request body, query string, cookies, and headers. It does *not*
+/// scrub breadcrumbs, the event message, `extra`, or `contexts`. A log line
+/// whose fields carry content becomes a breadcrumb or event message the belt
+/// never sees; content-freedom of those paths holds by construction, not here.
 
 /// Header names that must never leave the device in a Sentry payload. Matched
 /// case-insensitively: bearer JWTs, session cookies, and provider API keys each
