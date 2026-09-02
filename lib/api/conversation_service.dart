@@ -30,7 +30,10 @@ class ConversationSummary {
     : id = json['id'] as String,
       title = json['title'] as String?,
       updatedAt = DateTime.parse(json['updated_at'] as String),
-      turnCount = (json['turn_count'] as num).toInt();
+      // Optional per the picker spec (adityas/ai/87); the current backend always
+      // sends it, but a missing/null count degrades to 0 rather than blanking
+      // the whole page.
+      turnCount = (json['turn_count'] as num?)?.toInt() ?? 0;
 }
 
 /// One message of a loaded transcript. [fromUser] distinguishes the two roles
@@ -46,7 +49,7 @@ class ConversationHistoryMessage {
 
   ConversationHistoryMessage.fromJson(Map<String, Object?> json)
     : fromUser = json['role'] == 'user',
-      content = json['content'] as String;
+      content = json['content'] as String? ?? '';
 }
 
 /// A conversation's decrypted transcript plus its label (adityas/ai/87). The
@@ -69,7 +72,7 @@ class ConversationHistory {
     : id = json['id'] as String,
       title = json['title'] as String?,
       updatedAt = DateTime.parse(json['updated_at'] as String),
-      messages = (json['messages'] as List<Object?>)
+      messages = ((json['messages'] as List<Object?>?) ?? const [])
           .map(
             (e) =>
                 ConversationHistoryMessage.fromJson(e as Map<String, Object?>),
@@ -144,14 +147,23 @@ class ConversationService {
         response.statusCode,
       );
     }
-    final data = jsonDecode(response.body) as Map<String, Object?>;
-    final rows = (data['conversations'] as List<Object?>)
-        .map((e) => ConversationSummary.fromJson(e as Map<String, Object?>))
-        .toList();
-    return ConversationPage(
-      conversations: rows,
-      nextCursor: data['next_cursor'] as String?,
-    );
+    try {
+      final data = jsonDecode(response.body) as Map<String, Object?>;
+      final rows = ((data['conversations'] as List<Object?>?) ?? const [])
+          .map((e) => ConversationSummary.fromJson(e as Map<String, Object?>))
+          .toList();
+      return ConversationPage(
+        conversations: rows,
+        nextCursor: data['next_cursor'] as String?,
+      );
+    } on Object {
+      // A shape mismatch (wrong endpoint, renamed field) surfaces as a typed,
+      // expected error the picker already handles — never a raw CastError.
+      throw ConversationApiException(
+        'Malformed conversations response',
+        response.statusCode,
+      );
+    }
   }
 
   /// GET `/v1/ai/conversations/{id}` — the decrypted transcript for Resume.
@@ -166,9 +178,16 @@ class ConversationService {
         response.statusCode,
       );
     }
-    return ConversationHistory.fromJson(
-      jsonDecode(response.body) as Map<String, Object?>,
-    );
+    try {
+      return ConversationHistory.fromJson(
+        jsonDecode(response.body) as Map<String, Object?>,
+      );
+    } on Object {
+      throw ConversationApiException(
+        'Malformed conversation transcript',
+        response.statusCode,
+      );
+    }
   }
 
   /// PATCH `/v1/ai/conversations/{id}` — set the user-editable title.

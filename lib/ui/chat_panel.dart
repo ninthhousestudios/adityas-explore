@@ -197,6 +197,9 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
       );
       if (proceed != true) return;
     }
+    // The confirm dialog awaited above; this panel can unmount on a layout-mode
+    // switch while it was open. A disposed ConsumerState's ref throws.
+    if (!mounted) return;
     ref.read(chatTurnProvider.notifier).startNewConversation();
   }
 

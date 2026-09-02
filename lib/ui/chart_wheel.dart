@@ -108,6 +108,16 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
     )..addListener(() => setState(() {}));
     _computeLayout();
     _loadContent();
+    // A Resume fired while this wheel was unmounted (a chart-less Resume from the
+    // birth form) left a pending open request the live `ref.listen` never saw —
+    // listen does not replay on attach. Apply it once now that we're mounted,
+    // after this frame so the mode switch's setState isn't in the build phase.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (ref.read(chatOpenRequestProvider.notifier).consumePending()) {
+        _setMode(LayoutMode.conversation);
+      }
+    });
   }
 
   @override
@@ -248,9 +258,13 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
 
     // Resume (adityas/ai/86) fires this from the app-bar account menu, which
     // can't reach this widget's LayoutMode directly. A bump switches us into
-    // conversation mode so the resumed transcript is on screen.
+    // conversation mode so the resumed transcript is on screen. Routed through
+    // consumePending so the watermark advances (a Resume made while this wheel
+    // was unmounted is applied on mount instead — see initState).
     ref.listen(chatOpenRequestProvider, (_, _) {
-      _setMode(LayoutMode.conversation);
+      if (ref.read(chatOpenRequestProvider.notifier).consumePending()) {
+        _setMode(LayoutMode.conversation);
+      }
     });
 
     return LayoutBuilder(

@@ -54,6 +54,45 @@ void main() {
     expect(page.conversations[1].title, isNull);
   });
 
+  test('list tolerates a missing turn_count (spec-optional) as 0', () async {
+    final service = _service(
+      MockClient(
+        (_) async => http.Response(
+          jsonEncode({
+            'conversations': [
+              {
+                'id': 'c1',
+                'title': 'No count',
+                'updated_at': '2026-09-02T10:00:00Z',
+                // turn_count omitted — optional per the picker spec
+              },
+            ],
+            'next_cursor': null,
+          }),
+          200,
+        ),
+      ),
+    );
+
+    final page = await service.list();
+
+    expect(page.conversations.single.turnCount, 0);
+  });
+
+  test('list surfaces a shape mismatch as a typed exception', () async {
+    final service = _service(
+      MockClient(
+        // 200 but the wrong shape (rows not objects) → not a raw CastError.
+        (_) async => http.Response(
+          jsonEncode({'conversations': 'nope', 'next_cursor': null}),
+          200,
+        ),
+      ),
+    );
+
+    expect(() => service.list(), throwsA(isA<ConversationApiException>()));
+  });
+
   test('list forwards the cursor when paginating', () async {
     late http.Request seen;
     final service = _service(
