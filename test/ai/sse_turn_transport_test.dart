@@ -274,6 +274,58 @@ void main() {
       },
     );
 
+    test('mints the conversation with the composed title', () async {
+      Object? createBody;
+      final mock = MockClient((request) async {
+        if (request.url.path.endsWith('/conversations')) {
+          createBody = request.body.isEmpty ? null : jsonDecode(request.body);
+          return http.Response(jsonEncode({'conversation_id': 'c1'}), 201);
+        }
+        return http.Response(jsonEncode({'turn_id': 't1'}), 202);
+      });
+      final transport = SseTurnTransport(
+        tokenProvider: ({forceRefresh = false}) async => 'jwt',
+        baseUrl: 'https://api.test',
+        httpClient: mock,
+        byteSource: _FakeByteSource(_happyStream).call,
+      );
+
+      await transport
+          .start(
+            const TurnRequest(text: 'hi', conversationTitle: 'Mitra · Sep 2'),
+          )
+          .toList();
+
+      expect(createBody, {'title': 'Mitra · Sep 2'});
+    });
+
+    test('adoptConversation appends to the given id without minting', () async {
+      var conversationPosts = 0;
+      final turnPaths = <String>[];
+      final mock = MockClient((request) async {
+        if (request.url.path.endsWith('/conversations')) {
+          conversationPosts++;
+          return http.Response(jsonEncode({'conversation_id': 'fresh'}), 201);
+        }
+        turnPaths.add(request.url.path);
+        return http.Response(jsonEncode({'turn_id': 't1'}), 202);
+      });
+      final transport = SseTurnTransport(
+        tokenProvider: ({forceRefresh = false}) async => 'jwt',
+        baseUrl: 'https://api.test',
+        httpClient: mock,
+        byteSource: _FakeByteSource(_happyStream).call,
+      );
+
+      final events = (transport..adoptConversation('resumed-1')).start(
+        const TurnRequest(text: 'continue'),
+      );
+      await events.toList();
+
+      expect(conversationPosts, 0); // no fresh mint — the resumed id is reused
+      expect(turnPaths.single, '/v1/ai/conversations/resumed-1/turns');
+    });
+
     test(
       'a 404 on the turn POST re-mints the conversation and retries',
       () async {

@@ -486,4 +486,68 @@ void main() {
       expect(transport.cancels, 1); // best-effort server stop
     });
   });
+
+  test('send composes a {chart · date} conversation title', () {
+    final transport = _FakeTransport();
+    final container = _container(
+      transport,
+      clock: _FakeClock(DateTime(2026, 9, 2)),
+    );
+
+    container.read(chatTurnProvider.notifier).send('hello');
+
+    // No chart open in the headless container → the chart-less "Chat" label.
+    expect(transport.lastRequest?.conversationTitle, 'Chat · Sep 2');
+  });
+
+  test(
+    'startNewConversation stops an active turn and clears to idle',
+    () async {
+      final transport = _FakeTransport();
+      final container = _container(transport);
+      final notifier = container.read(chatTurnProvider.notifier)..send('hello');
+
+      transport.emit(const DeltaEvent('partial', 'e1'));
+      await _pump();
+      expect(container.read(chatTurnProvider), isA<TurnStreaming>());
+
+      notifier.startNewConversation();
+
+      expect(container.read(chatTurnProvider), isA<TurnIdle>());
+      expect(transport.cancels, 1); // in-flight turn stopped server-side
+      expect(transport.resets, 1); // next turn mints a fresh conversation
+      expect(container.read(conversationProvider).messages, isEmpty);
+    },
+  );
+
+  test('startNewConversation with no active turn resets without a stop', () {
+    final transport = _FakeTransport();
+    final container = _container(transport);
+
+    container.read(chatTurnProvider.notifier).startNewConversation();
+
+    expect(transport.cancels, 0);
+    expect(transport.resets, 1);
+    expect(container.read(chatTurnProvider), isA<TurnIdle>());
+  });
+
+  test('resumeConversation adopts the server id and loads the transcript', () {
+    final transport = _FakeTransport();
+    final container = _container(transport);
+
+    container
+        .read(chatTurnProvider.notifier)
+        .resumeConversation('server-1', const [
+          (role: MessageRole.user, text: 'earlier question'),
+          (role: MessageRole.assistant, text: 'earlier answer'),
+        ]);
+
+    expect(transport.adopts, 1);
+    expect(transport.lastAdoptedId, 'server-1');
+    expect(container.read(chatTurnProvider), isA<TurnIdle>());
+    final convo = container.read(conversationProvider);
+    expect(convo.id, 'server-1');
+    expect(convo.messages, hasLength(2));
+    expect(convo.messages.first.text, 'earlier question');
+  });
 }

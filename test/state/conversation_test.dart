@@ -48,6 +48,57 @@ void main() {
     expect(reply.parentId, user.id); // reply threads beneath the user message
   });
 
+  test('loadTranscript replaces the buffer and records the server id', () {
+    final container = ProviderContainer(
+      overrides: [authProvider.overrideWith(() => _MutableAuth(_stubUser))],
+    );
+    addTearDown(container.dispose);
+
+    final notifier = container.read(conversationProvider.notifier)
+      ..appendUser('a stale message from the previous thread')
+      ..loadTranscript('server-convo-1', const [
+        (role: MessageRole.user, text: 'what is my Soul Stance?'),
+        (role: MessageRole.assistant, text: 'Your Sun sits with the Adityas…'),
+        (role: MessageRole.user, text: 'tell me more'),
+      ]);
+
+    final convo = container.read(conversationProvider);
+    expect(convo.id, 'server-convo-1');
+    expect(convo.messages, hasLength(3));
+    expect(convo.messages.first.role, MessageRole.user);
+    expect(convo.messages.first.parentId, isNull);
+    // Loaded messages form a linear chain.
+    expect(convo.messages[1].parentId, convo.messages.first.id);
+    expect(convo.messages[2].parentId, convo.messages[1].id);
+
+    // A subsequent append continues the chain with a unique id.
+    final next = notifier.appendUser('and after that?');
+    expect(next.parentId, convo.messages.last.id);
+    expect(
+      container.read(conversationProvider).messages.map((m) => m.id).toSet(),
+      hasLength(4),
+    );
+  });
+
+  test('reset clears to a fresh empty conversation', () {
+    final container = ProviderContainer(
+      overrides: [authProvider.overrideWith(() => _MutableAuth(_stubUser))],
+    );
+    addTearDown(container.dispose);
+
+    container.read(conversationProvider.notifier).loadTranscript(
+      'server-convo-1',
+      const [(role: MessageRole.user, text: 'hi')],
+    );
+    expect(container.read(conversationProvider).id, 'server-convo-1');
+
+    container.read(conversationProvider.notifier).reset();
+
+    final convo = container.read(conversationProvider);
+    expect(convo.id, isNull);
+    expect(convo.messages, isEmpty);
+  });
+
   test('keepAlive: survives an unwatch/rewatch (a mode switch)', () {
     final container = ProviderContainer(
       overrides: [authProvider.overrideWith(() => _MutableAuth(_stubUser))],
