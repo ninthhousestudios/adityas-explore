@@ -264,12 +264,14 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
         }
         return;
       case ToolStartEvent(:final tool, :final args):
-        // The `show_being` seam: a `get_being` call names a being by slug —
-        // resolve it to a BeingRef and open the popup with no BuildContext
-        // (docs/chat-state-architecture.md § Overlay ripple). Only get_being
-        // navigates; the other knowledge tools (search/structural_rules/
-        // fetch_source) are ignored. An unresolvable slug degrades to a no-op.
-        if (tool == 'get_being') {
+        // The `show_being` seam: the model *intentionally* calls the show_being
+        // UI tool (distinct from the get_being knowledge read) to open a being's
+        // detail card — resolve its slug to a BeingRef and open the popup with no
+        // BuildContext (docs/chat-state-architecture.md § Overlay ripple). Only
+        // show_being navigates; the knowledge tools (get_being/search/
+        // structural_rules/fetch_source) never do. An unresolvable slug degrades
+        // to a no-op.
+        if (tool == 'show_being') {
           final slug = args?['slug'];
           if (slug is String) {
             final being = resolveBeingSlug(slug);

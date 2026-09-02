@@ -81,14 +81,14 @@ void main() {
       final event = decodeTurnFrame(
         const SseFrame(
           'tool_start',
-          '{"name":"get_being","args":{"slug":"varuna-rishi"}}',
+          '{"name":"show_being","args":{"slug":"varuna-rishi"}}',
           '11',
         ),
       );
       expect(
         event,
         isA<ToolStartEvent>()
-            .having((e) => e.tool, 'tool', 'get_being')
+            .having((e) => e.tool, 'tool', 'show_being')
             .having((e) => e.args?['slug'], 'slug', 'varuna-rishi')
             .having((e) => e.eventId, 'eventId', '11'),
       );
@@ -97,9 +97,9 @@ void main() {
     test('tool_end carries the tool name (no args)', () {
       expect(
         decodeTurnFrame(
-          const SseFrame('tool_end', '{"name":"get_being"}', '12'),
+          const SseFrame('tool_end', '{"name":"show_being"}', '12'),
         ),
-        isA<ToolEndEvent>().having((e) => e.tool, 'tool', 'get_being'),
+        isA<ToolEndEvent>().having((e) => e.tool, 'tool', 'show_being'),
       );
     });
 

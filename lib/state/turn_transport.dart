@@ -71,7 +71,7 @@ class DeltaEvent extends TurnEvent {
 /// A tool call began. Carries the tool [tool] name and its decoded [args] (the
 /// wire `args` object, JSON-shaped — the schema is the tool's own, so this is
 /// not a vendor event format the closed vocabulary rule forbids). This is the
-/// event the `show_being` seam rides: a `get_being` call names a being via
+/// event the `show_being` seam rides: a `show_being` call names a being via
 /// `args['slug']`, which the notifier resolves to a [BeingRef] and opens.
 /// [args] is null when the frame carried none.
 class ToolStartEvent extends TurnEvent {

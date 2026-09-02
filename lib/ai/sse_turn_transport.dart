@@ -234,7 +234,7 @@ TurnEvent decodeTurnFrame(SseFrame frame) {
     case 'done':
       return DoneEvent(id);
     case 'tool_start':
-      // `{name, args}` — args is the tool's own JSON object (e.g. get_being's
+      // `{name, args}` — args is the tool's own JSON object (e.g. show_being's
       // `{slug}`), passed through for the notifier's show_being dispatch.
       return ToolStartEvent(
         _stringField(frame.data, 'name'),

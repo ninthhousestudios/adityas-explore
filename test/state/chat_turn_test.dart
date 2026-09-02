@@ -277,7 +277,7 @@ void main() {
     },
   );
 
-  test('a get_being tool call opens the being overlay (show_being)', () async {
+  test('a show_being tool call opens the being overlay', () async {
     final transport = _FakeTransport();
     final container = _container(transport);
 
@@ -285,7 +285,11 @@ void main() {
     transport
       ..emit(const DeltaEvent('Looking… ', 'e1'))
       ..emit(
-        const ToolStartEvent('get_being', 'e2', args: {'slug': 'varuna-rishi'}),
+        const ToolStartEvent(
+          'show_being',
+          'e2',
+          args: {'slug': 'varuna-rishi'},
+        ),
       )
       ..emit(const DeltaEvent('here.', 'e3'));
     await _pump();
@@ -302,20 +306,25 @@ void main() {
     );
   });
 
-  test('a non-navigating tool call opens no overlay', () async {
+  test('knowledge tools never navigate; only show_being does', () async {
     final transport = _FakeTransport();
     final container = _container(transport);
 
     container.read(chatTurnProvider.notifier).send('search the corpus');
     transport
-      ..emit(const ToolStartEvent('search', 'e1', args: {'query': 'love'}))
+      // A knowledge read of a being does NOT open the card — the model must
+      // intentionally call show_being for that.
       ..emit(
-        const ToolStartEvent('get_being', 'e2', args: {'slug': 'nope-xyz'}),
+        const ToolStartEvent('get_being', 'e1', args: {'slug': 'varuna-rishi'}),
       )
-      ..emit(const DeltaEvent('done', 'e3'));
+      ..emit(const ToolStartEvent('search', 'e2', args: {'query': 'love'}))
+      // An unresolvable show_being slug degrades to a no-op.
+      ..emit(
+        const ToolStartEvent('show_being', 'e3', args: {'slug': 'nope-xyz'}),
+      )
+      ..emit(const DeltaEvent('done', 'e4'));
     await _pump();
 
-    // search never navigates; the unresolvable get_being slug degrades to no-op.
     expect(container.read(overlayControllerProvider).isEmpty, isTrue);
   });
 
