@@ -61,7 +61,9 @@ import 'tokens.dart';
   final title = planetName.isNotEmpty
       ? '${_capitalize(planetName)} — $beingName'
       : beingName.isNotEmpty
-      ? beingName
+      // A placement-free being card (chat show_being fallback) titles by the
+      // being alone; the content-map name can be lowercased, so capitalize it.
+      ? _capitalize(beingName)
       : adityaName(beingSign) ?? '';
 
   return (leading: leading, title: title);

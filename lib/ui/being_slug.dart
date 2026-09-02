@@ -1,5 +1,8 @@
+import 'package:arrow_core/arrow_core.dart' as arrow;
+
 import 'aditya_data.dart';
 import 'being_content.dart' show adityaName;
+import 'chart_wheel_layout.dart';
 import 'popup_state.dart';
 
 /// The seven being types under each Aditya — the valid `{type}` suffix of a
@@ -45,4 +48,23 @@ BeingRef? resolveBeingSlug(String slug) {
 
   final name = type == 'aditya' ? (adityaName(sign) ?? '') : '';
   return (name: name, type: type, planet: '', sign: sign);
+}
+
+/// The displayed planet in [chart] whose Trimsamsa being is the being
+/// `(sign, type)`, or null if none is. This is the chart placement a
+/// chat-named being belongs to: when a planet the user can see activates the
+/// being, `show_being` opens the full planet card (Position, Soul Stance,
+/// planet glyph) — identical to tapping that glyph — instead of the
+/// placement-free [BeingRef] card. Restricted to [defaultGrahas], the bodies
+/// actually on the wheel, so it never opens a card for a hidden body. First
+/// match wins if two placements share the being (rare; either is correct).
+PlacedPlanet? planetActivatingBeing(arrow.Chart chart, int sign, String type) {
+  for (final p in chart.grahas) {
+    if (!defaultGrahas.contains(p.body.name)) continue;
+    if (p.trimsamsaBeing.signNumber == sign &&
+        p.trimsamsaBeing.type.name == type) {
+      return PlacedPlanet.fromGraha(p);
+    }
+  }
+  return null;
 }

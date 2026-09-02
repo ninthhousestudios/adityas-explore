@@ -215,23 +215,14 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
       glyphSize: glyphSize,
     );
 
-    return List.generate(filtered.length, (i) {
-      final p = filtered[i];
-      return PlacedPlanet(
-        bodyName: p.body.name,
-        sign: p.longitude.sign,
-        inSignDeg: p.longitude.inSignLongitude,
+    return List.generate(
+      filtered.length,
+      (i) => PlacedPlanet.fromGraha(
+        filtered[i],
         angle: positions[i].angle,
         radiusFraction: positions[i].radiusFraction,
-        horaBeing: p.horaBeing.name,
-        horaBeingType: p.horaBeing.type.name,
-        horaBeingSign: p.horaBeing.signNumber,
-        trimsamsaBeing: p.trimsamsaBeing.name,
-        trimsamsaBeingType: p.trimsamsaBeing.type.name,
-        trimsamsaBeingSign: p.trimsamsaBeing.signNumber,
-        isRetrograde: p.isRetrograde,
-      );
-    });
+      ),
+    );
   }
 
   @override

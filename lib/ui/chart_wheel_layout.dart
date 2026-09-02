@@ -1,6 +1,8 @@
 import 'dart:math';
 import 'dart:ui';
 
+import 'package:arrow_core/arrow_core.dart' as arrow;
+
 // Ring radii as fractions of the widget half-size.
 const outerRingOuter = 1.0;
 const outerRingInner = 0.82;
@@ -176,6 +178,29 @@ class PlacedPlanet {
     this.trimsamsaBeingSign,
     this.isRetrograde = false,
   });
+
+  /// Build a [PlacedPlanet] from an arrow graha's semantic (being) fields.
+  /// [angle] and [radiusFraction] are wheel geometry from the layout pass; a
+  /// caller that only needs the being data — the chat `show_being` seam, which
+  /// never paints the planet on the wheel — leaves them at 0.
+  factory PlacedPlanet.fromGraha(
+    arrow.Planet p, {
+    double angle = 0,
+    double radiusFraction = 0,
+  }) => PlacedPlanet(
+    bodyName: p.body.name,
+    sign: p.longitude.sign,
+    inSignDeg: p.longitude.inSignLongitude,
+    angle: angle,
+    radiusFraction: radiusFraction,
+    horaBeing: p.horaBeing.name,
+    horaBeingType: p.horaBeing.type.name,
+    horaBeingSign: p.horaBeing.signNumber,
+    trimsamsaBeing: p.trimsamsaBeing.name,
+    trimsamsaBeingType: p.trimsamsaBeing.type.name,
+    trimsamsaBeingSign: p.trimsamsaBeing.signNumber,
+    isRetrograde: p.isRetrograde,
+  );
 
   String get longitudeLabel {
     final deg = inSignDeg.floor();

@@ -276,7 +276,21 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
           if (slug is String) {
             final being = resolveBeingSlug(slug);
             if (being != null) {
-              ref.read(overlayControllerProvider.notifier).showBeing(being);
+              // Prefer the chart-placed planet card (Position/Soul Stance/planet
+              // glyph) when a displayed planet in the open chart activates this
+              // being, so a chat-opened card matches one opened by tapping the
+              // glyph (adityas/ai/84). Otherwise open the placement-free being
+              // card.
+              final overlay = ref.read(overlayControllerProvider.notifier);
+              final chart = ref.read(chartControllerProvider).chart;
+              final placed = chart == null
+                  ? null
+                  : planetActivatingBeing(chart, being.sign, being.type);
+              if (placed != null) {
+                overlay.showPlanetBeing(placed);
+              } else {
+                overlay.showBeing(being);
+              }
             }
           }
         }

@@ -3,6 +3,7 @@ import 'dart:ui' show Offset, Rect;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../ui/chart_wheel_layout.dart';
 import '../ui/popup_state.dart';
 
 /// The transient overlay layer, lifted out of `_ChartWheelState` widget state.
@@ -90,6 +91,12 @@ class OverlayController extends Notifier<OverlayLayer> {
   /// dispatch is blocked on the transport carrying tool arguments (see
   /// `ToolEndEvent` in lib/state/turn_transport.dart) and the chat PRD.
   void showBeing(BeingRef being) => open(BeingFromName(being));
+
+  /// The `show_being` seam when the named being *is* placed in the open chart:
+  /// open the full planet card (Position, Soul Stance, planet glyph), identical
+  /// to tapping the planet's glyph. [showBeing] is the placement-free fallback
+  /// for a being with no placement in this chart.
+  void showPlanetBeing(PlacedPlanet planet) => open(BeingFromPlanet(planet));
 
   /// Move the floating window by [delta], clamped to the [areaW]×[areaH] area.
   void drag(Offset delta, double areaW, double areaH) {
