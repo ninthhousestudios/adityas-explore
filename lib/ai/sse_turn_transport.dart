@@ -27,6 +27,16 @@ class TurnTransportException implements Exception {
   String toString() => message;
 }
 
+/// Internal sentinel: an in-flight [SseTurnTransport.start] discovered that a
+/// [adoptConversation]/[resetConversation] rotated the conversation out from
+/// under it (the epoch changed). It unwinds the opening turn without writing any
+/// conversation/turn state; [start] catches it and ends the stream silently.
+/// Never surfaces to the notifier — the rotation path cancels the subscription
+/// first (adityas/ai/86).
+class _ConversationSuperseded implements Exception {
+  const _ConversationSuperseded();
+}
+
 /// The real [TurnTransport]: the durable `/v1/ai` chat wire (adityas/ai/11).
 ///
 /// Drives the canonical three-call contract:
@@ -73,20 +83,56 @@ class SseTurnTransport implements TurnTransport {
 
   int _idempotencySeq = 0;
 
+  // True while [_conversationId] holds a *resumed* (adopted) thread rather than
+  // a self-minted one. An adopted id that 404s on a turn must NOT be silently
+  // re-minted — that would divorce the transport from the transcript the user is
+  // looking at (adityas/ai/86) — so [_createTurn] fails instead of reminting.
+  bool _adopted = false;
+
+  // Rotation generation. [adoptConversation]/[resetConversation] bump it, and an
+  // in-flight [start] that resumes past an await into a changed epoch abandons
+  // itself before writing [_conversationId]/[_turnId]. This is what makes a
+  // Resume or New-Chat fired mid-`start()` actually atomic: closing the stream
+  // subscription cannot preempt the pre-yield body, but the epoch check can
+  // (adityas/ai/86). The rotation path cancels the subscription first, so the
+  // abandoning throw lands on a dead subscription and is dropped.
+  int _epoch = 0;
+
+  /// The server conversation subsequent turns append to: the adopted id after
+  /// [adoptConversation], the minted id once [start] has created one, or null
+  /// before any turn. The picker reads this to detect deleting the *active*
+  /// thread even when it was minted this session (adityas/ai/86).
+  @override
+  String? get conversationId => _conversationId;
+
   @override
   Stream<TurnEvent> start(TurnRequest request) async* {
-    final token = await _requireToken();
-    final conversationId = await _ensureConversation(
-      token,
-      title: request.conversationTitle,
-    );
-    final turnId = await _createTurn(
-      token,
-      conversationId,
-      request.text,
-      request.chart,
-      request.conversationTitle,
-    );
+    final epoch = _epoch;
+    final String token;
+    final String conversationId;
+    final String turnId;
+    try {
+      token = await _requireToken();
+      conversationId = await _ensureConversation(
+        token,
+        epoch,
+        title: request.conversationTitle,
+      );
+      turnId = await _createTurn(
+        token,
+        conversationId,
+        request.text,
+        request.chart,
+        request.conversationTitle,
+        epoch,
+      );
+    } on _ConversationSuperseded {
+      // A Resume / New-Chat / user-change rotated the conversation while this
+      // turn was opening. Abandon silently — the notifier has already moved on,
+      // and its subscription to this stream was cancelled first.
+      return;
+    }
+    if (_epoch != epoch) return;
     _turnId = turnId;
     yield* _stream(token, turnId, lastEventId: null);
   }
@@ -116,6 +162,8 @@ class SseTurnTransport implements TurnTransport {
   void resetConversation() {
     _conversationId = null;
     _turnId = null;
+    _adopted = false;
+    _epoch++;
   }
 
   /// Adopt an existing server conversation (Resume, adityas/ai/86): subsequent
@@ -125,6 +173,8 @@ class SseTurnTransport implements TurnTransport {
   void adoptConversation(String id) {
     _conversationId = id;
     _turnId = null;
+    _adopted = true;
+    _epoch++;
   }
 
   Future<String> _requireToken() async {
@@ -137,37 +187,54 @@ class SseTurnTransport implements TurnTransport {
   /// this call mints it, [title] (the client-composed `{chart · date}` label)
   /// rides in the create body; the backend accepts an optional title there. A
   /// cached conversation ignores it — a title is a creation-time snapshot.
-  Future<String> _ensureConversation(String token, {String? title}) async {
+  Future<String> _ensureConversation(
+    String token,
+    int epoch, {
+    String? title,
+  }) async {
     final cached = _conversationId;
     if (cached != null) return cached;
+    // A rotation landed during a prior await (e.g. token fetch): don't POST a
+    // ghost conversation the caller has already abandoned.
+    if (_epoch != epoch) throw const _ConversationSuperseded();
     final response = await _http.post(
       Uri.parse('$_baseUrl/v1/ai/conversations'),
       headers: _jsonHeaders(token),
       body: title == null ? null : jsonEncode({'title': title}),
     );
+    if (_epoch != epoch) throw const _ConversationSuperseded();
     if (response.statusCode != 201) {
       throw TurnTransportException(_httpError(response));
     }
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     final id = data['conversation_id'] as String;
     _conversationId = id;
+    _adopted = false; // self-minted and owned by this transport
     return id;
   }
 
-  /// POST the turn, returning its `turn_id`. A `404` means the cached
-  /// conversation is stale (a user switch, or a server-side eviction): re-mint a
-  /// fresh conversation and retry once.
+  /// POST the turn, returning its `turn_id`. A `404` on a *self-minted*
+  /// conversation means it went stale (a user switch, or a server-side
+  /// eviction): re-mint a fresh conversation and retry once. A `404` on an
+  /// *adopted* (resumed) conversation is fatal — reminting would silently start
+  /// a new thread divorced from the transcript on screen (adityas/ai/86), so the
+  /// turn fails instead.
   Future<String> _createTurn(
     String token,
     String conversationId,
     String message,
     ChartData? chart,
     String? title,
+    int epoch,
   ) async {
     final response = await _postTurn(token, conversationId, message, chart);
+    if (_epoch != epoch) throw const _ConversationSuperseded();
     if (response.statusCode == 404) {
+      if (_adopted) {
+        throw TurnTransportException(_httpError(response));
+      }
       _conversationId = null;
-      final fresh = await _ensureConversation(token, title: title);
+      final fresh = await _ensureConversation(token, epoch, title: title);
       return _turnIdFrom(await _postTurn(token, fresh, message, chart));
     }
     return _turnIdFrom(response);

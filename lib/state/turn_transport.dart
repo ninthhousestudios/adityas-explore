@@ -141,6 +141,13 @@ class UnknownEvent extends TurnEvent {
 /// sibling transport task. Tests supply a scripted fake. Neither the notifier
 /// nor its tests know which.
 abstract interface class TurnTransport {
+  /// The server conversation subsequent turns append to: the adopted id after
+  /// [adoptConversation], the id minted once [start] has created one, or null
+  /// before any turn exists. The picker reads this to tell whether a deleted
+  /// conversation is the active one — even when it was minted this session and
+  /// so never landed in [Conversation.id] (adityas/ai/86).
+  String? get conversationId;
+
   /// Start a fresh turn; yields its [TurnEvent] stream.
   Stream<TurnEvent> start(TurnRequest request);
 

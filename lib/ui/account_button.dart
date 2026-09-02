@@ -15,6 +15,7 @@ import '../state/backend.dart';
 import '../state/chat_open_request.dart';
 import '../state/chat_turn.dart';
 import '../state/conversation.dart';
+import '../state/turn_transport.dart';
 import 'tokens.dart';
 
 class AccountButton extends ConsumerStatefulWidget {
@@ -681,7 +682,13 @@ class _ConversationsDialogState extends ConsumerState<_ConversationsDialog> {
     try {
       await _service.delete(c.id);
       // Deleting the currently-active thread resets the panel to a fresh one.
-      if (ref.read(conversationProvider).id == c.id) {
+      // The active id lives in [Conversation.id] only for a *resumed* thread; a
+      // conversation minted this session is tracked solely by the transport
+      // (adityas/ai/86), so check both.
+      final resumedActive = ref.read(conversationProvider).id == c.id;
+      final mintedActive =
+          ref.read(turnTransportProvider).conversationId == c.id;
+      if (resumedActive || mintedActive) {
         ref.read(chatTurnProvider.notifier).startNewConversation();
       }
       if (!mounted) return;

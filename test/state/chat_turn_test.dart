@@ -28,6 +28,9 @@ class _FakeTransport implements TurnTransport {
   StreamController<TurnEvent> get _current => _controllers.last;
 
   @override
+  String? conversationId;
+
+  @override
   Stream<TurnEvent> start(TurnRequest request) {
     starts++;
     lastRequest = request;
@@ -58,11 +61,13 @@ class _FakeTransport implements TurnTransport {
   void adoptConversation(String id) {
     adopts++;
     lastAdoptedId = id;
+    conversationId = id;
   }
 
   @override
   void resetConversation() {
     resets++;
+    conversationId = null;
   }
 
   void emit(TurnEvent event) => _current.add(event);
@@ -77,6 +82,9 @@ class _FakeTransport implements TurnTransport {
 /// A transport whose [start] (and, after the first drop, [resume]) throws
 /// synchronously — stream creation itself fails.
 class _ThrowingTransport implements TurnTransport {
+  @override
+  String? get conversationId => null;
+
   @override
   Stream<TurnEvent> start(TurnRequest request) => throw StateError('no wire');
 
@@ -549,5 +557,24 @@ void main() {
     expect(convo.id, 'server-1');
     expect(convo.messages, hasLength(2));
     expect(convo.messages.first.text, 'earlier question');
+  });
+
+  test('startNewConversation clears the active id the delete-active check reads '
+      '(adityas/ai/91)', () {
+    final transport = _FakeTransport();
+    final container = _container(transport);
+
+    // Adopt a thread → the transport now reports it as the active id, which is
+    // exactly what the picker's delete-active comparison reads.
+    final notifier = container.read(chatTurnProvider.notifier)
+      ..resumeConversation('server-7', const []);
+    expect(transport.conversationId, 'server-7');
+
+    // Deleting that active thread routes through startNewConversation, which
+    // must reset the transport (id → null) and clear the panel.
+    notifier.startNewConversation();
+    expect(transport.conversationId, isNull);
+    expect(container.read(conversationProvider).messages, isEmpty);
+    expect(container.read(chatTurnProvider), isA<TurnIdle>());
   });
 }

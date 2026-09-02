@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:charts_dart/charts_dart.dart';
@@ -44,6 +45,14 @@ const _happyStream =
     'id: 3\n'
     'data: {}\n'
     '\n';
+
+/// Yield to the microtask/event queue until [cond] holds (or a bounded number
+/// of turns elapse) — lets a test observe a pending await inside `start()`.
+Future<void> _pumpUntil(bool Function() cond) async {
+  for (var i = 0; i < 1000 && !cond(); i++) {
+    await Future<void>.delayed(Duration.zero);
+  }
+}
 
 void main() {
   group('decodeTurnFrame', () {
@@ -365,6 +374,135 @@ void main() {
         expect(events.last, isA<DoneEvent>());
       },
     );
+
+    // ── Atomic rotation (adityas/ai/91) ──────────────────────────────
+    // start() is an async* generator with awaits before its first yield;
+    // adopt/reset fired mid-open must win, and the abandoned open must not
+    // write conversation/turn state. Cancelling the subscription cannot
+    // preempt the pre-yield body — the epoch guard is what makes it atomic.
+
+    test('resetConversation during the create POST abandons the opening turn '
+        '(New Chat mid-connect does not clobber the reset)', () async {
+      final gate = Completer<void>();
+      var conversationPosts = 0;
+      var turnPosts = 0;
+      final mock = MockClient((request) async {
+        if (request.url.path.endsWith('/conversations')) {
+          conversationPosts++;
+          await gate.future; // hold the mint open across the rotation
+          return http.Response(jsonEncode({'conversation_id': 'c1'}), 201);
+        }
+        turnPosts++;
+        return http.Response(jsonEncode({'turn_id': 't1'}), 202);
+      });
+      final transport = SseTurnTransport(
+        tokenProvider: ({forceRefresh = false}) async => 'jwt',
+        baseUrl: 'https://api.test',
+        httpClient: mock,
+        byteSource: _FakeByteSource(_happyStream).call,
+      );
+
+      final events = transport.start(const TurnRequest(text: 'hi')).toList();
+      await _pumpUntil(() => conversationPosts == 1); // POST now in flight
+      transport.resetConversation(); // New Chat mid-connect
+      gate.complete();
+      final emitted = await events;
+
+      expect(emitted, isEmpty); // opening turn abandoned, nothing streamed
+      expect(turnPosts, 0); // no turn landed in the reset-away conversation
+      expect(transport.conversationId, isNull); // the reset stuck
+    });
+
+    test(
+      'adoptConversation during the create POST wins over the in-flight mint '
+      '(Resume mid-connect)',
+      () async {
+        final gate = Completer<void>();
+        var conversationPosts = 0;
+        var turnPosts = 0;
+        final mock = MockClient((request) async {
+          if (request.url.path.endsWith('/conversations')) {
+            conversationPosts++;
+            await gate.future;
+            return http.Response(
+              jsonEncode({'conversation_id': 'minted'}),
+              201,
+            );
+          }
+          turnPosts++;
+          return http.Response(jsonEncode({'turn_id': 't1'}), 202);
+        });
+        final transport = SseTurnTransport(
+          tokenProvider: ({forceRefresh = false}) async => 'jwt',
+          baseUrl: 'https://api.test',
+          httpClient: mock,
+          byteSource: _FakeByteSource(_happyStream).call,
+        );
+
+        final events = transport.start(const TurnRequest(text: 'hi')).toList();
+        await _pumpUntil(() => conversationPosts == 1); // mint POST in flight
+        transport.adoptConversation('resumed-2'); // Resume mid-connect
+        gate.complete();
+        final emitted = await events;
+
+        expect(emitted, isEmpty); // the pre-adopt open was abandoned
+        expect(turnPosts, 0); // it never posted a turn to 'minted'
+        expect(transport.conversationId, 'resumed-2'); // adopt not clobbered
+      },
+    );
+
+    test(
+      'a 404 on an adopted conversation fails instead of silently re-minting',
+      () async {
+        var conversationPosts = 0;
+        final mock = MockClient((request) async {
+          if (request.url.path.endsWith('/conversations')) {
+            conversationPosts++;
+            return http.Response(jsonEncode({'conversation_id': 'fresh'}), 201);
+          }
+          return http.Response(jsonEncode({'error': 'gone'}), 404);
+        });
+        final transport = SseTurnTransport(
+          tokenProvider: ({forceRefresh = false}) async => 'jwt',
+          baseUrl: 'https://api.test',
+          httpClient: mock,
+          byteSource: _FakeByteSource(_happyStream).call,
+        )..adoptConversation('resumed-1');
+
+        await expectLater(
+          transport.start(const TurnRequest(text: 'hi')).toList(),
+          throwsA(isA<TurnTransportException>()),
+        );
+        // Never minted a new thread divorced from the resumed transcript.
+        expect(conversationPosts, 0);
+      },
+    );
+
+    test('conversationId exposes the active thread for the picker', () async {
+      final mock = MockClient((request) async {
+        if (request.url.path.endsWith('/conversations')) {
+          return http.Response(
+            jsonEncode({'conversation_id': 'minted-1'}),
+            201,
+          );
+        }
+        return http.Response(jsonEncode({'turn_id': 't1'}), 202);
+      });
+      final transport = SseTurnTransport(
+        tokenProvider: ({forceRefresh = false}) async => 'jwt',
+        baseUrl: 'https://api.test',
+        httpClient: mock,
+        byteSource: _FakeByteSource(_happyStream).call,
+      );
+
+      expect(transport.conversationId, isNull);
+      await transport.start(const TurnRequest(text: 'hi')).toList();
+      expect(transport.conversationId, 'minted-1'); // self-minted, tracked
+      transport.adoptConversation('resumed-9');
+      expect(transport.conversationId, 'resumed-9');
+      transport.resetConversation();
+      expect(transport.conversationId, isNull);
+    });
 
     test('a non-signed-in transport errors before any HTTP call', () async {
       final transport = SseTurnTransport(
