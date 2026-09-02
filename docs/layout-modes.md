@@ -65,7 +65,9 @@ two-layer rule above.
 - **conversation** — chart shrinks and shifts to one side; the chat panel claims
   a docked column on the other. Info panels collapse out of the dock and become
   toggle-to-overlay (user or AI can summon one; it floats over the chart and
-  dismisses). Entered when a chat begins.
+  dismisses). Entered when a chat begins. The chat surface itself — bottom-right
+  input pill in explore mode, drag-to-resize of the docked column, and the
+  visible-but-gated presentation — is specified in [`chat-surface.md`](chat-surface.md).
 - **focus** — chart only; all persistent panels hidden. Escape hatch for a clean
   read.
 
