@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../format/date_labels.dart';
 import '../ui/being_slug.dart';
 import 'active_chart.dart';
 import 'clock.dart';
@@ -196,6 +197,7 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     // request). Catch it here so the turn ends in a terminal error rather than
     // stranding an active state with no subscription (which would silently
     // swallow every later send).
+    final chart = ref.read(activeChartProvider);
     final Stream<TurnEvent> events;
     try {
       events = _transport.start(
@@ -204,7 +206,10 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
           parentMessageId: userMessage.id,
           // The open chart at send time (adityas/ai/65) — grounds the answer in
           // this person's chart_facts. Null when no chart is open ⇒ chart-less.
-          chart: ref.read(activeChartProvider),
+          chart: chart,
+          // The deterministic picker label, used only if THIS turn mints the
+          // conversation: `{chart · date}` snapshotted at creation (ai/64).
+          conversationTitle: _composeTitle(chart?.name),
         ),
       );
     } catch (error) {
@@ -227,6 +232,52 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     // server's trailing usage/done for the stopped turn.
     state = TurnCancelled(text: _buffer.toString(), usage: _usage);
     await _transport.cancel();
+  }
+
+  /// Rotate to a fresh conversation without changing the chart (New Chat, and
+  /// the reset after deleting the active conversation — adityas/ai/86). A turn
+  /// in flight is stopped server-side first (non-refunding, still billed) so a
+  /// lingering generation never lands in the new thread. Synchronous: called
+  /// from a button handler, never build/dispose.
+  void startNewConversation() {
+    _stopActiveForRotation();
+    _transport.resetConversation();
+    ref.read(conversationProvider.notifier).reset();
+    state = const TurnIdle();
+  }
+
+  /// Resume a past conversation (adityas/ai/86): adopt its server [id] so the
+  /// next turn appends to it, load its transcript into the buffer, and settle to
+  /// idle — nothing is sent until the user types. Does not touch the chart.
+  void resumeConversation(
+    String id,
+    List<({MessageRole role, String text})> messages,
+  ) {
+    _stopActiveForRotation();
+    _transport.adoptConversation(id);
+    ref.read(conversationProvider.notifier).loadTranscript(id, messages);
+    state = const TurnIdle();
+  }
+
+  /// Tear down any in-flight turn before switching conversations: a best-effort
+  /// server-side stop (so we stop paying for a generation we're abandoning) plus
+  /// a local reset of the buffer/subscription/timers. The server's durable log
+  /// still settles that turn's billing; the client just stops listening.
+  void _stopActiveForRotation() {
+    if (_isActive) unawaited(_transport.cancel());
+    _resetTurn();
+  }
+
+  /// The deterministic conversation label minted at creation: `{chart · date}`
+  /// (adityas/ai/64). [chartName] is the open chart's name at send time, or null
+  /// for a chart-less chat. The date is today's (creation time), via the
+  /// injected clock so tests are deterministic.
+  String _composeTitle(String? chartName) {
+    final date = shortMonthDay(ref.read(clockProvider).now());
+    final name = (chartName == null || chartName.trim().isEmpty)
+        ? 'Chat'
+        : chartName.trim();
+    return '$name · $date';
   }
 
   void _subscribe(Stream<TurnEvent> events) {

@@ -132,30 +132,72 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
     double fontSize, {
     required bool enabled,
   }) {
-    return Column(
+    return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Chat',
-          style: TextStyle(
-            color: color,
-            fontSize: fontSize * 1.2,
-            fontWeight: FontWeight.bold,
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Chat',
+                style: TextStyle(
+                  color: color,
+                  fontSize: fontSize * 1.2,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                enabled
+                    ? 'Solar Prism'
+                    : 'Stub — the real conversation UI lands later.',
+                style: TextStyle(
+                  color: dimColor,
+                  fontSize: fontSize * 0.85,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 4),
-        Text(
-          enabled
-              ? 'Solar Prism'
-              : 'Stub — the real conversation UI lands later.',
-          style: TextStyle(
-            color: dimColor,
-            fontSize: fontSize * 0.85,
-            fontStyle: FontStyle.italic,
+        // "＋ New" rotates to a fresh thread without changing the chart — the
+        // canonical New-Chat spot (docs/conversation-history.md § New Chat).
+        if (enabled)
+          TextButton.icon(
+            onPressed: _onNewChat,
+            icon: Icon(Icons.add, size: fontSize, color: color),
+            label: Text(
+              'New',
+              style: TextStyle(color: color, fontSize: fontSize * 0.9),
+            ),
+            style: TextButton.styleFrom(
+              foregroundColor: color,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              visualDensity: VisualDensity.compact,
+            ),
           ),
-        ),
       ],
     );
+  }
+
+  /// New Chat: rotate to a fresh thread. If a reply is still streaming, confirm
+  /// first — starting fresh stops the in-flight turn server-side (still billed),
+  /// so it must never be a silent orphan (docs/conversation-history.md).
+  Future<void> _onNewChat() async {
+    final turn = ref.read(chatTurnProvider);
+    final streaming = switch (turn) {
+      TurnConnecting() || TurnStreaming() || TurnReconnecting() => true,
+      TurnIdle() || TurnDone() || TurnCancelled() || TurnError() => false,
+    };
+    if (streaming) {
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => _NewChatConfirmDialog(),
+      );
+      if (proceed != true) return;
+    }
+    ref.read(chatTurnProvider.notifier).startNewConversation();
   }
 
   // ── Wired chat (allowlisted) ─────────────────────────────────────
@@ -408,6 +450,49 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
           Icon(Icons.send, size: fontSize * 1.2, color: dimColor),
         ],
       ),
+    );
+  }
+}
+
+/// Confirm starting a new chat while a reply is still streaming — the current
+/// turn is stopped server-side (still billed), never silently orphaned.
+class _NewChatConfirmDialog extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final color = t.ink;
+
+    return AlertDialog(
+      backgroundColor: t.cardBg,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: color.withValues(alpha: 0.3)),
+      ),
+      title: Text(
+        'Start a new chat?',
+        style: TextStyle(color: color, fontWeight: FontWeight.bold),
+      ),
+      content: Text(
+        'A reply is still coming in. Starting a new chat stops it.',
+        style: TextStyle(color: color.withValues(alpha: 0.85), height: 1.4),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: Text(
+            'Keep chatting',
+            style: TextStyle(color: color.withValues(alpha: 0.7)),
+          ),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          style: FilledButton.styleFrom(
+            backgroundColor: t.gold,
+            foregroundColor: t.onGold,
+          ),
+          child: const Text('New chat'),
+        ),
+      ],
     );
   }
 }

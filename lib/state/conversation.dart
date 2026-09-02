@@ -88,4 +88,35 @@ class ConversationNotifier extends Notifier<Conversation> {
     state = Conversation(id: state.id, messages: [...state.messages, message]);
     return message;
   }
+
+  /// Replace the buffer with a resumed transcript (Resume, adityas/ai/86).
+  /// [id] is the server conversation now being appended to — held so the picker
+  /// can tell when a deleted conversation is the active one. Local ids continue
+  /// past the loaded messages so a subsequent [appendUser] stays unique.
+  void loadTranscript(
+    String id,
+    List<({MessageRole role, String text})> messages,
+  ) {
+    _seq = 0;
+    final loaded = <ChatMessage>[];
+    String? parentId;
+    for (final m in messages) {
+      final message = ChatMessage(
+        id: 'local-${_seq++}',
+        parentId: parentId,
+        role: m.role,
+        text: m.text,
+      );
+      loaded.add(message);
+      parentId = message.id;
+    }
+    state = Conversation(id: id, messages: loaded);
+  }
+
+  /// Clear to a fresh, empty conversation (New Chat, or deleting the active
+  /// one). The transport mints a new server id on the next turn.
+  void reset() {
+    _seq = 0;
+    state = const Conversation();
+  }
 }

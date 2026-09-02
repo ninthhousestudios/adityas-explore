@@ -39,7 +39,18 @@ class TurnRequest {
   final String? parentMessageId;
   final ChartData? chart;
 
-  const TurnRequest({required this.text, this.parentMessageId, this.chart});
+  /// The deterministic label to stamp on the conversation *if this turn mints
+  /// it* (`{chart-name snapshot} · {date}`, adityas/ai/64). Ignored once a
+  /// conversation already exists — a title is a creation-time snapshot, not a
+  /// per-turn field. Null → mint untitled (an old-client-compatible create).
+  final String? conversationTitle;
+
+  const TurnRequest({
+    required this.text,
+    this.parentMessageId,
+    this.chart,
+    this.conversationTitle,
+  });
 }
 
 /// One normalized event from a generation stream.
@@ -143,6 +154,16 @@ abstract interface class TurnTransport {
   /// client stream alone is not enough — you keep paying (../ai tier-1 notes
   /// § Client notes).
   Future<void> cancel();
+
+  /// Append subsequent turns to an existing server conversation [id] (Resume,
+  /// adityas/ai/86). Replaces the cached conversation and clears the turn
+  /// cursor, so the next [start] posts to the resumed thread rather than
+  /// minting a fresh one.
+  void adoptConversation(String id);
+
+  /// Forget the cached conversation so the next [start] mints a fresh one (New
+  /// Chat, and the user-change reset in main.dart). Does not touch the server.
+  void resetConversation();
 }
 
 /// The transport [chatTurnProvider] consumes.

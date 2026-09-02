@@ -8,6 +8,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../astro/being_uncertainty.dart';
 import '../navigate.dart' if (dart.library.js_interop) '../navigate_web.dart';
+import '../state/chat_open_request.dart';
 import '../state/chat_turn.dart';
 import '../state/overlay.dart';
 import 'aditya_data.dart';
@@ -244,6 +245,13 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
     // pop/drag/resize rebuilds the wheel (LayoutBuilder is a nested closure, so
     // the watch stays here, not inside it).
     final overlay = ref.watch(overlayControllerProvider);
+
+    // Resume (adityas/ai/86) fires this from the app-bar account menu, which
+    // can't reach this widget's LayoutMode directly. A bump switches us into
+    // conversation mode so the resumed transcript is on screen.
+    ref.listen(chatOpenRequestProvider, (_, _) {
+      _setMode(LayoutMode.conversation);
+    });
 
     return LayoutBuilder(
       builder: (context, constraints) {

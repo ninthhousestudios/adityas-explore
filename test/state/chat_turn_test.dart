@@ -50,6 +50,21 @@ class _FakeTransport implements TurnTransport {
     cancels++;
   }
 
+  int adopts = 0;
+  int resets = 0;
+  String? lastAdoptedId;
+
+  @override
+  void adoptConversation(String id) {
+    adopts++;
+    lastAdoptedId = id;
+  }
+
+  @override
+  void resetConversation() {
+    resets++;
+  }
+
   void emit(TurnEvent event) => _current.add(event);
 
   /// Premature close: the stream ends without a terminal event (broken stream).
@@ -70,6 +85,12 @@ class _ThrowingTransport implements TurnTransport {
 
   @override
   Future<void> cancel() async {}
+
+  @override
+  void adoptConversation(String id) {}
+
+  @override
+  void resetConversation() {}
 }
 
 /// An advanceable [Clock] for deterministic expiry timing.

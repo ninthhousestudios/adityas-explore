@@ -76,12 +76,16 @@ class SseTurnTransport implements TurnTransport {
   @override
   Stream<TurnEvent> start(TurnRequest request) async* {
     final token = await _requireToken();
-    final conversationId = await _ensureConversation(token);
+    final conversationId = await _ensureConversation(
+      token,
+      title: request.conversationTitle,
+    );
     final turnId = await _createTurn(
       token,
       conversationId,
       request.text,
       request.chart,
+      request.conversationTitle,
     );
     _turnId = turnId;
     yield* _stream(token, turnId, lastEventId: null);
@@ -105,11 +109,21 @@ class SseTurnTransport implements TurnTransport {
     // stays accurate even though the generation is not stopped early.
   }
 
-  /// Reset the cached conversation (call on a user change). The next [start]
-  /// mints a fresh durable conversation for the new user, so a turn never lands
-  /// in a conversation the current token does not own.
+  /// Reset the cached conversation (call on a user change, or New Chat). The
+  /// next [start] mints a fresh durable conversation for the new user, so a turn
+  /// never lands in a conversation the current token does not own.
+  @override
   void resetConversation() {
     _conversationId = null;
+    _turnId = null;
+  }
+
+  /// Adopt an existing server conversation (Resume, adityas/ai/86): subsequent
+  /// turns append to [id] rather than a freshly-minted thread. Clears the turn
+  /// cursor so a stale [resume] can't target the previous conversation's turn.
+  @override
+  void adoptConversation(String id) {
+    _conversationId = id;
     _turnId = null;
   }
 
@@ -119,13 +133,17 @@ class SseTurnTransport implements TurnTransport {
     return token;
   }
 
-  /// The durable conversation, minted on first use and cached thereafter.
-  Future<String> _ensureConversation(String token) async {
+  /// The durable conversation, minted on first use and cached thereafter. When
+  /// this call mints it, [title] (the client-composed `{chart · date}` label)
+  /// rides in the create body; the backend accepts an optional title there. A
+  /// cached conversation ignores it — a title is a creation-time snapshot.
+  Future<String> _ensureConversation(String token, {String? title}) async {
     final cached = _conversationId;
     if (cached != null) return cached;
     final response = await _http.post(
       Uri.parse('$_baseUrl/v1/ai/conversations'),
       headers: _jsonHeaders(token),
+      body: title == null ? null : jsonEncode({'title': title}),
     );
     if (response.statusCode != 201) {
       throw TurnTransportException(_httpError(response));
@@ -144,11 +162,12 @@ class SseTurnTransport implements TurnTransport {
     String conversationId,
     String message,
     ChartData? chart,
+    String? title,
   ) async {
     final response = await _postTurn(token, conversationId, message, chart);
     if (response.statusCode == 404) {
       _conversationId = null;
-      final fresh = await _ensureConversation(token);
+      final fresh = await _ensureConversation(token, title: title);
       return _turnIdFrom(await _postTurn(token, fresh, message, chart));
     }
     return _turnIdFrom(response);
