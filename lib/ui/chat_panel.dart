@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../ai/chat_access.dart';
 import '../state/chat_turn.dart';
 import '../state/conversation.dart';
+import 'chat_coming_soon.dart';
+import 'chat_composer.dart';
 import 'message_markdown.dart';
 import 'tokens.dart';
 
@@ -44,7 +46,6 @@ class ChatPanel extends ConsumerStatefulWidget {
 }
 
 class _ChatPanelState extends ConsumerState<ChatPanel> {
-  final _input = TextEditingController();
   final _scroll = ScrollController();
 
   /// Whether streamed tokens should keep the view pinned to the bottom. Flipped
@@ -66,18 +67,14 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
 
   @override
   void dispose() {
-    _input.dispose();
     _scroll.dispose();
     super.dispose();
   }
 
-  void _send() {
-    final text = _input.text.trim();
-    if (text.isEmpty) return;
+  void _onComposerSubmit(String text) {
     // The notifier is the single gate: it refuses a blank message, a second turn
     // while one is active, and an unavailable-entitlement send (→ TurnError).
     ref.read(chatTurnProvider.notifier).send(text);
-    _input.clear();
     _scrollToEnd(force: true);
   }
 
@@ -116,7 +113,12 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
           ),
           const SizedBox(height: 8),
           if (enabled)
-            _composer(color, dimColor, fontSize)
+            ChatComposer(
+              color: color,
+              dimColor: dimColor,
+              fontSize: fontSize,
+              onSubmit: _onComposerSubmit,
+            )
           else
             _lockedComposer(dimColor, fontSize),
         ],
@@ -327,56 +329,6 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
     );
   }
 
-  Widget _composer(Color color, Color dimColor, double fontSize) {
-    final turn = ref.watch(chatTurnProvider);
-    final active = switch (turn) {
-      TurnConnecting() || TurnStreaming() || TurnReconnecting() => true,
-      TurnIdle() || TurnDone() || TurnCancelled() || TurnError() => false,
-    };
-    final border = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(12),
-      borderSide: BorderSide(color: color.withValues(alpha: 0.3)),
-    );
-    return Row(
-      children: [
-        Expanded(
-          child: TextField(
-            controller: _input,
-            onSubmitted: (_) => _send(),
-            minLines: 1,
-            maxLines: 4,
-            textInputAction: TextInputAction.send,
-            style: TextStyle(color: color, fontSize: fontSize),
-            cursorColor: color,
-            decoration: InputDecoration(
-              isDense: true,
-              hintText: 'Hold something up to the Prism…',
-              hintStyle: TextStyle(color: dimColor, fontSize: fontSize),
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 10,
-              ),
-              border: border,
-              enabledBorder: border,
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: color.withValues(alpha: 0.5)),
-              ),
-            ),
-          ),
-        ),
-        IconButton(
-          onPressed: active ? null : _send,
-          icon: Icon(
-            Icons.send,
-            size: fontSize * 1.2,
-            color: active ? dimColor : color,
-          ),
-        ),
-      ],
-    );
-  }
-
   // ── Placeholder (not allowlisted) ────────────────────────────────
 
   Widget _placeholder(Color color, Color dimColor, double fontSize) {
@@ -402,14 +354,12 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
           ),
         ),
         const SizedBox(height: 8),
-        Text(
-          'Contemplative AI chat coming soon…',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: dimColor,
-            fontSize: fontSize * 0.85,
-            fontStyle: FontStyle.italic,
-          ),
+        // Same copy, one source — mirrors the explore-pill coming-soon modal so
+        // the two gated routes never drift (docs/chat-surface.md § 3).
+        ChatComingSoonMessage(
+          color: color,
+          dimColor: dimColor,
+          fontSize: fontSize,
         ),
       ],
     );

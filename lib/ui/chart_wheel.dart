@@ -8,12 +8,14 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../astro/being_uncertainty.dart';
 import '../navigate.dart' if (dart.library.js_interop) '../navigate_web.dart';
+import '../state/chat_turn.dart';
 import '../state/overlay.dart';
 import 'aditya_data.dart';
 import 'being_overlay.dart';
 import 'being_type_detail_overlay.dart';
 import 'beings_panel.dart';
 import 'chat_panel.dart';
+import 'chat_pill.dart';
 import 'overlay_shell.dart';
 import 'being_content.dart';
 import 'being_type_content.dart';
@@ -72,6 +74,13 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
   /// mode switch choreographs the chart resize/recenter and panel reflow.
   LayoutMode _prevMode = LayoutMode.explore;
   late final AnimationController _modeAnim;
+
+  /// User-chosen width of the docked chat column, set by dragging its left-edge
+  /// handle in conversation mode. `null` = the default (min) width. Session-only
+  /// — deliberately not persisted (docs/chat-surface.md § 2). Read back through
+  /// [_effectiveChatWidth], which re-clamps it to the current viewport each
+  /// build, so a resize can't strand it.
+  double? _chatWidth;
 
   /// Captured in [initState] so [dispose] can reset the overlay without reading
   /// `ref` during teardown (unsafe once the element is deactivated — Riverpod
@@ -290,6 +299,7 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
         // the mode (they only show in explore); the chart is what reflows.
         final panelWidth = panelMargin - 16;
         final panelFontSize = (side / 2) * 0.032;
+        final popupAreaW = _popupAreaWidth(w, side);
         final chartWheel = _buildWheel(g.chartSide, tokens);
         return SizedBox(
           width: w,
@@ -348,6 +358,69 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
                     ),
                   ),
                 ),
+              // Left-edge drag handle to resize the docked chat column. Only in
+              // conversation mode, and only once settled (chatOpacity fully in)
+              // so the transition animation isn't fought. Dragging left grows
+              // `_chatWidth`; the chart shifts + shrinks via `_geometryFor`.
+              // See docs/chat-surface.md § 2.
+              if (_layout.mode == LayoutMode.conversation &&
+                  g.chatOpacity > 0.99)
+                Positioned(
+                  left: g.chatLeft - 5,
+                  top: g.chatTop,
+                  width: 10,
+                  height: g.chatHeight,
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.resizeLeftRight,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.translucent,
+                      onHorizontalDragUpdate: (d) {
+                        setState(() {
+                          final minW = _chatColumnWidth(w);
+                          final maxW = _maxChatWidth(w, side);
+                          final current = _effectiveChatWidth(w, side);
+                          _chatWidth = (current - d.delta.dx).clamp(minW, maxW);
+                        });
+                      },
+                      child: Center(
+                        child: Container(
+                          width: 4,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            color: color.withValues(alpha: 0.3),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              // Explore-mode chat entrance: a composer-only pill docked
+              // bottom-right below the beings/CTA column. Fades with the panels
+              // (visible in explore, hidden in focus + conversation). Submitting
+              // ramps into conversation mode and sends. See docs/chat-surface.md.
+              if (g.panelsOpacity > 0.01)
+                Positioned(
+                  right: 8,
+                  bottom: 24,
+                  width: panelWidth,
+                  child: IgnorePointer(
+                    ignoring: g.panelsOpacity < 0.99,
+                    child: Opacity(
+                      opacity: g.panelsOpacity,
+                      child: ChatPill(
+                        color: color,
+                        dimColor: color.withValues(alpha: 0.6),
+                        backdropColor: backdropColor,
+                        fontSize: panelFontSize,
+                        onSubmit: (text) {
+                          _setMode(LayoutMode.conversation);
+                          ref.read(chatTurnProvider.notifier).send(text);
+                        },
+                      ),
+                    ),
+                  ),
+                ),
               // Bottom-left settings gear: tucks the (currently dev-facing)
               // panel-visibility and layout-mode controls behind a single
               // affordance — Panels (show/hide each persistent panel) and Mode
@@ -372,13 +445,13 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
                   overlay,
                   color,
                   floating: FloatingConfig(
-                    rect: overlayWindowRect(overlay.rect, w, side),
+                    rect: overlayWindowRect(overlay.rect, popupAreaW, side),
                     onDrag: (d) => ref
                         .read(overlayControllerProvider.notifier)
-                        .drag(d, w, side),
+                        .drag(d, popupAreaW, side),
                     onResize: (d) => ref
                         .read(overlayControllerProvider.notifier)
-                        .resize(d, w, side),
+                        .resize(d, popupAreaW, side),
                   ),
                 ),
             ],
@@ -444,7 +517,7 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
           chatOpacity: 0,
         );
       case LayoutMode.conversation:
-        final chatW = _chatColumnWidth(w);
+        final chatW = _effectiveChatWidth(w, boxH);
         const gap = 16.0;
         final leftRegion = w - chatW - gap;
         final s = min(leftRegion, boxH);
@@ -463,7 +536,33 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
   }
 
   /// Docked chat-column width: ~30% of the viewport, clamped to a readable band.
+  /// This is also the resize *floor* (docs/chat-surface.md § 2).
   double _chatColumnWidth(double w) => (w * 0.3).clamp(300.0, 460.0);
+
+  /// Resize ceiling: the width at which the chart hits its floor — 60% of its
+  /// explore size (`min(w, boxH)`). Clamped so it never drops below the floor.
+  double _maxChatWidth(double w, double boxH) {
+    const gap = 16.0;
+    final chartFloor = 0.6 * min(w, boxH);
+    return max(_chatColumnWidth(w), w - gap - chartFloor);
+  }
+
+  /// The docked chat-column width in effect: the user's [_chatWidth] (or the
+  /// floor when unset), re-clamped to `[min, max]` for the current viewport.
+  double _effectiveChatWidth(double w, double boxH) {
+    final minW = _chatColumnWidth(w);
+    return (_chatWidth ?? minW).clamp(minW, _maxChatWidth(w, boxH));
+  }
+
+  /// The area transient popups spawn and clamp within. In conversation mode
+  /// that is the `leftRegion` (the chart side) — right edge at `chatLeft − gap`
+  /// — so a popup can't slide under the chat column; other modes keep the full
+  /// width (docs/chat-surface.md § 4).
+  double _popupAreaWidth(double w, double boxH) {
+    if (_layout.mode != LayoutMode.conversation) return w;
+    const gap = 16.0;
+    return w - _effectiveChatWidth(w, boxH) - gap;
+  }
 
   /// Visible persistent panels assigned to [dock], in enum order.
   List<PanelId> _dockedPanels(PanelDock dock) => [
