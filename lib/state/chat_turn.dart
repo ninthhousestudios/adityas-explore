@@ -2,11 +2,13 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../ui/being_slug.dart';
 import 'active_chart.dart';
 import 'clock.dart';
 import 'conversation.dart';
 import 'delta_throttle.dart';
 import 'entitlement.dart';
+import 'overlay.dart';
 import 'turn_transport.dart';
 
 /// The reactive core of the chat feature: the [ChatTurn] sealed state machine
@@ -261,17 +263,24 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
           _fail(message);
         }
         return;
-      case ToolStartEvent():
+      case ToolStartEvent(:final tool, :final args):
+        // The `show_being` seam: a `get_being` call names a being by slug —
+        // resolve it to a BeingRef and open the popup with no BuildContext
+        // (docs/chat-state-architecture.md § Overlay ripple). Only get_being
+        // navigates; the other knowledge tools (search/structural_rules/
+        // fetch_source) are ignored. An unresolvable slug degrades to a no-op.
+        if (tool == 'get_being') {
+          final slug = args?['slug'];
+          if (slug is String) {
+            final being = resolveBeingSlug(slug);
+            if (being != null) {
+              ref.read(overlayControllerProvider.notifier).showBeing(being);
+            }
+          }
+        }
       case ToolEndEvent():
-        // This is the `show_being` dispatch point. The seam exists —
-        // `ref.read(overlayControllerProvider.notifier).showBeing(being)` opens
-        // a being popup with no BuildContext (docs/chat-state-architecture.md
-        // § Overlay ripple) — but it can't be driven yet: ToolEndEvent carries
-        // only the tool *name*, not its arguments, so there is no being to
-        // resolve. Wiring it needs the transport to carry tool args (the
-        // sibling SSE task) and the chat PRD to fix the being identifier's
-        // shape. Until then the event is a no-op; the cursor was already
-        // advanced, so a resume skips past it.
+        // No state-layer effect: the being opened on tool_start. The cursor was
+        // already advanced, so a resume skips past it.
         break;
       case CitationEvent():
       case UnknownEvent():

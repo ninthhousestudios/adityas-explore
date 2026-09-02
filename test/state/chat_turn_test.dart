@@ -11,7 +11,9 @@ import 'package:explore/state/clock.dart';
 import 'package:explore/state/conversation.dart';
 import 'package:explore/state/delta_throttle.dart';
 import 'package:explore/state/entitlement.dart';
+import 'package:explore/state/overlay.dart';
 import 'package:explore/state/turn_transport.dart';
+import 'package:explore/ui/popup_state.dart';
 
 /// A [TurnTransport] driven by the test: each `start`/`resume` hands back a
 /// controller the test emits scripted events on, at the moment it chooses.
@@ -274,6 +276,48 @@ void main() {
       expect(streaming.cursor, 'e5');
     },
   );
+
+  test('a get_being tool call opens the being overlay (show_being)', () async {
+    final transport = _FakeTransport();
+    final container = _container(transport);
+
+    container.read(chatTurnProvider.notifier).send('who is my sun?');
+    transport
+      ..emit(const DeltaEvent('Looking… ', 'e1'))
+      ..emit(
+        const ToolStartEvent('get_being', 'e2', args: {'slug': 'varuna-rishi'}),
+      )
+      ..emit(const DeltaEvent('here.', 'e3'));
+    await _pump();
+
+    final overlay = container.read(overlayControllerProvider);
+    expect(overlay.top, isA<BeingFromName>());
+    final being = (overlay.top! as BeingFromName).being;
+    expect(being.sign, 4); // varuna
+    expect(being.type, 'rishi');
+    // The tool event drives the popup but is inert to the text buffer.
+    expect(
+      (container.read(chatTurnProvider) as TurnStreaming).text,
+      'Looking… here.',
+    );
+  });
+
+  test('a non-navigating tool call opens no overlay', () async {
+    final transport = _FakeTransport();
+    final container = _container(transport);
+
+    container.read(chatTurnProvider.notifier).send('search the corpus');
+    transport
+      ..emit(const ToolStartEvent('search', 'e1', args: {'query': 'love'}))
+      ..emit(
+        const ToolStartEvent('get_being', 'e2', args: {'slug': 'nope-xyz'}),
+      )
+      ..emit(const DeltaEvent('done', 'e3'));
+    await _pump();
+
+    // search never navigates; the unresolvable get_being slug degrades to no-op.
+    expect(container.read(overlayControllerProvider).isEmpty, isTrue);
+  });
 
   test('entitlement expiry mid-turn ends the turn in error', () async {
     final transport = _FakeTransport();

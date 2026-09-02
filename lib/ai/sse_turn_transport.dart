@@ -233,6 +233,17 @@ TurnEvent decodeTurnFrame(SseFrame frame) {
       return ErrorEvent(_stringField(frame.data, 'message'), id);
     case 'done':
       return DoneEvent(id);
+    case 'tool_start':
+      // `{name, args}` — args is the tool's own JSON object (e.g. get_being's
+      // `{slug}`), passed through for the notifier's show_being dispatch.
+      return ToolStartEvent(
+        _stringField(frame.data, 'name'),
+        id,
+        args: _objectField(frame.data, 'args'),
+      );
+    case 'tool_end':
+      // `{name}` only — the args ride on tool_start.
+      return ToolEndEvent(_stringField(frame.data, 'name'), id);
     default:
       return UnknownEvent(frame.event, id);
   }
@@ -260,6 +271,13 @@ Map<String, dynamic> _decodeObject(String data) {
 
 String _stringField(String data, String key) =>
     _decodeObject(data)[key]?.toString() ?? '';
+
+/// A nested JSON object field (e.g. a tool call's `args`), or null when absent
+/// or not an object.
+Map<String, Object?>? _objectField(String data, String key) {
+  final value = _decodeObject(data)[key];
+  return value is Map<String, Object?> ? value : null;
+}
 
 int _intField(Map<String, dynamic> map, String key) {
   final value = map[key];

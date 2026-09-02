@@ -1012,6 +1012,20 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
     VoidCallback? onBack,
     FloatingConfig? floating,
   }) {
+    // A being opened from chat (show_being) arrives name-empty — the display
+    // name is async content the resolver can't reach. Fill it here from the
+    // loaded content map, keyed by (sign, type); rebuilds once content lands.
+    if (being != null && being.name.isEmpty) {
+      final resolved = _beingContent?[(being.sign, being.type)]?.name;
+      if (resolved != null && resolved.isNotEmpty) {
+        being = (
+          name: resolved,
+          type: being.type,
+          planet: being.planet,
+          sign: being.sign,
+        );
+      }
+    }
     final header = beingOverlayHeader(
       color: color,
       planet: planet,

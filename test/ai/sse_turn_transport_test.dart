@@ -77,6 +77,32 @@ void main() {
       );
     });
 
+    test('tool_start carries the tool name and its args (the being slug)', () {
+      final event = decodeTurnFrame(
+        const SseFrame(
+          'tool_start',
+          '{"name":"get_being","args":{"slug":"varuna-rishi"}}',
+          '11',
+        ),
+      );
+      expect(
+        event,
+        isA<ToolStartEvent>()
+            .having((e) => e.tool, 'tool', 'get_being')
+            .having((e) => e.args?['slug'], 'slug', 'varuna-rishi')
+            .having((e) => e.eventId, 'eventId', '11'),
+      );
+    });
+
+    test('tool_end carries the tool name (no args)', () {
+      expect(
+        decodeTurnFrame(
+          const SseFrame('tool_end', '{"name":"get_being"}', '12'),
+        ),
+        isA<ToolEndEvent>().having((e) => e.tool, 'tool', 'get_being'),
+      );
+    });
+
     test(
       'an unrecognized event becomes UnknownEvent (ignored, cursor kept)',
       () {
