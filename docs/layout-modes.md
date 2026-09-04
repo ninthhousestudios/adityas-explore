@@ -105,7 +105,82 @@ is animatable state.
 
 ## Mobile
 
-Unchanged by this work. Mobile stays a carousel: chart on one page, chat on
-another. The main mobile design task is signalling that a chat exists. Modes are
-a desktop concern; the `panelMargin < 80` branch in `build` continues to drive
-the mobile path.
+Modes (the dock/lerp machinery above) are a **desktop** concern — the
+`panelMargin < 80` branch in `build` continues to select the mobile path, and
+mobile does not use `LayoutMode`, gutters, or the resizable docked column.
+Instead mobile is **two full-screen pages** with a labelled switcher.
+
+Design + build: adityas/ai/95.
+
+### Layout: two pages + a labelled segmented control
+
+- **`Explore` page** — today's mobile view, unchanged: centered wheel +
+  `MobileChartButtons` (Soul Stances / Your Beings). Those buttons are part of
+  Explore and appear only here.
+- **`Solar Prism` page** — full-screen `ChatPanel` (§ below).
+- A **persistent segmented control** (`Explore | Solar Prism`) pinned at the
+  **bottom** (thumb zone, one-handed), sitting **below** the Soul Stances / Your
+  Beings row on the Explore page. This is the switcher and the discoverability
+  contract — a bare swipe carousel was rejected because the affordance is
+  invisible; the *labels* are what tell the user a chat exists.
+- Back the pages with a `PageView` so **swipe** also works — a bonus on top of
+  the tappable labels, not the primary affordance.
+- Both pages stay **mounted** (IndexedStack / the keepAlive providers) so
+  switching never rebuilds the wheel or drops in-flight chat state.
+- **No composer on the Explore page** — the labelled tab carries the signal; an
+  inline composer over the wheel would just be clutter.
+
+### The chat page reuses the desktop surface
+
+`ChatPanel` is the shared surface — desktop docks it in a resizable right column
+(chat-surface.md § 1–2), mobile presents the same widget full-screen. The
+composer (`ChatComposer`), gating (`chatEnabledProvider`), the coming-soon copy,
+and the `conversationProvider` / `chatTurnProvider` keepAlive state are all
+reused untouched. Mobile-specific code is only (1) the segmented-control entry
+affordance and (2) the full-screen keyboard/safe-area container. No re-authoring
+of the chat.
+
+### Gating (non-entitled): inline placeholder page, not a modal
+
+Activating `Solar Prism` always shows the full-screen chat page. A non-entitled
+user sees `ChatComingSoonMessage` rendered **inline as the page body** — the tab
+activates and you land on a "coming soon" page. This is deliberately *not* the
+desktop pill's centered modal: on mobile the entry is a tab, and a modal-on-tap
+would leave the tab visually inactive (reads as a bounce). Same copy, one source
+(`ChatComingSoon`) as the desktop pill modal and panel placeholder — the
+container differs, the message does not.
+
+### `show_being` and tool-call overlays stay in Explore
+
+Being / planet / being-type overlays belong to the **Explore** page — their
+existing home over the chart (`_buildOverlay` inside the mobile branch). When the
+model calls `show_being` from chat, the overlay opens **there**, and the app does
+**not** switch pages.
+
+The model's narration ("I opened Bhaga for you") is the affordance: the user
+reads the context in the conversation first, then swipes/taps to Explore to find
+the being open and waiting. Text-first — the user has context *before* the
+reveal. Surfacing the being over the chat instead was rejected: a modal would
+cover the streaming reply that explains it. Because overlays are the transient
+(user-dismissable, not time-limited) layer, the being persists on Explore, so
+"look whenever" always works. This also keeps the overlay where it renders
+today — no hoisting it above the page container.
+
+### Keyboard + safe area (Flutter web on mobile is the risk)
+
+- The chat page is a `Scaffold`-backed, scroll-aware container
+  (`resizeToAvoidBottomInset`), composer pinned above the keyboard, respecting
+  device safe-area insets. On the chat page with the keyboard up, the composer
+  owns the above-keyboard slot; the segmented control yields while typing.
+- **Test on an iOS simulator / Safari early.** Flutter *web* has historically
+  reported `viewInsets.bottom` for the soft keyboard unreliably — "input pinned
+  above the keyboard" is not automatic the way `Scaffold` gives it on native.
+  Plus the `100vh` / dynamic-viewport (mobile URL-bar resize) trap. This is the
+  single riskiest piece; validate it before building polish around it.
+- PWA install / installability stays with adityas/ai/29 — out of scope here.
+
+### Threshold
+
+Keep the binary `panelMargin < 80` (or empty-chart) switch as the mobile/desktop
+selector. The mid-width band (large-phone landscape, small tablet) is not
+specially handled — not worth the complexity now.

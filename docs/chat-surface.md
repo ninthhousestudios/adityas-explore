@@ -7,7 +7,8 @@ presents to users who can't (yet) use it. Companion to
 and [`chart-wheel.md`](chart-wheel.md).
 
 Design task: adityas/ai/80. Build task: adityas/ai/81. Desktop only — mobile is a
-separate carousel concern (see layout-modes.md § Mobile).
+separate concern (two full-screen pages + a labelled `Explore | Solar Prism`
+switcher; see layout-modes.md § Mobile and adityas/ai/95).
 
 ## What already exists
 
@@ -130,7 +131,7 @@ width.
 
 ## Out of scope / unchanged
 
-- Mobile (carousel; separate task).
+- Mobile (two full-screen pages + labelled switcher; layout-modes.md § Mobile).
 - Persisting chat width or custom layouts.
 - The keepAlive provider architecture for conversation/turn state — reuse as-is.
 - Focus mode hides the pill along with the other panels (clean read).
