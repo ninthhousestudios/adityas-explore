@@ -487,6 +487,12 @@ class _ExplorePage extends StatelessWidget {
     final fgColor = Theme.of(context).appBarTheme.foregroundColor;
 
     final content = Scaffold(
+      // On mobile web the browser already shrinks its (visual) viewport to sit
+      // above the soft keyboard; letting the Scaffold also subtract
+      // MediaQuery.viewInsets.bottom double-counts the keyboard, stranding the
+      // chat composer well above it. Defer to the browser on web; keep the
+      // native inset handling everywhere else.
+      resizeToAvoidBottomInset: !kIsWeb,
       appBar: AppBar(
         leading: Padding(
           padding: const EdgeInsets.only(left: 4),
