@@ -23,6 +23,7 @@ import 'being_type_content.dart';
 import 'chart_wheel_layout.dart';
 import 'chart_wheel_painter.dart';
 import 'layout_state.dart';
+import 'mobile_explore_shell.dart';
 import 'planet_content.dart';
 import 'planet_detail_overlay.dart';
 import 'popup_state.dart';
@@ -31,6 +32,11 @@ import 'mobile_chart_buttons.dart';
 import 'tokens.dart';
 import 'uncertainty_chooser.dart';
 import 'waitlist_cta.dart';
+
+/// Vertical space the mobile bottom segmented control (+ its padding and the
+/// device safe area) claims, subtracted from the wheel's height budget so it
+/// can't overflow the Explore page region. See [MobileExploreShell].
+const double _mobileControlReserve = 120;
 
 extension CapitalizeString on String {
   String toCapitalized() =>
@@ -283,10 +289,22 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
         final isMobile = !hasPlanets || panelMargin < 80;
 
         if (isMobile) {
-          // Explore-size wheel; `_buildWheel` also populates `_planets`, which
-          // the mobile buttons below read.
-          final wheel = _buildWheel(side, tokens);
-          return Stack(
+          // Two full-screen pages (Explore + Solar Prism chat) with a bottom
+          // segmented control — see MobileExploreShell / docs/layout-modes.md
+          // § Mobile. Reserve room for that control so the wheel never overflows
+          // the Explore page region. `_buildWheel` also populates `_planets`,
+          // which the mobile buttons and overlay below read (it must run eagerly,
+          // before the children list is constructed).
+          final wheelSide = min(
+            constraints.maxWidth,
+            constraints.maxHeight - _mobileControlReserve,
+          );
+          final wheel = _buildWheel(wheelSide, tokens);
+
+          // The Explore page keeps its home for the being/planet overlays: when
+          // chat calls show_being, the overlay opens here and we do NOT switch
+          // pages (the model's narration is the affordance; user swipes over).
+          final explorePage = Stack(
             children: [
               Center(child: wheel),
               if (_planets.isNotEmpty && overlay.isEmpty)
@@ -303,6 +321,26 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
                 ),
               if (overlay.isNotEmpty) _buildOverlay(overlay, color),
             ],
+          );
+
+          // Full-screen reuse of the desktop chat surface — same composer,
+          // gating (chatEnabledProvider → inline ChatComingSoonMessage), and
+          // keepAlive conversation/turn providers, no re-authoring.
+          final chatPage = Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+            child: ChatPanel(
+              color: color,
+              backdropColor: backdropColor,
+              fontSize: 15,
+              chartData: widget.chartData,
+            ),
+          );
+
+          return MobileExploreShell(
+            explorePage: explorePage,
+            chatPage: chatPage,
+            color: color,
+            backdropColor: backdropColor,
           );
         }
 
