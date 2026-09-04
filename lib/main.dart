@@ -487,6 +487,13 @@ class _ExplorePage extends StatelessWidget {
     final fgColor = Theme.of(context).appBarTheme.foregroundColor;
 
     final content = Scaffold(
+      // On mobile web the browser overlays the soft keyboard over a full-height
+      // Flutter canvas and reports an unreliable viewInsets.bottom, so the
+      // chart/chat view handles the keyboard itself (visualViewport inset in
+      // MobileExploreShell) and we disable the Scaffold's own inset handling to
+      // avoid double-counting. The birth-form/loading screens keep the standard
+      // resize, and native/desktop are unaffected.
+      resizeToAvoidBottomInset: !(kIsWeb && chart != null),
       appBar: AppBar(
         leading: Padding(
           padding: const EdgeInsets.only(left: 4),

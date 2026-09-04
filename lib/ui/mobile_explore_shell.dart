@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../keyboard_inset.dart'
+    if (dart.library.js_interop) '../keyboard_inset_web.dart';
 import 'tokens.dart';
 
 /// The mobile two-page surface (adityas/ai/108): a swipeable [PageView] of the
@@ -52,36 +54,52 @@ class _MobileExploreShellState extends State<MobileExploreShell> {
 
   @override
   Widget build(BuildContext context) {
-    // Soft keyboard up → the composer owns the above-keyboard slot; the
-    // segmented control yields while typing (docs/layout-modes.md § Mobile).
-    final keyboardUp = MediaQuery.viewInsetsOf(context).bottom > 0;
+    // [keyboardInsetBuilder] reports the soft-keyboard overlap: 0 on native
+    // (the Scaffold resizes there), the measured visualViewport overlap on web
+    // (where Scaffold resize is disabled — see main.dart). We lift the chat
+    // page's composer above the keyboard with that inset, and while it's up the
+    // composer owns the slot so the segmented control yields (docs/layout-modes
+    // .md § Mobile).
+    return keyboardInsetBuilder(
+      builder: (context, kbInset) {
+        final keyboardUp =
+            kbInset > 0 || MediaQuery.viewInsetsOf(context).bottom > 0;
 
-    return Column(
-      children: [
-        Expanded(
-          child: PageView(
-            controller: _controller,
-            onPageChanged: (p) => setState(() => _page = p),
-            children: [
-              _KeepAlive(child: widget.explorePage),
-              _KeepAlive(child: widget.chatPage),
-            ],
-          ),
-        ),
-        if (!keyboardUp)
-          SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-              child: _PageSwitcher(
-                page: _page,
-                color: widget.color,
-                backdropColor: widget.backdropColor,
-                onSelect: _goTo,
+        return Column(
+          children: [
+            Expanded(
+              child: PageView(
+                controller: _controller,
+                onPageChanged: (p) => setState(() => _page = p),
+                children: [
+                  _KeepAlive(child: widget.explorePage),
+                  // Only the chat page hosts a text field, so only it takes the
+                  // keyboard inset (the wheel page never raises the keyboard).
+                  _KeepAlive(
+                    child: Padding(
+                      padding: EdgeInsets.only(bottom: kbInset),
+                      child: widget.chatPage,
+                    ),
+                  ),
+                ],
               ),
             ),
-          ),
-      ],
+            if (!keyboardUp)
+              SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                  child: _PageSwitcher(
+                    page: _page,
+                    color: widget.color,
+                    backdropColor: widget.backdropColor,
+                    onSelect: _goTo,
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }
