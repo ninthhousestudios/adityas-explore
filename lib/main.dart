@@ -3,7 +3,8 @@ import 'dart:developer' as dev;
 
 import 'package:arrow_core/arrow_core.dart' as arrow;
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -331,9 +332,19 @@ class _ExploreAppState extends ConsumerState<ExploreApp> {
 
   Future<void> _openChart() async {
     try {
+      // On iOS/Android the document picker filters by UTI / MIME type, and our
+      // extensions (toml/chtk/jhd) aren't system-declared types — `FileType.custom`
+      // makes those files render greyed-out / non-selectable (tap does nothing).
+      // So on mobile we open with `FileType.any` and let `ChartReader` reject a
+      // non-chart file by extension. Desktop + web keep the extension filter,
+      // where it works and pre-narrows the dialog.
+      final mobile =
+          !kIsWeb &&
+          (defaultTargetPlatform == TargetPlatform.iOS ||
+              defaultTargetPlatform == TargetPlatform.android);
       final file = await FilePicker.pickFile(
-        type: FileType.custom,
-        allowedExtensions: ['toml', 'chtk', 'jhd'],
+        type: mobile ? FileType.any : FileType.custom,
+        allowedExtensions: mobile ? null : ['toml', 'chtk', 'jhd'],
       );
       if (file == null) return;
 
