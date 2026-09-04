@@ -2,9 +2,7 @@ import 'dart:async';
 import 'dart:developer' as dev;
 
 import 'package:arrow_core/arrow_core.dart' as arrow;
-import 'package:file_picker/file_picker.dart';
-import 'package:flutter/foundation.dart'
-    show defaultTargetPlatform, kIsWeb, TargetPlatform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -20,6 +18,7 @@ import 'astro/chart_calculator.dart';
 import 'astro/ephemeris_service.dart';
 import 'astro/swe.dart';
 import 'package:charts_dart/charts_dart.dart';
+import 'chart_open.dart' if (dart.library.js_interop) 'chart_open_web.dart';
 import 'chart_reader.dart';
 import 'ui/asset_preloader.dart';
 import 'ui/birth_form.dart';
@@ -332,26 +331,15 @@ class _ExploreAppState extends ConsumerState<ExploreApp> {
 
   Future<void> _openChart() async {
     try {
-      // On iOS/Android the document picker filters by UTI / MIME type, and our
-      // extensions (toml/chtk/jhd) aren't system-declared types — `FileType.custom`
-      // makes those files render greyed-out / non-selectable (tap does nothing).
-      // So on mobile we open with `FileType.any` and let `ChartReader` reject a
-      // non-chart file by extension. Desktop + web keep the extension filter,
-      // where it works and pre-narrows the dialog.
-      final mobile =
-          !kIsWeb &&
-          (defaultTargetPlatform == TargetPlatform.iOS ||
-              defaultTargetPlatform == TargetPlatform.android);
-      final file = await FilePicker.pickFile(
-        type: mobile ? FileType.any : FileType.custom,
-        allowedExtensions: mobile ? null : ['toml', 'chtk', 'jhd'],
-      );
-      if (file == null) return;
+      // Platform-aware pick (chart_open[_web].dart): desktop filters by
+      // extension, native mobile falls back to FileType.any (our extensions
+      // aren't system UTIs), and web hand-rolls the input so iOS Safari actually
+      // returns the tapped file.
+      final picked = await pickChartFile();
+      if (picked == null) return;
 
-      final bytes = await file.readAsBytes();
-
-      final chartData = ChartReader.read(file.name, bytes);
-      debugPrint('Loaded chart: ${chartData.name} (${file.name})');
+      final chartData = ChartReader.read(picked.name, picked.bytes);
+      debugPrint('Loaded chart: ${chartData.name} (${picked.name})');
       debugPrint('  Date: ${chartData.dateTime}');
       debugPrint('  UTC: ${chartData.utcDateTime}');
       debugPrint('  Location: ${chartData.birthLocation}');
