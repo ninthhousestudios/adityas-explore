@@ -19,29 +19,37 @@ const bool _kDebugKeyboardInset = false;
 // keys: the band shrinks in some states (e.g. iOS with no accessory row), and a
 // small gap looks fine while overlap is broken.
 //
-// Tuned on-device 2026-09-04 with the debug slider — both engines landed at 110
-// (Brave on a Pixel-class Android; iPhone 11 Pro Max simulator, iOS 26.3). Kept
-// as two named constants so they can diverge on a future retune. No real iPhone
-// available, so the WebKit value is fitted on the simulator and may need a nudge
-// on real hardware (the accessory-bar band can differ).
+// Tuned on-device 2026-09-04 with the debug slider — iPhone + Android both landed
+// at 110 (Brave on a Pixel-class Android; iPhone 11 Pro Max simulator, iOS 26.3).
+// Kept as separate named constants so each device class can diverge on retune. No
+// real iPhone available, so the WebKit (iPhone) value is fitted on the simulator
+// and may need a nudge on real hardware (the accessory-bar band can differ).
+//
+// iPad is its OWN bucket, not iPhone: its WebKit keyboard has a smaller (or no)
+// accessory-bar band and reports the visual viewport more faithfully, so the
+// iPhone 110 overshoots and drops the composer *behind* the keys. 20 landed the
+// composer just above the keys on the iPad 11"/13" simulators (no real iPad
+// available); may need a nudge on real hardware.
 //
 // RETUNE HERE when these drift: set `_kDebugKeyboardInset = true`, drag the
-// slider until the composer sits just above the keys on each engine, read the
+// slider until the composer sits just above the keys on each device, read the
 // value off the HUD, and copy it back.
 const double _kChromeCorrectionBlink = 110;
 const double _kChromeCorrectionWebKit = 110;
+const double _kChromeCorrectionIPad = 20;
 
-/// Per-engine correction for the current browser (logical px). iOS is always
-/// WebKit regardless of the browser badge; everything else we treat as Blink.
+/// Per-device correction for the current browser (logical px). iOS is always
+/// WebKit regardless of the browser badge; iPad gets its own value; everything
+/// else we treat as Blink.
 double _engineChromeCorrection() {
   final ua = web.window.navigator.userAgent.toLowerCase();
-  final isIOS =
-      ua.contains('iphone') ||
+  // iPadOS masquerades as desktop Safari ("macintosh") but exposes touch points.
+  final isIPad =
       ua.contains('ipad') ||
-      ua.contains('ipod') ||
-      // iPadOS masquerades as desktop Safari but exposes touch points.
       (ua.contains('macintosh') && web.window.navigator.maxTouchPoints > 1);
-  return isIOS ? _kChromeCorrectionWebKit : _kChromeCorrectionBlink;
+  if (isIPad) return _kChromeCorrectionIPad;
+  final isIPhone = ua.contains('iphone') || ua.contains('ipod');
+  return isIPhone ? _kChromeCorrectionWebKit : _kChromeCorrectionBlink;
 }
 
 /// Web implementation of [keyboardInsetBuilder]: measures the soft keyboard's
