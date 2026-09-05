@@ -50,17 +50,28 @@ done
 # Load Sentry upload creds (SENTRY_AUTH_TOKEN/ORG/PROJECT) if present. The file
 # `export`s them so the sentry-cli child process inherits the auth token — a
 # bare (unexported) assignment satisfies the `-n` guard below but leaves
-# sentry-cli unauthenticated. Optional: a plain deploy still works without it.
+# sentry-cli unauthenticated.
 [ -f .sentry-env ] && source .sentry-env
-if [ -n "${SENTRY_AUTH_TOKEN:-}" ]; then
+# Refuse to ship a prod build with no source-map upload. `inject` lives inside
+# this guard, so a tokenless deploy ships JS with NO debug id — every crash from
+# it is permanently un-symbolicatable, and the old code only warned then deployed
+# anyway (root cause of a minified prod crash we couldn't read). Fail loud
+# instead. Escape hatch for a deliberate non-Sentry deploy: ALLOW_NO_SENTRY=1.
+if [ -z "${SENTRY_AUTH_TOKEN:-}" ]; then
+  if [ "${ALLOW_NO_SENTRY:-}" = "1" ]; then
+    echo "warning: SENTRY_AUTH_TOKEN unset, ALLOW_NO_SENTRY=1 — deploying with UNsymbolicatable stacks" >&2
+  else
+    echo "error: SENTRY_AUTH_TOKEN unset — refusing to deploy a build whose crashes" >&2
+    echo "       can't be symbolicated. Set up .sentry-env, or pass ALLOW_NO_SENTRY=1." >&2
+    exit 1
+  fi
+else
   echo "==> uploading source maps to Sentry"
   npx --yes @sentry/cli sourcemaps inject build/web
   npx --yes @sentry/cli sourcemaps upload \
     --org "${SENTRY_ORG:?set SENTRY_ORG for source map upload}" \
     --project "${SENTRY_PROJECT:?set SENTRY_PROJECT for source map upload}" \
     build/web
-else
-  echo "warning: SENTRY_AUTH_TOKEN unset — skipping source map upload" >&2
 fi
 
 # Don't publish Dart source to the CDN; Sentry already has the maps. The Debug
