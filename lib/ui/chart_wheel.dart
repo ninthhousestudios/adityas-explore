@@ -38,6 +38,11 @@ import 'waitlist_cta.dart';
 /// can't overflow the Explore page region. See [MobileExploreShell].
 const double _mobileControlReserve = 120;
 
+/// Minimum wheel side. Below this the force-directed planet layout band
+/// collapses (see [resolvePlanetPositions]); floor the size so a transient tiny
+/// constraint never drives a degenerate wheel.
+const double _minWheelSide = 120;
+
 extension CapitalizeString on String {
   String toCapitalized() =>
       isNotEmpty ? '${this[0].toUpperCase()}${substring(1)}' : '';
@@ -295,9 +300,17 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
           // the Explore page region. `_buildWheel` also populates `_planets`,
           // which the mobile buttons and overlay below read (it must run eagerly,
           // before the children list is constructed).
-          final wheelSide = min(
-            constraints.maxWidth,
-            constraints.maxHeight - _mobileControlReserve,
+          // Floor the side: a transient tiny constraint (mobile browser-chrome
+          // resize on scroll, orientation flip, unsettled first frame) can drive
+          // `maxHeight - reserve` to a few px. `_buildWheel` -> layout math can't
+          // resolve a sub-usable wheel; keep it renderable (overflow clips) rather
+          // than feeding a degenerate size downstream.
+          final wheelSide = max(
+            _minWheelSide,
+            min(
+              constraints.maxWidth,
+              constraints.maxHeight - _mobileControlReserve,
+            ),
           );
           final wheel = _buildWheel(wheelSide, tokens);
 

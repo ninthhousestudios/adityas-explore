@@ -66,6 +66,23 @@ List<({double angle, double radiusFraction})> resolvePlanetPositions({
   final minDist = glyphSize * 0.95;
   final marginDeg = pad / (2 * pi * ((rMin + rMax) / 2)) * 360;
 
+  // Degenerate wheel: when [half] is small the fixed [pad] swamps the planet
+  // band, so rMin >= rMax (and marginDeg can exceed a sign's 30° half-width).
+  // The relaxation below clamps against these bounds; `num.clamp` throws
+  // ArgumentError when lower > upper. Bail to nominal placement (each planet at
+  // the band midpoint, its true degree) — the wheel is too small to interact
+  // with anyway. Guards prod crash on transient tiny layout constraints.
+  if (rMin >= rMax || 2 * marginDeg >= 30) {
+    const rMidFraction = (planetRingOuter + planetRingInner) / 2;
+    return [
+      for (final p in planets)
+        (
+          angle: degreeToAngle(p.sign, p.inSignDeg, ascSign),
+          radiusFraction: rMidFraction,
+        ),
+    ];
+  }
+
   // [x, y, sign, trueInSignDeg]
   final items = List.generate(planets.length, (i) {
     final p = planets[i];
