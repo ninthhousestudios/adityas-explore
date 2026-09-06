@@ -61,9 +61,20 @@ abstract interface class EntitlementClient {
   Future<Entitlement> fetchEntitlement();
 }
 
+/// Reads the coarse usage-headroom signal (adityas/ai/97) that drives the
+/// near-ceiling notice: GET `/v1/ai/usage` → `{ used_pct: 0..100 }`.
+///
+/// An interface (mirrors [EntitlementClient]) so the usage provider is driven by
+/// a scripted fake in headless tests. The percentage is a floored fraction of the
+/// window budget — the wire deliberately carries NO dollar or token figure (the
+/// no-meter invariant), and neither does this seam.
+abstract interface class UsageClient {
+  Future<int> fetchUsagePct();
+}
+
 typedef TokenProvider = Future<String?> Function({bool forceRefresh});
 
-class ChartService implements EntitlementClient {
+class ChartService implements EntitlementClient, UsageClient {
   final http.Client _client;
   final TokenProvider _tokenProvider;
 
@@ -159,6 +170,26 @@ class ChartService implements EntitlementClient {
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     return Entitlement.fromJson(data);
+  }
+
+  /// GET `/v1/ai/usage` → the caller's floored usage percentage (adityas/ai/97).
+  ///
+  /// Response shape is `{ "used_pct": <int 0..100> }` — a ratio of the window
+  /// budget, never the underlying micros/tokens. Drives the quiet near-ceiling
+  /// notice; the hard at-ceiling signal stays the 402 on `POST .../turns`.
+  @override
+  Future<int> fetchUsagePct() async {
+    final uri = Uri.parse('$apiBaseUrl/v1/ai/usage');
+    final response = await _request(
+      (headers) => _client.get(uri, headers: headers),
+    );
+
+    if (response.statusCode != 200) {
+      throw ChartApiException(_parseError(response), response.statusCode);
+    }
+
+    final data = jsonDecode(response.body) as Map<String, Object?>;
+    return data['used_pct'] as int;
   }
 
   String _parseError(http.Response response) {

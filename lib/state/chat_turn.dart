@@ -12,6 +12,7 @@ import 'delta_throttle.dart';
 import 'entitlement.dart';
 import 'overlay.dart';
 import 'turn_transport.dart';
+import 'usage.dart';
 
 /// The reactive core of the chat feature: the [ChatTurn] sealed state machine
 /// and the notifier that drives it from an injected [TurnTransport].
@@ -22,6 +23,7 @@ import 'turn_transport.dart';
 ///                        │  ├→ cancelled      (client stop → server stop; still billed)
 ///                        │  ├→ error          (terminal-with-retry; carries the cursor)
 ///                        │  ├→ access-lapsed   (window closed: clock or 403; renew prompt, no retry)
+///                        │  ├→ ceiling         (usage spent: 402; at-ceiling notice, no retry)
 ///                        │  └→ done
 /// ```
 ///
@@ -126,6 +128,27 @@ class TurnAccessLapsed extends ChatTurn {
   const TurnAccessLapsed({required this.text, required this.usage});
 }
 
+/// Usage ceiling reached — the window budget is spent (adityas/ai/100).
+///
+/// Terminal and distinct from both [TurnError] and [TurnAccessLapsed]: a **402
+/// Payment Required** from the opening `POST .../turns` is a pre-accept gate —
+/// the window's usage is exhausted, so no turn is spawned and nothing streams.
+/// The UI surfaces a calm at-ceiling notice; new turns are refused until the
+/// window resets/renews, so there is no retry [cursor] (a retry only re-hits the
+/// 402), exactly as a lapse carries none.
+///
+/// Never a dollar or token figure (the no-meter invariant): the notice is a plain
+/// "you've reached your usage limit for this period." [text]/[usage] carry
+/// whatever settled before the gate — normally empty, since 402 fires on the POST
+/// before any delta. Distinct from **403** (access lapsed, ai/99) and **428**
+/// (consent, ai/98).
+class TurnCeiling extends ChatTurn {
+  final String text;
+  final TurnUsage? usage;
+
+  const TurnCeiling({required this.text, required this.usage});
+}
+
 /// The chat turn.
 ///
 /// **keepAlive `NotifierProvider` owning an imperative subscription — NOT a
@@ -170,6 +193,16 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
   // access flip back to true (a fresh fetch proving renewed access).
   // (adityas/ai/123 finding 2.)
   bool _lapsed = false;
+
+  // At-ceiling latch. Set when a `POST .../turns` returns 402 (the window budget
+  // is spent, adityas/ai/100). While set, [send] hard-refuses new turns into the
+  // at-ceiling notice rather than opening one the server will 402 again (which
+  // would also append a duplicate user message). Separate axis from [_lapsed]:
+  // access can be live (a valid window) while its usage budget is exhausted.
+  // Released in [send] when a fresh [usageProvider] read proves headroom
+  // (`used_pct` < 100) — the window reset/renewed. (The panel keeps usage warm by
+  // watching it for the near-ceiling notice, so that read is live.)
+  bool _ceilinged = false;
 
   // Fires at `access_until` to end an in-flight turn the instant entitlement
   // lapses. Driven by the injected [Clock] (delay) + a real [Timer]; the
@@ -224,6 +257,20 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     if (_lapsed) {
       state = const TurnAccessLapsed(text: '', usage: null);
       return;
+    }
+    // The window budget is spent (a prior 402); refuse into the at-ceiling notice
+    // — a doomed resend would re-hit the 402 and append a duplicate user message
+    // (adityas/ai/100). Release the latch only when a fresh usage read proves the
+    // window reset (headroom under the cap); a null/loading reading is not proof,
+    // so it holds. The 402 stays authoritative over a lagging usage signal.
+    if (_ceilinged) {
+      final pct = ref.read(usageProvider).value;
+      if (pct != null && pct < 100) {
+        _ceilinged = false;
+      } else {
+        state = const TurnCeiling(text: '', usage: null);
+        return;
+      }
     }
     // UX gate; the backend is the authoritative entitlement check. Defense in
     // depth against opening a turn the server will refuse anyway. A *lapsed*
@@ -441,12 +488,18 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     if (_isTerminal(state)) return;
     // A deliberate server gate is terminal, NOT a transient drop — do not spend
     // the reconnect budget retrying it (a retry only re-hits the same gate).
-    // 403 = access lapsed → the renew prompt (adityas/ai/99). 402 (ceiling,
-    // ai/100) and 428 (consent, ai/98) branch here too when those land; until
-    // then they fall through to the generic terminal error below.
-    if (error is TurnTransportException && error.statusCode == 403) {
-      _lapse();
-      return;
+    // 403 = access lapsed → the renew prompt (adityas/ai/99). 402 = usage ceiling
+    // → the at-ceiling notice (ai/100). 428 (consent, ai/98) branches here too
+    // when it lands; until then it falls through to the generic error below.
+    if (error is TurnTransportException) {
+      if (error.statusCode == 403) {
+        _lapse();
+        return;
+      }
+      if (error.statusCode == 402) {
+        _ceiling();
+        return;
+      }
     }
     if (_reconnects >= _maxReconnects) {
       _fail('Stream failed after $_maxReconnects reconnect attempts: $error');
@@ -515,6 +568,10 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
           .read(conversationProvider.notifier)
           .appendAssistant(_buffer.toString());
     }
+    // A settled turn is the only time the window spend moves — refetch the
+    // headroom so the near-ceiling notice reflects it without a wall-clock poll
+    // (adityas/ai/100). autoDispose means this no-ops when nothing watches usage.
+    ref.invalidate(usageProvider);
   }
 
   /// Close out a turn the user stopped: keep [TurnCancelled] with whatever usage
@@ -525,6 +582,9 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     _throttle.cancel();
     _cancelExpiryTimer();
     state = TurnCancelled(text: _buffer.toString(), usage: _usage);
+    // A cancelled turn is still billed (non-refunding), so its spend moved too —
+    // refresh the headroom for the near-ceiling notice (adityas/ai/100).
+    ref.invalidate(usageProvider);
   }
 
   void _fail(String message) {
@@ -590,6 +650,28 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     state = TurnAccessLapsed(text: _buffer.toString(), usage: _usage);
   }
 
+  /// Terminal at-ceiling → the usage-limit notice ([TurnCeiling], adityas/ai/100).
+  /// Reached when `POST .../turns` returns 402: the window budget is spent. A 402
+  /// is a pre-accept gate (no turn spawned), so the buffer is normally empty; the
+  /// same commit-partial guard as [_lapse] still runs for symmetry. Best-effort
+  /// server stop for the same reason. Latch the ceiling so [send] refuses further
+  /// turns, and refetch usage so the derived near notice reflects the exhausted
+  /// window (and the latch self-heals once a fetch shows the window reset).
+  void _ceiling() {
+    _closeSub();
+    _throttle.cancel();
+    _cancelExpiryTimer();
+    unawaited(_transport.cancel());
+    if (_buffer.isNotEmpty) {
+      ref
+          .read(conversationProvider.notifier)
+          .appendAssistant(_buffer.toString());
+    }
+    _ceilinged = true;
+    ref.invalidate(usageProvider);
+    state = TurnCeiling(text: _buffer.toString(), usage: _usage);
+  }
+
   /// Arm the mid-turn expiry timer at the current `access_until`. The delay is
   /// measured with the injected [Clock] so tests are deterministic; the [Timer]
   /// fires [_expire] at the boundary. No deadline (signed out / no entitlement)
@@ -634,11 +716,16 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     TurnDone() ||
     TurnCancelled() ||
     TurnError() ||
-    TurnAccessLapsed() => false,
+    TurnAccessLapsed() ||
+    TurnCeiling() => false,
   };
 
   bool _isTerminal(ChatTurn turn) => switch (turn) {
-    TurnDone() || TurnCancelled() || TurnError() || TurnAccessLapsed() => true,
+    TurnDone() ||
+    TurnCancelled() ||
+    TurnError() ||
+    TurnAccessLapsed() ||
+    TurnCeiling() => true,
     TurnIdle() ||
     TurnConnecting() ||
     TurnStreaming() ||

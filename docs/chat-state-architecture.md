@@ -158,11 +158,12 @@ idle → connecting → streaming ⇄ reconnecting
                        │  ├→ cancelled     (client stop → server-side stop; usage still billed)
                        │  ├→ error         (terminal-with-retry; carries last cursor)
                        │  ├→ access-lapsed  (window closed: clock crossed access_until, or a 403; renew prompt, no retry)
+                       │  ├→ ceiling        (usage window spent: a 402; at-ceiling notice, no retry)
                        │  └→ done
 ```
 
 A sealed class hierarchy (`idle` / `connecting` / `streaming` / `reconnecting` /
-`done` / `error` / `cancelled` / `access-lapsed`), exhaustively matched.
+`done` / `error` / `cancelled` / `access-lapsed` / `ceiling`), exhaustively matched.
 
 - **`access-lapsed` is a deliberate gate, not an error** (adityas/ai/99).
   Two paths converge on it: the injected clock crossing `access_until` mid-turn,
@@ -173,8 +174,22 @@ A sealed class hierarchy (`idle` / `connecting` / `streaming` / `reconnecting` /
   authoritative `access_until`. The transport surfaces the status via a
   status-carrying `TurnTransportException` (defined in `turn_transport.dart`, part
   of the contract so `lib/state` reads it without importing the wire). Sibling
-  gates **402** (usage ceiling, ai/100) and **428** (consent, ai/98) branch at the
-  same point in `_onStreamError` when they land.
+  gate **428** (consent, ai/98) branches at the same point in `_onStreamError`
+  when it lands.
+
+- **`ceiling` is the at-ceiling gate** (adityas/ai/100). A **402** from
+  `POST .../turns` means the window's usage budget is spent (a pre-accept gate —
+  no turn spawned). Like `access-lapsed` it is terminal, non-retryable, and
+  branches in `_onStreamError`, but on the *usage* axis rather than *access*:
+  a window can be live while its budget is exhausted. The UI renders a calm
+  at-ceiling notice; a `_ceilinged` latch refuses further sends (no duplicate
+  user message, no re-hit 402) until a fresh `usageProvider` read proves headroom
+  (`used_pct < 100` — the window reset). No dollar or token figure ever reaches
+  the surface (the no-meter invariant): the notice, and the quiet near-ceiling
+  notice that precedes it, carry only the coarse `used_pct` fraction from
+  `GET /v1/ai/usage` (ai/97). The near notice lives in `usage.dart`
+  (`usageProvider` + `usageNearCeilingPctProvider`), refetched after each turn
+  settles.
 
 - **Delta buffer + `Last-Event-ID` cursor live in the Notifier**, not the widget.
   `reconnecting` replays from the cursor. The buffer is the streaming text

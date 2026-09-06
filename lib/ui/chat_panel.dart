@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../state/chat_turn.dart';
 import '../state/conversation.dart';
 import '../state/entitlement.dart';
+import '../state/usage.dart';
 import 'chat_coming_soon.dart';
 import 'chat_composer.dart';
 import 'message_markdown.dart';
@@ -54,6 +55,11 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
   /// off when the user scrolls up to read back, on again when they return near
   /// the end (or send, which re-pins via [_scrollToEnd]'s force path).
   bool _stickToBottom = true;
+
+  /// Whether the user dismissed the current near-ceiling notice. Local + session
+  /// only (adityas/ai/100): a quiet notice is non-blocking, so a dismiss just
+  /// hides it; [_nearCeilingNotice] re-arms it once usage drops out of the band.
+  bool _nearNoticeDismissed = false;
 
   @override
   void initState() {
@@ -117,6 +123,10 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
                 : _placeholder(color, dimColor, fontSize),
           ),
           const SizedBox(height: 8),
+          // Quiet near-ceiling notice sits just above the composer so it reads as
+          // an advisory, not a message in the thread (adityas/ai/100). Only the
+          // wired surface polls usage.
+          if (enabled) _nearCeilingNotice(color, dimColor, fontSize),
           if (enabled)
             ChatComposer(
               color: color,
@@ -197,7 +207,8 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
       TurnDone() ||
       TurnCancelled() ||
       TurnError() ||
-      TurnAccessLapsed() => false,
+      TurnAccessLapsed() ||
+      TurnCeiling() => false,
     };
     if (streaming) {
       final proceed = await showDialog<bool>(
@@ -285,6 +296,10 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
       // Access lapsed mid-session (adityas/ai/99): a calm renew prompt, not the
       // red error bubble — retrying is futile until the window is renewed.
       TurnAccessLapsed() => _renewBubble(color, dimColor, fontSize),
+      // Usage ceiling reached (adityas/ai/100): a calm at-ceiling notice, not the
+      // red error bubble — new turns wait until the window resets. No dollar or
+      // token figure (the no-meter invariant).
+      TurnCeiling() => _ceilingBubble(color, dimColor, fontSize),
       TurnIdle() || TurnDone() || TurnCancelled() => null,
     };
   }
@@ -413,6 +428,78 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
     );
   }
 
+  /// The at-ceiling notice shown when the window budget is spent ([TurnCeiling],
+  /// adityas/ai/100). A calm, non-error notice — past turns stay readable, new
+  /// turns wait until the window resets. Never shows a dollar or token figure
+  /// (the no-meter invariant): a plain "you've reached your usage limit."
+  Widget _ceilingBubble(Color color, Color dimColor, double fontSize) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        constraints: const BoxConstraints(maxWidth: 320),
+        decoration: BoxDecoration(
+          color: context.tokens.bubbleAgent,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: context.tokens.gold.withValues(alpha: 0.4)),
+        ),
+        child: Text(
+          _ceilingNoticeCopy,
+          style: TextStyle(color: color, fontSize: fontSize, height: 1.4),
+        ),
+      ),
+    );
+  }
+
+  /// The quiet near-ceiling notice (adityas/ai/100): a thin, dismissable banner
+  /// shown once usage crosses the near band (adityas/ai/97's `used_pct`). Quiet
+  /// and non-blocking — chat continues; a coarse percentage, never a dollar or
+  /// token figure (the no-meter invariant). Returns an empty box when there is
+  /// nothing to show or the user has dismissed the current climb.
+  Widget _nearCeilingNotice(Color color, Color dimColor, double fontSize) {
+    final pct = ref.watch(usageNearCeilingPctProvider);
+    // Re-arm the dismissal once usage drops back out of the band, so a fresh
+    // climb toward the ceiling notices again.
+    if (pct == null) {
+      _nearNoticeDismissed = false;
+      return const SizedBox.shrink();
+    }
+    if (_nearNoticeDismissed) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: context.tokens.gold.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: context.tokens.gold.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              "You've used about $pct% of your usage this period.",
+              style: TextStyle(
+                color: color,
+                fontSize: fontSize * 0.85,
+                height: 1.3,
+              ),
+            ),
+          ),
+          GestureDetector(
+            onTap: () => setState(() => _nearNoticeDismissed = true),
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.only(left: 8),
+              child: Icon(Icons.close, size: fontSize, color: dimColor),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ── Placeholder (not allowlisted) ────────────────────────────────
 
   Widget _placeholder(Color color, Color dimColor, double fontSize) {
@@ -503,6 +590,14 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
 const _renewPromptCopy =
     'Your access has ended, so new messages are paused. Your past conversation '
     'stays here to read. Renew your access to continue the conversation.';
+
+/// The at-ceiling notice for a spent usage window ([TurnCeiling], adityas/ai/100).
+/// Mirrors the 402 body's human message; deliberately carries no dollar or token
+/// figure (the no-meter invariant) — a coarse "usage limit for this period."
+const _ceilingNoticeCopy =
+    "You've reached your usage limit for this period, so new messages are "
+    'paused. Your past conversation stays here to read, and you can continue '
+    'once your usage resets.';
 
 /// Confirm starting a new chat while a reply is still streaming — the current
 /// turn is stopped server-side (still billed), never silently orphaned.

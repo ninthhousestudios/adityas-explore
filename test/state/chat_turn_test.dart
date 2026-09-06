@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:explore/ai/chat_access.dart';
+import 'package:explore/api/chart_service.dart';
 import 'package:explore/state/auth.dart';
 import 'package:explore/state/chat_turn.dart';
 import 'package:explore/state/clock.dart';
@@ -14,6 +15,7 @@ import 'package:explore/state/delta_throttle.dart';
 import 'package:explore/state/entitlement.dart';
 import 'package:explore/state/overlay.dart';
 import 'package:explore/state/turn_transport.dart';
+import 'package:explore/state/usage.dart';
 import 'package:explore/ui/popup_state.dart';
 
 /// A [TurnTransport] driven by the test: each `start`/`resume` hands back a
@@ -125,6 +127,21 @@ class _Gate extends Notifier<bool> {
 
 final _gateProvider = NotifierProvider<_Gate, bool>(_Gate.new);
 
+/// A scripted [UsageClient]: hands back a settable `used_pct` so a test can drive
+/// the near-ceiling / at-ceiling self-heal without the real network. Counts calls
+/// so a test can assert the turn refetched usage on settle.
+class _FakeUsage implements UsageClient {
+  int pct;
+  int fetches = 0;
+  _FakeUsage([this.pct = 0]);
+
+  @override
+  Future<int> fetchUsagePct() async {
+    fetches++;
+    return pct;
+  }
+}
+
 const _stubUser = User(
   id: 'test-user',
   appMetadata: {},
@@ -148,6 +165,8 @@ ProviderContainer _container(
   DateTime? deadline,
   Clock? clock,
   bool? chatEnabled,
+  UsageClient? usageClient,
+  bool warmUsage = false,
 }) {
   final container = ProviderContainer(
     overrides: [
@@ -157,6 +176,9 @@ ProviderContainer _container(
         () => const ImmediateThrottle(),
       ),
       chatAvailableProvider.overrideWith((ref) => ref.watch(_gateProvider)),
+      // The turn notifier listens to usageProvider; keep it off the network with
+      // a scripted client (plenty of headroom by default).
+      usageClientProvider.overrideWithValue(usageClient ?? _FakeUsage()),
       // No time-based deadline by default: the turn schedules no expiry timer,
       // so tests that flip the boolean gate stay unaffected. A time-expiry test
       // supplies an explicit deadline + advanceable clock.
@@ -169,6 +191,7 @@ ProviderContainer _container(
         chatEnabledProvider.overrideWith((ref) => chatEnabled),
     ],
   );
+  if (warmUsage) container.listen(usageProvider, (_, _) {});
   addTearDown(container.dispose);
   return container;
 }
@@ -554,6 +577,84 @@ void main() {
       expect(transport.cancels, 0);
     });
   });
+
+  test(
+    'a 402 on the opening POST hits the ceiling — no retry (ai/100)',
+    () async {
+      final transport = _FakeTransport();
+      final container = _container(transport);
+
+      container.read(chatTurnProvider.notifier).send('hi');
+      expect(container.read(chatTurnProvider), isA<TurnConnecting>());
+
+      // The window budget is spent: the POST is refused with 402, surfaced as a
+      // status-carrying stream error (as the real async* wire propagates it).
+      transport.dropStream(
+        const TurnTransportException('limit reached', statusCode: 402),
+      );
+      await _pump();
+
+      expect(container.read(chatTurnProvider), isA<TurnCeiling>());
+      expect(transport.resumes, 0); // a gate is terminal, never retried
+      expect(transport.cancels, 1); // best-effort server stop
+    },
+  );
+
+  test(
+    'after a 402 the resend is hard-refused into the at-ceiling notice',
+    () async {
+      final transport = _FakeTransport();
+      // Access stays live (a valid window); only the usage budget is exhausted, so
+      // the near-ceiling client reads 100 and never self-heals the latch here.
+      final container = _container(transport, usageClient: _FakeUsage(100));
+
+      final notifier = container.read(chatTurnProvider.notifier)..send('hi');
+      transport.dropStream(
+        const TurnTransportException('limit reached', statusCode: 402),
+      );
+      await _pump();
+      expect(container.read(chatTurnProvider), isA<TurnCeiling>());
+
+      // The gate reads available (access is fine), yet the ceiling latch refuses
+      // the resend — no second turn opens, no duplicate user message.
+      expect(container.read(chatAvailableProvider), isTrue);
+      notifier.send('again');
+      expect(container.read(chatTurnProvider), isA<TurnCeiling>());
+      expect(transport.starts, 1);
+    },
+  );
+
+  test(
+    'a fresh usage fetch showing headroom self-heals the ceiling latch',
+    () async {
+      final transport = _FakeTransport();
+      final usage = _FakeUsage(100);
+      // warmUsage: the panel keeps usage warm by watching it for the near notice;
+      // mirror that so the send-time headroom read sees a resolved value.
+      final container = _container(
+        transport,
+        usageClient: usage,
+        warmUsage: true,
+      );
+
+      container.read(chatTurnProvider.notifier).send('hi');
+      transport.dropStream(
+        const TurnTransportException('limit reached', statusCode: 402),
+      );
+      await _pump();
+      expect(container.read(chatTurnProvider), isA<TurnCeiling>());
+
+      // The window resets: usage now reports headroom, so the next send releases
+      // the latch and opens a fresh turn.
+      usage.pct = 0;
+      container.invalidate(usageProvider);
+      await _pump();
+
+      container.read(chatTurnProvider.notifier).send('again');
+      expect(container.read(chatTurnProvider), isA<TurnConnecting>());
+      expect(transport.starts, 2);
+    },
+  );
 
   test('a non-gate status is transient → reconnects', () async {
     final transport = _FakeTransport();
