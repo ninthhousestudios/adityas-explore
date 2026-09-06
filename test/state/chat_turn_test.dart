@@ -10,6 +10,7 @@ import 'package:explore/api/chart_service.dart';
 import 'package:explore/state/auth.dart';
 import 'package:explore/state/chat_turn.dart';
 import 'package:explore/state/clock.dart';
+import 'package:explore/state/consent.dart';
 import 'package:explore/state/conversation.dart';
 import 'package:explore/state/delta_throttle.dart';
 import 'package:explore/state/entitlement.dart';
@@ -144,6 +145,32 @@ class _FakeUsage implements UsageClient {
   }
 }
 
+/// A scripted [ConsentClient]: hands back a settable `needsConsent` and flips it
+/// false on record, so a test can drive the re-consent gate and its self-heal
+/// without the network. Counts calls so a test can assert the seam refetched.
+class _FakeConsent implements ConsentClient {
+  bool needsConsent;
+  int fetches = 0;
+  int records = 0;
+  _FakeConsent({this.needsConsent = false});
+
+  @override
+  Future<ChatConsent> fetchConsent() async {
+    fetches++;
+    return ChatConsent(
+      currentVersion: 'chat-terms-v1',
+      acceptedVersion: needsConsent ? 'chat-terms-v0' : 'chat-terms-v1',
+      needsConsent: needsConsent,
+    );
+  }
+
+  @override
+  Future<void> recordConsent() async {
+    records++;
+    needsConsent = false;
+  }
+}
+
 const _stubUser = User(
   id: 'test-user',
   appMetadata: {},
@@ -168,6 +195,7 @@ ProviderContainer _container(
   Clock? clock,
   bool? chatEnabled,
   UsageClient? usageClient,
+  ConsentClient? consentClient,
 }) {
   final container = ProviderContainer(
     overrides: [
@@ -180,6 +208,10 @@ ProviderContainer _container(
       // The ceiling recheck reads the usage seam directly; keep it off the
       // network with a scripted client (plenty of headroom by default).
       usageClientProvider.overrideWithValue(usageClient ?? _FakeUsage()),
+      // The turn notifier's build() listens consentRequiredProvider, which builds
+      // consentProvider eagerly — keep that off the network with a scripted client
+      // (consent current by default, so the latch stays clear).
+      consentClientProvider.overrideWithValue(consentClient ?? _FakeConsent()),
       // No time-based deadline by default: the turn schedules no expiry timer,
       // so tests that flip the boolean gate stay unaffected. A time-expiry test
       // supplies an explicit deadline + advanceable clock.
@@ -717,6 +749,109 @@ void main() {
       expect(container.read(conversationProvider).messages, isEmpty);
     },
   );
+
+  test(
+    'a 428 on the opening POST requires re-consent — no retry (ai/98)',
+    () async {
+      final transport = _FakeTransport();
+      final container = _container(
+        transport,
+        consentClient: _FakeConsent(needsConsent: true),
+      );
+
+      container.read(chatTurnProvider.notifier).send('hi');
+      expect(container.read(chatTurnProvider), isA<TurnConnecting>());
+
+      // Consent went stale: the write route rejects with 428, surfaced as a
+      // status-carrying stream error (as the real async* wire propagates it).
+      transport.dropStream(
+        const TurnTransportException('consent required', statusCode: 428),
+      );
+      await _pump();
+
+      expect(container.read(chatTurnProvider), isA<TurnConsentRequired>());
+      expect(transport.resumes, 0); // a gate is terminal, never retried
+      expect(transport.cancels, 1); // best-effort server stop
+    },
+  );
+
+  test(
+    'after a 428 the resend is hard-refused into the re-consent gate',
+    () async {
+      final transport = _FakeTransport();
+      final container = _container(
+        transport,
+        consentClient: _FakeConsent(needsConsent: true),
+      );
+
+      final notifier = container.read(chatTurnProvider.notifier)..send('hi');
+      transport.dropStream(
+        const TurnTransportException('consent required', statusCode: 428),
+      );
+      await _pump();
+      expect(container.read(chatTurnProvider), isA<TurnConsentRequired>());
+
+      // Access is fine (a valid window) yet the consent latch refuses the resend —
+      // no second turn opens, no duplicate user message.
+      expect(container.read(chatAvailableProvider), isTrue);
+      notifier.send('again');
+      expect(container.read(chatTurnProvider), isA<TurnConsentRequired>());
+      expect(transport.starts, 1);
+    },
+  );
+
+  test('a pre-accept 428 leaves conversation history unchanged — no ghost user '
+      'message (adityas/ai/98)', () async {
+    final transport = _FakeTransport();
+    final container = _container(
+      transport,
+      consentClient: _FakeConsent(needsConsent: true),
+    );
+
+    container.read(chatTurnProvider.notifier).send('hi');
+    // The optimistic user message shows while the POST is in flight…
+    expect(container.read(conversationProvider).messages, hasLength(1));
+
+    // …but the POST is refused pre-accept with 428 (no turn spawned), so it is
+    // rolled back: no ghost message, no advanced parent chain.
+    transport.dropStream(
+      const TurnTransportException('consent required', statusCode: 428),
+    );
+    await _pump();
+    expect(container.read(chatTurnProvider), isA<TurnConsentRequired>());
+    expect(container.read(conversationProvider).messages, isEmpty);
+  });
+
+  test('recording consent self-heals the latch — the next send opens a turn '
+      '(adityas/ai/98)', () async {
+    final transport = _FakeTransport();
+    final consent = _FakeConsent(needsConsent: true);
+    // Emulate the mounted panel, which continuously watches the consent seam —
+    // that persistent listener is what keeps the (autoDispose) provider mounted so
+    // an invalidate's refetch resolves rather than stalling half-loaded.
+    final container = _container(transport, consentClient: consent)
+      ..listen(consentRequiredProvider, (_, _) {});
+
+    container.read(chatTurnProvider.notifier).send('hi');
+    transport.dropStream(
+      const TurnTransportException('consent required', statusCode: 428),
+    );
+    await _pump();
+    expect(container.read(chatTurnProvider), isA<TurnConsentRequired>());
+
+    // The user agrees: the record flips needs_consent false and the seam refetch
+    // clears the latch, dropping the surface back to idle.
+    await container.read(consentProvider.notifier).accept();
+    await _pump();
+    expect(consent.records, 1);
+    expect(container.read(consentRequiredProvider), isFalse);
+    expect(container.read(chatTurnProvider), isA<TurnIdle>());
+
+    // With the latch released, a send now opens a fresh turn.
+    container.read(chatTurnProvider.notifier).send('again');
+    expect(container.read(chatTurnProvider), isA<TurnConnecting>());
+    expect(transport.starts, 2);
+  });
 
   test('a non-gate status is transient → reconnects', () async {
     final transport = _FakeTransport();
