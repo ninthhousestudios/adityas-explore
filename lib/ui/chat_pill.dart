@@ -22,7 +22,9 @@ class ChatPill extends ConsumerWidget {
   final double fontSize;
 
   /// Invoked with the submitted text when an entitled user sends from the pill.
-  final ValueChanged<String> onSubmit;
+  /// Returns whether the send was accepted so the composer clears only then
+  /// (adityas/ai/142).
+  final bool Function(String) onSubmit;
 
   const ChatPill({
     super.key,

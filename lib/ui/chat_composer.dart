@@ -23,8 +23,11 @@ class ChatComposer extends ConsumerStatefulWidget {
   final double fontSize;
 
   /// Called with the trimmed, non-empty text on submit (Enter or the send
-  /// button). The composer clears itself immediately after invoking this.
-  final ValueChanged<String> onSubmit;
+  /// button). Returns whether the submission was accepted; the composer clears
+  /// its input ONLY when it was, so text typed during a window that refuses the
+  /// send (e.g. the post-Stop settling window) is never silently discarded
+  /// (adityas/ai/142).
+  final bool Function(String) onSubmit;
 
   const ChatComposer({
     super.key,
@@ -50,8 +53,9 @@ class _ChatComposerState extends ConsumerState<ChatComposer> {
   void _submit() {
     final text = _input.text.trim();
     if (text.isEmpty) return;
-    widget.onSubmit(text);
-    _input.clear();
+    // Clear only if the send was accepted — a refused send (a turn active or a
+    // cancel still settling) must not eat the user's typed text (adityas/ai/142).
+    if (widget.onSubmit(text)) _input.clear();
   }
 
   /// Stop the in-flight turn server-side (adityas/ai/137). The notifier POSTs the
@@ -111,16 +115,24 @@ class _ChatComposerState extends ConsumerState<ChatComposer> {
     final dimColor = widget.dimColor;
     final fontSize = widget.fontSize;
     final turn = ref.watch(chatTurnProvider);
-    final active = switch (turn) {
-      TurnConnecting() || TurnStreaming() || TurnReconnecting() => true,
-      TurnIdle() ||
-      TurnDone() ||
-      TurnCancelled() ||
-      TurnError() ||
-      TurnAccessLapsed() ||
-      TurnCeiling() ||
-      TurnConsentRequired() => false,
-    };
+    // The post-Stop settling window still shows [TurnCancelled] but refuses a
+    // send until the server's trailing usage/done lands; keep the Stop affordance
+    // through it so the button never invites a submit that would be dropped
+    // (adityas/ai/142). Reading the notifier is safe: every latch change fires a
+    // [chatTurnProvider] notification, so this rebuild re-reads a fresh value.
+    final settling = ref.read(chatTurnProvider.notifier).isSettling;
+    final active =
+        settling ||
+        switch (turn) {
+          TurnConnecting() || TurnStreaming() || TurnReconnecting() => true,
+          TurnIdle() ||
+          TurnDone() ||
+          TurnCancelled() ||
+          TurnError() ||
+          TurnAccessLapsed() ||
+          TurnCeiling() ||
+          TurnConsentRequired() => false,
+        };
     final border = OutlineInputBorder(
       borderRadius: BorderRadius.circular(12),
       borderSide: BorderSide(color: color.withValues(alpha: 0.3)),

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:charts_dart/charts_dart.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -80,6 +82,21 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
   late final TapGestureRecognizer _termsTapRecognizer = TapGestureRecognizer()
     ..onTap = () => openUrlNewTab('/chat-terms-and-conditions');
 
+  /// The text the panel-level polite live region currently announces
+  /// (adityas/ai/143). One persistent region rather than one on the transient
+  /// bubble, so the final reply can be flushed to it AFTER the streaming bubble
+  /// is replaced by the committed (non-live) history bubble.
+  String _liveAnnouncement = '';
+
+  /// Coalesces streaming announcements to a human-scale cadence
+  /// ([kLiveRegionCadence]) so a screen reader is not re-read the whole growing
+  /// reply on every ~16ms visual repaint (adityas/ai/143). Null when idle.
+  Timer? _announceTimer;
+
+  /// The latest streamed text awaiting the next cadence tick; only the most
+  /// recent survives a window.
+  String? _pendingAnnouncement;
+
   @override
   void initState() {
     super.initState();
@@ -96,14 +113,75 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
   void dispose() {
     _scroll.dispose();
     _termsTapRecognizer.dispose();
+    _announceTimer?.cancel();
     super.dispose();
   }
 
-  void _onComposerSubmit(String text) {
+  /// Drive the panel-level live region from a turn transition (adityas/ai/143).
+  ///
+  /// Streaming text announces on a human-scale cadence ([kLiveRegionCadence]),
+  /// decoupled from the ~16ms visual repaint that grows the bubble. A terminal
+  /// transition (done / cancelled) flushes the final text IMMEDIATELY — before
+  /// the transient bubble is torn down — so a burst of deltas followed at once by
+  /// `done` still announces the answer rather than a stale "Thinking…".
+  void _announce(ChatTurn turn) {
+    final spoken = _spokenLabel(turn);
+    if (spoken == null) return; // nothing to announce for this state
+    if (_isAnnounceTerminal(turn)) {
+      _announceTimer?.cancel();
+      _announceTimer = null;
+      _pendingAnnouncement = null;
+      _setAnnouncement(spoken);
+      return;
+    }
+    // Streaming: pace the announcement. Coalesce; the timer publishes the latest.
+    _pendingAnnouncement = spoken;
+    _announceTimer ??= Timer(kLiveRegionCadence, _flushAnnouncement);
+  }
+
+  void _flushAnnouncement() {
+    _announceTimer = null;
+    final pending = _pendingAnnouncement;
+    _pendingAnnouncement = null;
+    if (pending != null) _setAnnouncement(pending);
+  }
+
+  void _setAnnouncement(String value) {
+    if (!mounted || value == _liveAnnouncement) return;
+    setState(() => _liveAnnouncement = value);
+  }
+
+  /// The spoken form of a turn state, or null when there is nothing to announce.
+  /// Terminal states carry the full/partial reply; the in-flight states carry
+  /// the growing text (or a status note when no text has streamed yet).
+  static String? _spokenLabel(ChatTurn turn) => switch (turn) {
+    TurnConnecting() => 'Thinking…',
+    TurnStreaming(:final text) => text.isEmpty ? 'Thinking…' : text,
+    TurnReconnecting(:final text) =>
+      text.isEmpty ? 'Reconnecting…' : '$text. Reconnecting…',
+    TurnDone(:final text) => text.isEmpty ? null : text,
+    TurnCancelled(:final text) => text.isEmpty ? null : text,
+    TurnIdle() ||
+    TurnError() ||
+    TurnAccessLapsed() ||
+    TurnCeiling() ||
+    TurnConsentRequired() => null,
+  };
+
+  /// Whether this transition should flush the final text at once rather than
+  /// wait for the cadence tick (adityas/ai/143). The turn is ending, so the
+  /// transient bubble is about to be replaced — announce now or lose it.
+  static bool _isAnnounceTerminal(ChatTurn turn) =>
+      turn is TurnDone || turn is TurnCancelled;
+
+  bool _onComposerSubmit(String text) {
     // The notifier is the single gate: it refuses a blank message, a second turn
-    // while one is active, and an unavailable-entitlement send (→ TurnError).
-    ref.read(chatTurnProvider.notifier).send(text);
-    _scrollToEnd(force: true);
+    // while one is active, and an unavailable-entitlement send (→ TurnError). It
+    // reports acceptance so the composer clears only an accepted send
+    // (adityas/ai/142).
+    final accepted = ref.read(chatTurnProvider.notifier).send(text);
+    if (accepted) _scrollToEnd(force: true);
+    return accepted;
   }
 
   void _scrollToEnd({bool force = false}) {
@@ -145,6 +223,16 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _header(color, dimColor, fontSize, enabled: enabled),
+          // One persistent, zero-size polite live region for the wired surface
+          // (adityas/ai/143). It carries the paced/flushed reply announcement and
+          // outlives the transient streaming bubble, so the final text reaches a
+          // screen reader even after the bubble is swapped for the committed
+          // (non-live) history message.
+          if (enabled)
+            StreamingLiveRegion(
+              label: _liveAnnouncement,
+              child: const SizedBox.shrink(),
+            ),
           const SizedBox(height: 12),
           Expanded(
             child: enabled
@@ -260,10 +348,14 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
   // ── Wired chat (allowlisted) ─────────────────────────────────────
 
   Widget _conversation(Color color, Color dimColor, double fontSize) {
-    // Auto-scroll as the conversation grows or the in-flight turn streams.
+    // Auto-scroll as the conversation grows or the in-flight turn streams, and
+    // pace the live-region announcement off the turn transitions (adityas/ai/143).
     ref
       ..listen(conversationProvider, (_, _) => _scrollToEnd())
-      ..listen(chatTurnProvider, (_, _) => _scrollToEnd());
+      ..listen(chatTurnProvider, (_, next) {
+        _scrollToEnd();
+        _announce(next);
+      });
 
     final conversation = ref.watch(conversationProvider);
     final messages = conversation.messages;
@@ -439,14 +531,12 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
           color: context.tokens.bubbleAgent,
           borderRadius: BorderRadius.circular(12),
         ),
-        // The in-flight reply is a polite live region (adityas/ai/138) so a
-        // screen reader announces it as it streams. One region on the growing
-        // bubble — its label is the visible text plus any status note — rather
-        // than a live region per token widget. The visible Text nodes are
-        // excluded from semantics so the announcement is this single label, not
-        // a duplicate read of each child.
-        child: StreamingLiveRegion(
-          label: [if (hasText) text, ?status].join('. '),
+        // The in-flight reply is announced through the panel-level live region
+        // (adityas/ai/143), which paces announcements on a human-scale cadence
+        // and flushes the final text on completion. The visible bubble here is
+        // excluded from semantics so it is not read a second time alongside that
+        // announcement.
+        child: ExcludeSemantics(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
@@ -853,16 +943,25 @@ int? compactionSeamIndex(
 /// backend contract's own suggested marker text (adityas/ai/119).
 const _seamLabel = 'Earlier messages condensed to keep this focused';
 
-/// A polite ARIA live region wrapping the in-flight assistant reply so screen
-/// readers announce it as it streams (adityas/ai/138).
+/// How often the panel-level live region may re-announce the growing reply
+/// (adityas/ai/143). A human-scale cadence, deliberately decoupled from the
+/// ~16ms visual delta throttle (lib/state/delta_throttle.dart): re-reading the
+/// whole growing label every visual repaint is screen-reader-hostile. Terminal
+/// (done/cancelled) text bypasses this and flushes at once so the final answer
+/// is never dropped.
+const Duration kLiveRegionCadence = Duration(seconds: 2);
+
+/// A polite ARIA live region for the streaming assistant reply (adityas/ai/138,
+/// cadence reworked in adityas/ai/143).
 ///
 /// Flutter's [Semantics.liveRegion] maps to `aria-live="polite"` on web and
-/// re-announces when the node's [label] changes — so a single region on the
-/// growing bubble is all it takes; there is no per-token widget. Announce
-/// cadence rides on the delta throttle (lib/state/delta_throttle.dart), which
-/// paces the state updates that grow [label], so it is not read per token. The
-/// visible [child] is wrapped in [ExcludeSemantics] so the announcement is this
-/// one [label] rather than a duplicate read of each descendant Text.
+/// re-announces when the node's [label] changes. The chat panel mounts a single
+/// persistent instance (not one per bubble) and drives its [label] on a
+/// human-scale cadence ([kLiveRegionCadence]), flushing the final text on
+/// completion — so the answer is announced even after the transient streaming
+/// bubble is replaced by the committed history message. The visible [child] is
+/// wrapped in [ExcludeSemantics] so the announcement is this one [label] rather
+/// than a duplicate read of any descendant Text.
 class StreamingLiveRegion extends StatelessWidget {
   final String label;
   final Widget child;

@@ -488,7 +488,7 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
                         fontSize: panelFontSize,
                         onSubmit: (text) {
                           _setMode(LayoutMode.conversation);
-                          ref.read(chatTurnProvider.notifier).send(text);
+                          return ref.read(chatTurnProvider.notifier).send(text);
                         },
                       ),
                     ),
