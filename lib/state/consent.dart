@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../api/chart_service.dart';
+import 'auth.dart';
 import 'backend.dart';
 import 'entitlement.dart';
 
@@ -21,8 +22,11 @@ final consentClientProvider = Provider<ConsentClient>(
 /// a feature they cannot use — the gate sits *behind* entitlement. `watch`, so a
 /// live access change (renewal, sign-out) rebuilds and refetches. Refetched on
 /// demand (`ref.invalidate(consentProvider)`) after a mid-session 428 or a
-/// recorded agreement. autoDispose: an unmounted chat surface holds no resident
-/// consent.
+/// recorded agreement. Nominally autoDispose, but note the keep-alive
+/// [ChatTurnNotifier] listens to [consentRequiredProvider] for the app's
+/// lifetime, pinning this provider resident — so re-entering chat does not by
+/// itself refetch. User-identity keying (below) and the 428 backstop, not
+/// disposal, are what keep the read honest (adityas/ai/135).
 final consentProvider = AsyncNotifierProvider<ConsentNotifier, ChatConsent?>(
   ConsentNotifier.new,
   isAutoDispose: true,
@@ -31,6 +35,12 @@ final consentProvider = AsyncNotifierProvider<ConsentNotifier, ChatConsent?>(
 class ConsentNotifier extends AsyncNotifier<ChatConsent?> {
   @override
   Future<ChatConsent?> build() async {
+    // Key on user identity so an account switch where BOTH users are chat-available
+    // (so [chatAvailableProvider] never changes value) still triggers a fresh GET —
+    // otherwise user A's consent result would linger for user B until a 428
+    // (adityas/ai/135). The id read alone is enough to force the rebuild; the fetch
+    // authenticates with the current session token regardless.
+    ref.watch(authProvider.select((u) => u?.id));
     if (!ref.watch(chatAvailableProvider)) return null;
     return ref.watch(consentClientProvider).fetchConsent();
   }

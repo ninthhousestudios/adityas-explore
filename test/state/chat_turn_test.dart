@@ -853,6 +853,62 @@ void main() {
     expect(transport.starts, 2);
   });
 
+  test(
+    'a proactive GET needs_consent=true latches the gate and refuses a send — '
+    'the ChatPill bypass, before any 428 (adityas/ai/135)',
+    () async {
+      final transport = _FakeTransport();
+      // No 428 in this test: the ONLY consent signal is the proactive
+      // GET /v1/ai/consent reporting a stale version.
+      final container = _container(
+        transport,
+        consentClient: _FakeConsent(needsConsent: true),
+      );
+
+      // Build the notifier and let the proactive read resolve. Its consent
+      // listener latches the requirement and surfaces the gate from idle.
+      final notifier = container.read(chatTurnProvider.notifier);
+      await _pump();
+      expect(container.read(consentRequiredProvider), isTrue);
+      expect(container.read(chatTurnProvider), isA<TurnConsentRequired>());
+
+      // The ChatPill calls send() directly (it reads only entitlement, never the
+      // gate provider). Without the proactive latch this opened a doomed turn;
+      // now send() must refuse without touching the transport.
+      notifier.send('hi');
+      expect(container.read(chatTurnProvider), isA<TurnConsentRequired>());
+      expect(transport.starts, 0); // no doomed write left the client
+    },
+  );
+
+  test('a 428 arriving during cancellation surfaces re-consent instead of being '
+      'swallowed by the stop latch (adityas/ai/135)', () async {
+    final transport = _FakeTransport();
+    // Consent is currently fine (no proactive gate). The ONLY consent signal is
+    // the 428 that races the cancellation — so a pass proves it was not eaten by
+    // the `_cancelling` early-return that used to precede the status check.
+    final container = _container(transport);
+
+    final notifier = container.read(chatTurnProvider.notifier)..send('hi');
+    expect(container.read(chatTurnProvider), isA<TurnConnecting>());
+
+    // Stop the turn while the opening POST is still in flight.
+    await notifier.cancel();
+    expect(container.read(chatTurnProvider), isA<TurnCancelled>());
+
+    // That in-flight write then returns 428 (consent went stale mid-request).
+    transport.dropStream(
+      const TurnTransportException('consent required', statusCode: 428),
+    );
+    await _pump();
+    expect(container.read(chatTurnProvider), isA<TurnConsentRequired>());
+
+    // The latch holds: the next send is refused, not a second doomed write.
+    notifier.send('again');
+    expect(container.read(chatTurnProvider), isA<TurnConsentRequired>());
+    expect(transport.starts, 1);
+  });
+
   test('a non-gate status is transient → reconnects', () async {
     final transport = _FakeTransport();
     final container = _container(transport);

@@ -270,12 +270,25 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
         }
       })
       ..listen(consentRequiredProvider, (_, required) {
-        // A recorded agreement (or a fresh GET /v1/ai/consent) cleared the
-        // requirement — release the consent latch and unlock the surface
-        // (adityas/ai/98). Mirrors the lapse-latch release above.
-        if (required == false) {
-          _needsConsent = false;
-          if (state is TurnConsentRequired) state = const TurnIdle();
+        // The proactive GET /v1/ai/consent is the consent signal (a recorded
+        // agreement or a mid-session 428 refetch also flow through here). Latch it
+        // so [send] refuses new turns from EVERY entrance — critically the
+        // ChatPill, which calls send() directly without reading the gate provider,
+        // so without this latch a stale-consent user could fire a doomed turn from
+        // explore mode before the reactive 428 lands (adityas/ai/135). Mirrors the
+        // lapse latch above. Only latch/release here; the write routes' 428 drives
+        // the mid-turn transition via [_consentRequired].
+        _needsConsent = required;
+        if (required) {
+          // Surface the gate from idle so switching into the panel shows it even
+          // before a send. An in-flight turn is left to finish — the backend
+          // accepted it; only NEW turns are gated. (fetchConsent is async, so this
+          // never runs during build with an uninitialised `state`.)
+          if (state is TurnIdle) {
+            state = const TurnConsentRequired(text: '', usage: null);
+          }
+        } else if (state is TurnConsentRequired) {
+          state = const TurnIdle();
         }
       })
       ..onDispose(() {
@@ -549,6 +562,35 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
   /// `cancelOnError` already tore this subscription down; resume on a fresh one.
   void _onStreamError(Object error, StackTrace stackTrace) {
     _sub = null;
+    // A deliberate server gate is terminal, NOT a transient drop — do not spend
+    // the reconnect budget retrying it (a retry only re-hits the same gate).
+    // 403 = access lapsed → the renew prompt (adityas/ai/99). 402 = usage ceiling
+    // → the at-ceiling notice (ai/100). 428 = consent stale → the re-consent gate
+    // (ai/98). Each is a deliberate, non-retryable gate with its own state.
+    //
+    // Classified BEFORE the cancellation and terminal short-circuits: a gate
+    // arriving on the write route (conversation/turn POST) while a stop is in
+    // flight must still be honored, or the `_cancelling` early-return below
+    // swallows it — losing the latch so the next send silently re-hits the same
+    // gate (adityas/ai/135). Clear the stop latch first so the handler settles
+    // from a clean, non-cancelling state.
+    if (error is TurnTransportException) {
+      if (error.statusCode == 403) {
+        _cancelling = false;
+        _lapse();
+        return;
+      }
+      if (error.statusCode == 402) {
+        _cancelling = false;
+        _ceiling();
+        return;
+      }
+      if (error.statusCode == 428) {
+        _cancelling = false;
+        _consentRequired();
+        return;
+      }
+    }
     if (_cancelling) {
       // The stopped turn's stream broke before (or after) settling — the
       // settlement window is over. Release the latch so a new turn can open.
@@ -556,25 +598,6 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
       return;
     }
     if (_isTerminal(state)) return;
-    // A deliberate server gate is terminal, NOT a transient drop — do not spend
-    // the reconnect budget retrying it (a retry only re-hits the same gate).
-    // 403 = access lapsed → the renew prompt (adityas/ai/99). 402 = usage ceiling
-    // → the at-ceiling notice (ai/100). 428 = consent stale → the re-consent gate
-    // (ai/98). Each is a deliberate, non-retryable gate with its own state.
-    if (error is TurnTransportException) {
-      if (error.statusCode == 403) {
-        _lapse();
-        return;
-      }
-      if (error.statusCode == 402) {
-        _ceiling();
-        return;
-      }
-      if (error.statusCode == 428) {
-        _consentRequired();
-        return;
-      }
-    }
     if (_reconnects >= _maxReconnects) {
       _fail('Stream failed after $_maxReconnects reconnect attempts: $error');
       return;

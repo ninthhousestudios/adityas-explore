@@ -1,7 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:explore/api/chart_service.dart';
+import 'package:explore/state/auth.dart';
 import 'package:explore/state/consent.dart';
 import 'package:explore/state/entitlement.dart';
 
@@ -30,9 +32,32 @@ class _FakeConsent implements ConsentClient {
   }
 }
 
+User _user(String id) => User(
+  id: id,
+  appMetadata: const {},
+  userMetadata: const {},
+  aud: 'authenticated',
+  createdAt: '2026-01-01T00:00:00Z',
+);
+
+/// authProvider touches `Supabase.instance` (uninitialized headless), so a fixed
+/// user is stubbed. build() now watches the user id (adityas/ai/135), so every
+/// consent test must override auth or the real notifier would throw.
+class _StubAuth extends AuthNotifier {
+  final User? _seed;
+  _StubAuth(this._seed);
+
+  @override
+  User? build() => _seed;
+
+  /// Emulate an account switch — the state change the id-keyed refetch reacts to.
+  void switchTo(User? user) => state = user;
+}
+
 ProviderContainer _container(_FakeConsent consent, {required bool available}) {
   final container = ProviderContainer(
     overrides: [
+      authProvider.overrideWith(() => _StubAuth(_user('test-user'))),
       chatAvailableProvider.overrideWithValue(available),
       consentClientProvider.overrideWithValue(consent),
     ],
@@ -82,6 +107,35 @@ void main() {
     expect(container.read(consentRequiredProvider), isFalse);
   });
 
+  test(
+    'a user switch refetches consent even when both users stay chat-available — '
+    "user A's result never lingers for user B (adityas/ai/135)",
+    () async {
+      final consent = _FakeConsent(needsConsent: false);
+      final auth = _StubAuth(_user('user-a'));
+      final container = ProviderContainer(
+        overrides: [
+          authProvider.overrideWith(() => auth),
+          // Availability never changes (both users can chat), so the ONLY signal
+          // that must drive a refetch is the user id.
+          chatAvailableProvider.overrideWithValue(true),
+          consentClientProvider.overrideWithValue(consent),
+        ],
+      );
+      addTearDown(container.dispose);
+      container.listen(consentProvider, (_, _) {}); // keep it resident
+
+      await container.read(consentProvider.future);
+      expect(consent.fetches, 1);
+
+      // Account switch to a different user with the same availability.
+      auth.switchTo(_user('user-b'));
+      await _pump();
+      await container.read(consentProvider.future);
+      expect(consent.fetches, 2); // the id-keyed rebuild issued a fresh GET
+    },
+  );
+
   test('accept records agreement and clears the requirement', () async {
     final consent = _FakeConsent(needsConsent: true);
     final container = _container(consent, available: true)
@@ -102,6 +156,7 @@ void main() {
     () async {
       final container = ProviderContainer(
         overrides: [
+          authProvider.overrideWith(() => _StubAuth(_user('test-user'))),
           chatAvailableProvider.overrideWithValue(true),
           consentClientProvider.overrideWithValue(_ThrowingConsent()),
         ],
