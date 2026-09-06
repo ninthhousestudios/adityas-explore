@@ -909,6 +909,34 @@ void main() {
     expect(transport.starts, 1);
   });
 
+  test('a gate racing a cancel does not double-commit the partial reply '
+      '(adityas/ai/136)', () async {
+    final transport = _FakeTransport();
+    final container = _container(transport);
+    final notifier = container.read(chatTurnProvider.notifier)..send('hi');
+
+    // A partial streamed, then the user stopped the turn — cancel commits that
+    // partial once.
+    transport.emit(const DeltaEvent('partial', 'e1'));
+    await _pump();
+    await notifier.cancel();
+    expect(container.read(conversationProvider).messages, hasLength(2));
+
+    // The write route then rejects with 428 (the future-armed path: a gate
+    // status reaching the notifier after deltas + a cancel — the CNS-4 reorder
+    // now routes it to the consent gate instead of swallowing it). The partial
+    // must NOT be appended a second time.
+    transport.dropStream(
+      const TurnTransportException('consent required', statusCode: 428),
+    );
+    await _pump();
+
+    expect(container.read(chatTurnProvider), isA<TurnConsentRequired>());
+    final convo = container.read(conversationProvider);
+    expect(convo.messages, hasLength(2)); // user + one assistant 'partial'
+    expect(convo.messages.last.text, 'partial');
+  });
+
   test('a non-gate status is transient → reconnects', () async {
     final transport = _FakeTransport();
     final container = _container(transport);

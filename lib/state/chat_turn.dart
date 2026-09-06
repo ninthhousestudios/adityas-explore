@@ -239,6 +239,14 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
   // turns.
   String? _pendingUserId;
 
+  // True once [cancel] has committed this turn's partial reply to the
+  // conversation — the explicit form of the "cancel commits the partial exactly
+  // once" invariant (adityas/ai/136). A gate handler ([_lapse]/[_ceiling]/
+  // [_consentRequired]) reached AFTER a cancel (the CNS-4 reorder lets a
+  // statusCode gate win over the `_cancelling` short-circuit) must NOT re-append
+  // that same partial. Reset per turn in [_resetTurn].
+  bool _partialCommitted = false;
+
   // Fires at `access_until` to end an in-flight turn the instant entitlement
   // lapses. Driven by the injected [Clock] (delay) + a real [Timer]; the
   // [chatAvailableProvider] listen only reacts to provider *changes*, which
@@ -423,6 +431,9 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
       ref
           .read(conversationProvider.notifier)
           .appendAssistant(_buffer.toString());
+      // A gate that later races this cancel (403/402/428 on the write route)
+      // must not commit the same partial a second time (adityas/ai/136).
+      _partialCommitted = true;
     }
     await _transport.cancel();
   }
@@ -733,8 +744,9 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     // message, exactly as [_finish] commits a completed reply — otherwise the
     // partial answer the user was watching vanishes the instant the renew prompt
     // replaces the streaming bubble, and is lost on the next transition
-    // (adityas/ai/123 finding 1).
-    if (_buffer.isNotEmpty) {
+    // (adityas/ai/123 finding 1). Skip if a cancel already committed it — a gate
+    // racing that cancel must not double-append (adityas/ai/136).
+    if (!_partialCommitted && _buffer.isNotEmpty) {
       ref
           .read(conversationProvider.notifier)
           .appendAssistant(_buffer.toString());
@@ -771,8 +783,8 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
       _pendingUserId = null;
     }
     // Symmetric with [_lapse]: commit any partial (normally empty for a 402, which
-    // fires before any delta).
-    if (_buffer.isNotEmpty) {
+    // fires before any delta). Skip if a cancel already committed it (ai/136).
+    if (!_partialCommitted && _buffer.isNotEmpty) {
       ref
           .read(conversationProvider.notifier)
           .appendAssistant(_buffer.toString());
@@ -803,8 +815,9 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
       _pendingUserId = null;
     }
     // Symmetric with [_lapse]/[_ceiling]: commit any partial (normally empty for a
-    // 428, which fires on the opening POST before any delta).
-    if (_buffer.isNotEmpty) {
+    // 428, which fires on the opening POST before any delta). Skip if a cancel
+    // already committed it (ai/136).
+    if (!_partialCommitted && _buffer.isNotEmpty) {
       ref
           .read(conversationProvider.notifier)
           .appendAssistant(_buffer.toString());
@@ -868,6 +881,7 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     _usage = null;
     _reconnects = 0;
     _cancelling = false;
+    _partialCommitted = false;
     _pendingUserId = null;
   }
 
