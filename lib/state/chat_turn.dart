@@ -7,6 +7,7 @@ import '../format/date_labels.dart';
 import '../ui/being_slug.dart';
 import 'active_chart.dart';
 import 'clock.dart';
+import 'consent.dart';
 import 'conversation.dart';
 import 'delta_throttle.dart';
 import 'entitlement.dart';
@@ -24,6 +25,7 @@ import 'usage.dart';
 ///                        │  ├→ error          (terminal-with-retry; carries the cursor)
 ///                        │  ├→ access-lapsed   (window closed: clock or 403; renew prompt, no retry)
 ///                        │  ├→ ceiling         (usage spent: 402; at-ceiling notice, no retry)
+///                        │  ├→ consent-required (T&C stale: 428; re-consent gate, no retry)
 ///                        │  └→ done
 /// ```
 ///
@@ -149,6 +151,25 @@ class TurnCeiling extends ChatTurn {
   const TurnCeiling({required this.text, required this.usage});
 }
 
+/// Re-consent required — the accepted T&C version went stale mid-session
+/// (adityas/ai/98).
+///
+/// Terminal and distinct from [TurnError], [TurnAccessLapsed] and [TurnCeiling]:
+/// a **428 Precondition Required** from a `/v1/ai` write route means the user's
+/// recorded consent is missing or older than the current version. The UI
+/// surfaces the same calm re-consent gate the proactive `GET /v1/ai/consent`
+/// check raises — new turns are refused until the updated terms are agreed, so
+/// there is no retry [cursor] (a retry only re-hits the 428). Like a 402, a 428
+/// is a pre-accept gate: no turn is spawned, so [text]/[usage] carry whatever
+/// settled before it — normally empty. Distinct from **403** (access lapsed,
+/// ai/99) and **402** (ceiling, ai/100).
+class TurnConsentRequired extends ChatTurn {
+  final String text;
+  final TurnUsage? usage;
+
+  const TurnConsentRequired({required this.text, required this.usage});
+}
+
 /// The chat turn.
 ///
 /// **keepAlive `NotifierProvider` owning an imperative subscription — NOT a
@@ -205,6 +226,13 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
   // else ever refetches usage; the release cannot lean on the cached provider.
   bool _ceilinged = false;
 
+  // Latched by a 428 on a write route (consent went stale, adityas/ai/98). Like
+  // [_lapsed]/[_ceilinged] it hard-refuses [send] until a fresh GET
+  // /v1/ai/consent proves consent is current; the [consentRequiredProvider]
+  // listen in [build] releases it. Closes the window between the 428 and the
+  // panel swapping the composer for the gate off the (async) consent refetch.
+  bool _needsConsent = false;
+
   // The id of the optimistic user message appended by the current [send], held
   // until the turn is accepted (first event) so a pre-accept 402 can roll it back
   // (adityas/ai/129 finding 3). Null once any event proves acceptance, or between
@@ -239,6 +267,15 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
           // A fresh entitlement fetch proved access is live again — release the
           // lapse latch so sends resume (adityas/ai/123 finding 2).
           _lapsed = false;
+        }
+      })
+      ..listen(consentRequiredProvider, (_, required) {
+        // A recorded agreement (or a fresh GET /v1/ai/consent) cleared the
+        // requirement — release the consent latch and unlock the surface
+        // (adityas/ai/98). Mirrors the lapse-latch release above.
+        if (required == false) {
+          _needsConsent = false;
+          if (state is TurnConsentRequired) state = const TurnIdle();
         }
       })
       ..onDispose(() {
@@ -283,6 +320,15 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     if (_ceilinged) {
       state = const TurnCeiling(text: '', usage: null);
       unawaited(_recheckCeiling());
+      return;
+    }
+    // Consent went stale (a prior 428 on a write route). Refuse new turns into
+    // the re-consent gate until the updated terms are agreed — a doomed resend
+    // would re-hit the 428 and append a duplicate user message (adityas/ai/98).
+    // The panel also swaps the composer for the gate once GET /v1/ai/consent
+    // refetches, but this latch is the reliable stop in the refetch window.
+    if (_needsConsent) {
+      state = const TurnConsentRequired(text: '', usage: null);
       return;
     }
     // UX gate; the backend is the authoritative entitlement check. Defense in
@@ -513,8 +559,8 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     // A deliberate server gate is terminal, NOT a transient drop — do not spend
     // the reconnect budget retrying it (a retry only re-hits the same gate).
     // 403 = access lapsed → the renew prompt (adityas/ai/99). 402 = usage ceiling
-    // → the at-ceiling notice (ai/100). 428 (consent, ai/98) branches here too
-    // when it lands; until then it falls through to the generic error below.
+    // → the at-ceiling notice (ai/100). 428 = consent stale → the re-consent gate
+    // (ai/98). Each is a deliberate, non-retryable gate with its own state.
     if (error is TurnTransportException) {
       if (error.statusCode == 403) {
         _lapse();
@@ -522,6 +568,10 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
       }
       if (error.statusCode == 402) {
         _ceiling();
+        return;
+      }
+      if (error.statusCode == 428) {
+        _consentRequired();
         return;
       }
     }
@@ -709,6 +759,38 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     state = TurnCeiling(text: _buffer.toString(), usage: _usage);
   }
 
+  /// Terminal re-consent required → the re-consent gate ([TurnConsentRequired],
+  /// adityas/ai/98). Reached when a `/v1/ai` write route returns 428: the accepted
+  /// T&C version went stale. Like a 402 it is a pre-accept gate (no turn spawned),
+  /// so roll back the optimistic user message and the normally-empty buffer, latch
+  /// so [send] refuses further turns, and invalidate the consent seam so the panel
+  /// raises the gate (and the latch self-heals once consent is recorded). Symmetry
+  /// with [_lapse]/[_ceiling].
+  void _consentRequired() {
+    _closeSub();
+    _throttle.cancel();
+    _cancelExpiryTimer();
+    unawaited(_transport.cancel());
+    // Pre-accept gate: roll back the optimistic user message so local history
+    // does not diverge from the server (as [_ceiling] does for a 402). Non-null
+    // only pre-accept, so this never removes a message from an accepted turn.
+    final pending = _pendingUserId;
+    if (pending != null) {
+      ref.read(conversationProvider.notifier).removeMessage(pending);
+      _pendingUserId = null;
+    }
+    // Symmetric with [_lapse]/[_ceiling]: commit any partial (normally empty for a
+    // 428, which fires on the opening POST before any delta).
+    if (_buffer.isNotEmpty) {
+      ref
+          .read(conversationProvider.notifier)
+          .appendAssistant(_buffer.toString());
+    }
+    _needsConsent = true;
+    ref.invalidate(consentProvider);
+    state = TurnConsentRequired(text: _buffer.toString(), usage: _usage);
+  }
+
   /// Re-read the window headroom directly from the usage seam after a ceilinged
   /// [send], so the latch can self-heal once the window resets/renews — without a
   /// wall-clock poll and without trusting the possibly-stale cached
@@ -779,7 +861,8 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     TurnCancelled() ||
     TurnError() ||
     TurnAccessLapsed() ||
-    TurnCeiling() => false,
+    TurnCeiling() ||
+    TurnConsentRequired() => false,
   };
 
   bool _isTerminal(ChatTurn turn) => switch (turn) {
@@ -787,7 +870,8 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     TurnCancelled() ||
     TurnError() ||
     TurnAccessLapsed() ||
-    TurnCeiling() => true,
+    TurnCeiling() ||
+    TurnConsentRequired() => true,
     TurnIdle() ||
     TurnConnecting() ||
     TurnStreaming() ||

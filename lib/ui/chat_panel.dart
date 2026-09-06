@@ -1,8 +1,11 @@
 import 'package:charts_dart/charts_dart.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../navigate.dart' if (dart.library.js_interop) '../navigate_web.dart';
 import '../state/chat_turn.dart';
+import '../state/consent.dart';
 import '../state/conversation.dart';
 import '../state/entitlement.dart';
 import '../state/usage.dart';
@@ -61,6 +64,22 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
   /// hides it; [_nearCeilingNotice] re-arms it once usage drops out of the band.
   bool _nearNoticeDismissed = false;
 
+  /// Whether the re-consent checkbox is ticked (adityas/ai/98). Session-local: the
+  /// "Agree and continue" button stays disabled until it is, mirroring the
+  /// checkout block's unchecked-by-default gate.
+  bool _consentChecked = false;
+
+  /// True while the consent POST is in flight — disables the gate and shows a
+  /// spinner so a double-tap can't fire two records (idempotent server-side
+  /// regardless, but the UI shouldn't invite it).
+  bool _agreeing = false;
+
+  /// Tap target for the inline T&C link in the consent gate (adityas/ai/98).
+  /// Opens the site terms page in a new tab so the chat session is preserved.
+  /// Held on the State so its lifecycle is a clean create/dispose.
+  late final TapGestureRecognizer _termsTapRecognizer = TapGestureRecognizer()
+    ..onTap = () => openUrlNewTab('/chat-terms-and-conditions');
+
   @override
   void initState() {
     super.initState();
@@ -76,6 +95,7 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
   @override
   void dispose() {
     _scroll.dispose();
+    _termsTapRecognizer.dispose();
     super.dispose();
   }
 
@@ -104,6 +124,15 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
     // placeholder only for the never-entitled (adityas/ai/120). A lapsed user's
     // composer stays visible — new turns are refused into the renew prompt.
     final enabled = ref.watch(chatAccessProvider) != ChatAccess.none;
+    // Block new turns behind the re-consent gate (adityas/ai/98) when the
+    // proactive GET /v1/ai/consent reports a stale version, OR a mid-session 428
+    // latched the turn into [TurnConsentRequired] before that refetch lands —
+    // either raises the same gate with no window where the composer is live but
+    // sends are refused. History above stays read-only.
+    final consentGated =
+        enabled &&
+        (ref.watch(consentRequiredProvider) ||
+            ref.watch(chatTurnProvider) is TurnConsentRequired);
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -125,17 +154,21 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
           const SizedBox(height: 8),
           // Quiet near-ceiling notice sits just above the composer so it reads as
           // an advisory, not a message in the thread (adityas/ai/100). Only the
-          // wired surface polls usage.
-          if (enabled) _nearCeilingNotice(color, dimColor, fontSize),
-          if (enabled)
+          // wired surface polls usage — and it yields to the consent gate, which
+          // owns the below-thread slot when raised.
+          if (enabled && !consentGated)
+            _nearCeilingNotice(color, dimColor, fontSize),
+          if (!enabled)
+            _lockedComposer(dimColor, fontSize)
+          else if (consentGated)
+            _consentGate(color, dimColor, fontSize)
+          else
             ChatComposer(
               color: color,
               dimColor: dimColor,
               fontSize: fontSize,
               onSubmit: _onComposerSubmit,
-            )
-          else
-            _lockedComposer(dimColor, fontSize),
+            ),
         ],
       ),
     );
@@ -208,7 +241,8 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
       TurnCancelled() ||
       TurnError() ||
       TurnAccessLapsed() ||
-      TurnCeiling() => false,
+      TurnCeiling() ||
+      TurnConsentRequired() => false,
     };
     if (streaming) {
       final proceed = await showDialog<bool>(
@@ -315,7 +349,13 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
       // red error bubble — new turns wait until the window resets. No dollar or
       // token figure (the no-meter invariant).
       TurnCeiling() => _ceilingBubble(color, dimColor, fontSize),
-      TurnIdle() || TurnDone() || TurnCancelled() => null,
+      // Re-consent required (adityas/ai/98): no in-thread bubble — the gate
+      // replaces the composer below, and the rolled-back user message means there
+      // is nothing to annotate here.
+      TurnConsentRequired() ||
+      TurnIdle() ||
+      TurnDone() ||
+      TurnCancelled() => null,
     };
   }
 
@@ -542,6 +582,151 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
         ],
       ),
     );
+  }
+
+  // ── Re-consent gate (adityas/ai/98) ──────────────────────────────
+
+  /// The in-app re-consent gate, shown in place of the composer when the accepted
+  /// T&C version is stale (proactive `GET /v1/ai/consent`) or a write route
+  /// returned 428. Blocks new turns until the updated terms are agreed; the
+  /// conversation above stays read-only, so declining is simply not agreeing —
+  /// there is no reject action, mirroring the checkout block's single
+  /// agree-to-continue affordance. Copy: ai/docs/chat-consent-copy.md →
+  /// "Re-consent gate copy".
+  Widget _consentGate(Color color, Color dimColor, double fontSize) {
+    final gold = context.tokens.gold;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: context.tokens.bubbleAgent,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: gold.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'We’ve updated the Chat terms',
+            style: TextStyle(
+              color: color,
+              fontSize: fontSize * 1.05,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          _consentBody(color, fontSize),
+          const SizedBox(height: 12),
+          InkWell(
+            onTap: _agreeing
+                ? null
+                : () => setState(() => _consentChecked = !_consentChecked),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  _consentChecked
+                      ? Icons.check_box
+                      : Icons.check_box_outline_blank,
+                  size: fontSize * 1.3,
+                  color: _consentChecked ? gold : dimColor,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'I’ve reviewed and agree to the updated AI Chat Terms & '
+                    'Conditions.',
+                    style: TextStyle(
+                      color: color,
+                      fontSize: fontSize * 0.9,
+                      height: 1.3,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton(
+              onPressed: (_consentChecked && !_agreeing)
+                  ? _onAgreeConsent
+                  : null,
+              style: FilledButton.styleFrom(
+                backgroundColor: gold,
+                foregroundColor: context.tokens.onGold,
+              ),
+              child: _agreeing
+                  ? SizedBox(
+                      width: fontSize,
+                      height: fontSize,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: context.tokens.onGold,
+                      ),
+                    )
+                  : const Text('Agree and continue'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// The gate body — the re-consent sentence with the T&C phrase as an inline
+  /// gold link (opens the site terms page in a new tab, preserving the session).
+  Widget _consentBody(Color color, double fontSize) {
+    final gold = context.tokens.gold;
+    return Text.rich(
+      TextSpan(
+        style: TextStyle(color: color, fontSize: fontSize * 0.9, height: 1.4),
+        children: [
+          const TextSpan(text: 'Our '),
+          TextSpan(
+            text: 'AI Chat Terms & Conditions',
+            style: TextStyle(
+              color: gold,
+              decoration: TextDecoration.underline,
+              decorationColor: gold,
+            ),
+            recognizer: _termsTapRecognizer,
+          ),
+          const TextSpan(
+            text:
+                ' have changed since you last agreed. Please review and '
+                'agree to continue chatting.',
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Record agreement, then let the consent seam refetch and clear the gate. On
+  /// failure, drop the spinner and keep the gate so the user can retry (with a
+  /// quiet snackbar); the checkbox stays ticked.
+  Future<void> _onAgreeConsent() async {
+    setState(() => _agreeing = true);
+    try {
+      await ref.read(consentProvider.notifier).accept();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _agreeing = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Couldn't save that just now. Please try again."),
+        ),
+      );
+      return;
+    }
+    // The consentRequiredProvider listen clears the turn latch; the gate falls
+    // away when the refetch reports needs_consent = false. Reset local flags so a
+    // future re-consent starts unticked.
+    if (!mounted) return;
+    setState(() {
+      _agreeing = false;
+      _consentChecked = false;
+    });
   }
 
   // ── Placeholder (not allowlisted) ────────────────────────────────

@@ -113,7 +113,8 @@ class _ChatComposerState extends ConsumerState<ChatComposer> {
       TurnCancelled() ||
       TurnError() ||
       TurnAccessLapsed() ||
-      TurnCeiling() => false,
+      TurnCeiling() ||
+      TurnConsentRequired() => false,
     };
     final border = OutlineInputBorder(
       borderRadius: BorderRadius.circular(12),

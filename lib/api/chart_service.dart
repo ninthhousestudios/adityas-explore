@@ -72,9 +72,49 @@ abstract interface class UsageClient {
   Future<int> fetchUsagePct();
 }
 
+/// The current user's AI-Chat consent status (adityas/ai/98): the T&C version the
+/// backend now requires, the version this user last agreed to (or `null` if
+/// never), and whether a (re-)consent is needed.
+///
+/// [needsConsent] is the authoritative gate signal — the client never derives it
+/// from the two version strings, and dev-allowlisted users are reported `false`
+/// server-side. The version strings are carried for display/audit only.
+class ChatConsent {
+  final String currentVersion;
+  final String? acceptedVersion;
+  final bool needsConsent;
+
+  const ChatConsent({
+    required this.currentVersion,
+    required this.acceptedVersion,
+    required this.needsConsent,
+  });
+
+  ChatConsent.fromJson(Map<String, Object?> json)
+    : currentVersion = json['current_version'] as String,
+      acceptedVersion = json['accepted_version'] as String?,
+      needsConsent = json['needs_consent'] as bool;
+}
+
+/// Reads and records the current user's AI-Chat T&C consent (adityas/ai/98).
+///
+/// An interface (mirrors [EntitlementClient]/[UsageClient]) so the consent
+/// providers are driven by a scripted fake in headless tests. The production
+/// implementation is [ChartService].
+abstract interface class ConsentClient {
+  /// GET `/v1/ai/consent` → the caller's [ChatConsent] (auth only, NOT
+  /// entitlement-gated).
+  Future<ChatConsent> fetchConsent();
+
+  /// POST `/v1/ai/consent` → records agreement to the current version (`204`).
+  /// Append-only and idempotent by version on the backend, so a double-tap is
+  /// harmless.
+  Future<void> recordConsent();
+}
+
 typedef TokenProvider = Future<String?> Function({bool forceRefresh});
 
-class ChartService implements EntitlementClient, UsageClient {
+class ChartService implements EntitlementClient, UsageClient, ConsentClient {
   final http.Client _client;
   final TokenProvider _tokenProvider;
 
@@ -190,6 +230,41 @@ class ChartService implements EntitlementClient, UsageClient {
 
     final data = jsonDecode(response.body) as Map<String, Object?>;
     return data['used_pct'] as int;
+  }
+
+  /// GET `/v1/ai/consent` → the caller's [ChatConsent] (adityas/ai/98).
+  ///
+  /// Auth only, NOT entitlement-gated. Response shape is
+  /// `{ current_version, accepted_version|null, needs_consent }`. Drives the
+  /// proactive re-consent gate; the reactive backstop is the **428** on the write
+  /// routes.
+  @override
+  Future<ChatConsent> fetchConsent() async {
+    final uri = Uri.parse('$apiBaseUrl/v1/ai/consent');
+    final response = await _request(
+      (headers) => _client.get(uri, headers: headers),
+    );
+
+    if (response.statusCode != 200) {
+      throw ChartApiException(_parseError(response), response.statusCode);
+    }
+
+    final data = jsonDecode(response.body) as Map<String, Object?>;
+    return ChatConsent.fromJson(data);
+  }
+
+  /// POST `/v1/ai/consent` → records agreement to the current version
+  /// (adityas/ai/98). Expects `204`; append-only and idempotent by version.
+  @override
+  Future<void> recordConsent() async {
+    final uri = Uri.parse('$apiBaseUrl/v1/ai/consent');
+    final response = await _request(
+      (headers) => _client.post(uri, headers: headers),
+    );
+
+    if (response.statusCode != 204) {
+      throw ChartApiException(_parseError(response), response.statusCode);
+    }
   }
 
   String _parseError(http.Response response) {
