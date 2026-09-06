@@ -487,8 +487,16 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
                         backdropColor: backdropColor,
                         fontSize: panelFontSize,
                         onSubmit: (text) {
-                          _setMode(LayoutMode.conversation);
-                          return ref.read(chatTurnProvider.notifier).send(text);
+                          // Send first, switch modes only when accepted. The
+                          // mode switch unmounts the pill and disposes its
+                          // controller, so switching before a refused send (the
+                          // settling window) would lose the typed draft
+                          // (adityas/ai/146).
+                          final accepted = ref
+                              .read(chatTurnProvider.notifier)
+                              .send(text);
+                          if (accepted) _setMode(LayoutMode.conversation);
+                          return accepted;
                         },
                       ),
                     ),

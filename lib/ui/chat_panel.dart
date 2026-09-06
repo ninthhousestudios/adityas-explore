@@ -125,13 +125,25 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
   /// the transient bubble is torn down — so a burst of deltas followed at once by
   /// `done` still announces the answer rather than a stale "Thinking…".
   void _announce(ChatTurn turn) {
-    final spoken = _spokenLabel(turn);
-    if (spoken == null) return; // nothing to announce for this state
     if (_isAnnounceTerminal(turn)) {
+      // Done / Cancelled: flush the final text at once, before the transient
+      // bubble is torn down. Always drop any pending streaming tick first so a
+      // stale partial can't fire after it (adityas/ai/143).
       _announceTimer?.cancel();
       _announceTimer = null;
       _pendingAnnouncement = null;
-      _setAnnouncement(spoken);
+      final spoken = _spokenLabel(turn);
+      if (spoken != null) _setAnnouncement(spoken);
+      return;
+    }
+    final spoken = _spokenLabel(turn);
+    if (spoken == null) {
+      // Error / Idle / reset: nothing to announce, but a streaming tick may be
+      // pending — cancel and clear it so a partial doesn't speak after the turn
+      // ended or the conversation was reset (adityas/ai/146).
+      _announceTimer?.cancel();
+      _announceTimer = null;
+      _pendingAnnouncement = null;
       return;
     }
     // Streaming: pace the announcement. Coalesce; the timer publishes the latest.

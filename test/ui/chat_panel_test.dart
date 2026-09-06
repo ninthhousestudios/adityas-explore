@@ -218,6 +218,52 @@ void main() {
     expect(_liveLabel(tester), 'partial reply');
   });
 
+  testWidgets('an error mid-stream cancels the pending announcement — no stale '
+      'partial speaks after the turn ended (adityas/ai/146)', (tester) async {
+    final transport = _FakeTransport();
+    final container = _container(transport);
+    await _pumpPanel(tester, container);
+
+    container.read(chatTurnProvider.notifier).send('hi');
+    await tester.pump();
+    transport.emit(const DeltaEvent('partial', 'e1'));
+    await tester.pump();
+    // Paced — a cadence tick is pending, nothing announced yet.
+    expect(_liveLabel(tester), '');
+
+    // The stream errors within the same cadence window.
+    transport.emit(const ErrorEvent('boom', 'e2'));
+    await tester.pump();
+
+    // The pending tick was cancelled: after the cadence would have elapsed, the
+    // stale partial is NOT announced.
+    await tester.pump(kLiveRegionCadence);
+    expect(_liveLabel(tester), '');
+  });
+
+  testWidgets(
+    'New Chat mid-stream cancels the pending announcement — the reset '
+    'conversation does not speak a stale partial (adityas/ai/146)',
+    (tester) async {
+      final transport = _FakeTransport();
+      final container = _container(transport);
+      await _pumpPanel(tester, container);
+
+      container.read(chatTurnProvider.notifier).send('hi');
+      await tester.pump();
+      transport.emit(const DeltaEvent('partial', 'e1'));
+      await tester.pump();
+      expect(_liveLabel(tester), '');
+
+      // New Chat resets the turn to idle within the cadence window.
+      container.read(chatTurnProvider.notifier).startNewConversation();
+      await tester.pump();
+
+      await tester.pump(kLiveRegionCadence);
+      expect(_liveLabel(tester), '');
+    },
+  );
+
   testWidgets('the live region is a single polite region reaching the '
       'semantics tree (adityas/ai/143)', (tester) async {
     final handle = tester.ensureSemantics();

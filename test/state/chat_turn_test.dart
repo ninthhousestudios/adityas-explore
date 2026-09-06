@@ -33,6 +33,10 @@ class _FakeTransport implements TurnTransport {
   /// drive a stop the server did not acknowledge (adityas/ai/141).
   bool cancelSucceeds = true;
 
+  /// When set, [cancel] blocks on this until the test completes it — lets a test
+  /// race stream events against an unresolved cancel POST (adityas/ai/146).
+  Completer<void>? cancelGate;
+
   StreamController<TurnEvent> get _current => _controllers.last;
 
   @override
@@ -59,6 +63,8 @@ class _FakeTransport implements TurnTransport {
   @override
   Future<bool> cancel() async {
     cancels++;
+    final gate = cancelGate;
+    if (gate != null) await gate.future;
     return cancelSucceeds;
   }
 
@@ -405,6 +411,74 @@ void main() {
       MessageRole.assistant,
     ]);
     expect(convo.messages.last.text, 'partial');
+  });
+
+  test('a failed cancel racing a trailing done commits the full reply, not a '
+      'truncated cancelled (adityas/ai/146)', () async {
+    final gate = Completer<void>();
+    final transport = _FakeTransport()
+      ..cancelSucceeds = false
+      ..cancelGate = gate;
+    final container = _container(transport);
+    final notifier = container.read(chatTurnProvider.notifier)..send('hi');
+
+    transport.emit(const DeltaEvent('partial', 'e1'));
+    await _pump();
+
+    // Stop pressed; the cancel POST is in flight (unresolved).
+    final cancelling = notifier.cancel();
+    await _pump();
+    expect(container.read(chatTurnProvider), isA<TurnCancelled>());
+
+    // Before the POST resolves, the generation the stop did NOT reach runs to
+    // completion: more text, trailing usage, then done.
+    transport
+      ..emit(const DeltaEvent(' answer', 'e2'))
+      ..emit(const UsageEvent(TurnUsage(inputTokens: 1, outputTokens: 2), 'e3'))
+      ..emit(const DoneEvent('e4'));
+    await _pump();
+
+    // Now the failed cancel resolves. With the stream already completed, it must
+    // reconcile as a normal done — not freeze a truncated "cancelled".
+    gate.complete();
+    await cancelling;
+    await _pump();
+
+    final done = container.read(chatTurnProvider);
+    expect(done, isA<TurnDone>());
+    expect((done as TurnDone).text, 'partial answer');
+    final convo = container.read(conversationProvider);
+    expect(convo.messages.map((m) => m.role), [
+      MessageRole.user,
+      MessageRole.assistant,
+    ]);
+    expect(convo.messages.last.text, 'partial answer'); // full reply, once
+  });
+
+  test('New Chat during the settling window re-issues the stop rather than '
+      'orphaning the generation (adityas/ai/146)', () async {
+    final gate = Completer<void>();
+    final transport = _FakeTransport()..cancelGate = gate;
+    final container = _container(transport);
+    final notifier = container.read(chatTurnProvider.notifier)..send('hi');
+    transport.emit(const DeltaEvent('partial', 'e1'));
+    await _pump();
+
+    final cancelling = notifier.cancel(); // POST in flight → settling window
+    await _pump();
+    expect(container.read(chatTurnProvider), isA<TurnCancelled>());
+    expect(transport.cancels, 1);
+
+    // New Chat while still settling must re-issue the stop, not abandon a turn
+    // whose original cancel could still fail and keep generating.
+    notifier.startNewConversation();
+    gate.complete();
+    await cancelling;
+    await _pump();
+
+    expect(container.read(chatTurnProvider), isA<TurnIdle>());
+    expect(transport.cancels, 2); // re-stopped on rotation
+    expect(transport.resets, 1);
   });
 
   test('a Stop pressed while still connecting is latched (in effect), not '

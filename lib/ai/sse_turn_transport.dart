@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -79,6 +80,20 @@ class SseTurnTransport implements TurnTransport {
   // of every [start] so it never carries across turns.
   bool _pendingCancel = false;
 
+  // Carries the REAL outcome of a Stop latched while the turn was still opening
+  // (id not yet minted). [start] fires the deferred POST once the id exists and
+  // completes this with its result; every abandon path (rotation/superseded)
+  // completes it too, so the notifier's awaited cancel() never strands. Without
+  // it a failed connecting-cancel would be reported to the caller as success
+  // (adityas/ai/146).
+  Completer<bool>? _pendingCancelResult;
+
+  // True only while [start] is opening a turn (id not yet minted). Lets [cancel]
+  // tell a genuine Stop-during-connecting (latch + await the real result) from a
+  // cancel with no turn in flight (return at once, never strand the caller —
+  // adityas/ai/146).
+  bool _opening = false;
+
   int _idempotencySeq = 0;
 
   // True while [_conversationId] holds a *resumed* (adopted) thread rather than
@@ -111,6 +126,10 @@ class SseTurnTransport implements TurnTransport {
     // it, and drop any stale pending-cancel (adityas/ai/140).
     _turnId = null;
     _pendingCancel = false;
+    // A turn is opening: its id isn't minted yet, so a Stop landing now must
+    // latch and await the deferred POST's real outcome rather than deadlock a
+    // caller when no turn is in flight at all (adityas/ai/146).
+    _opening = true;
     final String token;
     final String conversationId;
     final String turnId;
@@ -132,17 +151,23 @@ class SseTurnTransport implements TurnTransport {
     } on _ConversationSuperseded {
       // A Resume / New-Chat / user-change rotated the conversation while this
       // turn was opening. Abandon silently — the notifier has already moved on,
-      // and its subscription to this stream was cancelled first.
+      // and its subscription to this stream was cancelled first. Resolve any
+      // latched cancel so its awaiter never strands (adityas/ai/146).
+      _resolvePendingCancel(true);
       return;
     }
-    if (_epoch != epoch) return;
+    if (_epoch != epoch) {
+      _resolvePendingCancel(true);
+      return;
+    }
     _turnId = turnId;
+    _opening = false;
     if (_pendingCancel) {
       // A Stop pressed while this turn was still opening latched the intent;
       // fire it now for the exact id, then still stream so the terminal
-      // error → usage → done flows to the notifier (adityas/ai/140).
-      _pendingCancel = false;
-      await _postCancel(turnId);
+      // error → usage → done flows to the notifier (adityas/ai/140). Carry the
+      // POST's real result back to the caller's awaited cancel() (adityas/ai/146).
+      _resolvePendingCancel(await _postCancel(turnId));
     }
     yield* _stream(token, turnId, lastEventId: null);
   }
@@ -161,15 +186,35 @@ class SseTurnTransport implements TurnTransport {
   Future<bool> cancel() async {
     final turnId = _turnId;
     if (turnId == null) {
+      if (!_opening) {
+        // No turn is opening — nothing to stop. The notifier only calls cancel()
+        // while a turn is active, but a direct caller must not deadlock on the
+        // completer that only [start] would complete (adityas/ai/146).
+        return true;
+      }
       // The turn is still opening (TurnConnecting): its id isn't known yet, so
       // latch the Stop intent for [start] to fire once the id is minted. A bare
       // return here would leave the turn generating; POSTing against a stale
       // previous id would cancel the wrong turn (adityas/ai/140). The stop is
       // queued, not failed, so report it in effect (adityas/ai/141).
       _pendingCancel = true;
-      return true;
+      // Report the stop's REAL outcome once [start] fires the deferred POST,
+      // via a completer, rather than optimistically claiming success — a
+      // connecting-cancel that later fails must reach the caller (adityas/ai/146).
+      return (_pendingCancelResult ??= Completer<bool>()).future;
     }
     return _postCancel(turnId);
+  }
+
+  /// Complete a pending connecting-cancel with [ok] and clear the latch. Fired
+  /// by [start] with the deferred POST's result, or on an abandon path
+  /// (rotation/superseded) before the id could be minted — completing avoids
+  /// stranding the notifier's awaited cancel() (adityas/ai/146).
+  void _resolvePendingCancel(bool ok) {
+    _pendingCancel = false;
+    _opening = false;
+    _pendingCancelResult?.complete(ok);
+    _pendingCancelResult = null;
   }
 
   // Server-side stop (adityas/backend/54, contract in adityas/ai/94): POST the

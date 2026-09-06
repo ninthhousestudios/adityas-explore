@@ -205,6 +205,19 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
   // fresh turn would tear down the subscription and lose the trailing usage.
   bool _cancelling = false;
 
+  // The cancel POST is in flight and its success/failure is not yet known.
+  // While set, a `done` arriving over the stream cannot tell a successful
+  // cancellation from a genuine completion of a *failed* cancel, so [_finish]
+  // defers the decision to [cancel]'s reconcile instead of settling on a guess
+  // (adityas/ai/146).
+  bool _cancelPending = false;
+
+  // Set by [_finish] when `done` lands during the [_cancelPending] window, so
+  // [cancel]'s reconcile knows the stream already completed — there is nothing
+  // left to revert to, and a failed cancel must surface the full reply, not a
+  // truncated "cancelled" (adityas/ai/146).
+  bool _streamEndedWhileCancelling = false;
+
   // Authoritative access-lapse latch. Set when a `/v1/ai` write route returns
   // 403, or the clock crosses `access_until` on a non-allowlisted account
   // ([_lapse]). While set, [send] hard-refuses new turns into the renew prompt —
@@ -447,23 +460,50 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
       // must not commit the same partial a second time (adityas/ai/136).
       _partialCommitted = true;
     }
+    // Track the cancel POST as in-flight so a `done` racing it defers to the
+    // reconcile below rather than settling on a guess (adityas/ai/146).
+    _cancelPending = true;
+    _streamEndedWhileCancelling = false;
     final stopped = await _transport.cancel();
-    // The stream may have settled this turn during the await (trailing done/
-    // usage, a gate, or a broken stream); its terminal handler already owns the
-    // outcome, so leave it alone.
+    _cancelPending = false;
+    final endedWhileCancelling = _streamEndedWhileCancelling;
+    _streamEndedWhileCancelling = false;
+    // A terminal that landed AFTER the POST resolved already settled this turn
+    // through its own handler (which cleared the latch); leave it alone.
     if (!_cancelling) return;
-    // The stop is in effect (server acked, or latched while connecting) — the
-    // TurnCancelled state stands and the still-open stream settles it.
     if (stopped) {
+      // The stop is in effect (server acked, or latched while connecting). If
+      // the stream already delivered its cancellation terminal while we waited,
+      // settle now; otherwise the still-open stream settles it (adityas/ai/141).
       _cancelledPartialId = null;
+      if (endedWhileCancelling) {
+        _cancelling = false;
+        state = TurnCancelled(text: _buffer.toString(), usage: _usage);
+      }
       return;
     }
-    // The stop did NOT take: the server is still generating and the SSE stream
-    // is still delivering. Don't assert "cancelled" over a live stream
-    // (adityas/ai/141) — un-commit the optimistic partial and revert to the open
-    // stream so the reply stays visible and Stop can be retried. The eventual
-    // terminal event settles it normally (a done then re-appends the full reply).
+    // The stop did NOT take: the server kept generating.
     final pending = _cancelledPartialId;
+    if (endedWhileCancelling) {
+      // The generation ran to completion while the failed cancel was in flight.
+      // The stream is already closed, so there is nothing live to revert to —
+      // reconcile as a normal done, replacing the optimistic partial with the
+      // full reply rather than freezing a truncated "cancelled" (adityas/ai/146).
+      _cancelledPartialId = null;
+      _partialCommitted = false;
+      _cancelling = false;
+      final full = _buffer.toString();
+      final convo = ref.read(conversationProvider.notifier);
+      if (pending != null) convo.removeMessage(pending);
+      state = TurnDone(text: full, usage: _usage);
+      if (full.isNotEmpty) convo.appendAssistant(full);
+      ref.invalidate(usageProvider);
+      return;
+    }
+    // The stream is still live: don't assert "cancelled" over it (adityas/ai/141)
+    // — un-commit the optimistic partial and revert to the open stream so the
+    // reply stays visible and Stop can be retried. The eventual terminal event
+    // settles it normally (a done then re-appends the full reply).
     if (pending != null) {
       ref.read(conversationProvider.notifier).removeMessage(pending);
       _cancelledPartialId = null;
@@ -508,7 +548,11 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
   /// a local reset of the buffer/subscription/timers. The server's durable log
   /// still settles that turn's billing; the client just stops listening.
   void _stopActiveForRotation() {
-    if (_isActive) unawaited(_transport.cancel());
+    // Re-issue the stop for a turn that is active OR still settling a prior Stop
+    // (TurnCancelled, which _isActive reports false). Abandoning during the
+    // settling window would orphan a generation whose original cancel may have
+    // failed — it keeps generating and billing unobserved (adityas/ai/146).
+    if (_isActive || _cancelling) unawaited(_transport.cancel());
     _resetTurn();
   }
 
@@ -705,6 +749,15 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
 
   void _finish() {
     if (_cancelling) {
+      if (_cancelPending) {
+        // The cancel POST is still in flight; we cannot yet tell a successful
+        // cancellation terminal from a genuine completion of a failed cancel.
+        // Record that the stream completed and defer the decision to [cancel]'s
+        // reconcile, which knows the POST outcome (adityas/ai/146).
+        _streamEndedWhileCancelling = true;
+        _closeSub();
+        return;
+      }
       // A cancelled turn already committed its partial in [cancel]; settling on
       // a trailing done must not append it a second time (adityas/ai/126).
       _settleCancelled();
@@ -927,6 +980,8 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     _usage = null;
     _reconnects = 0;
     _cancelling = false;
+    _cancelPending = false;
+    _streamEndedWhileCancelling = false;
     _partialCommitted = false;
     _cancelledPartialId = null;
     _pendingUserId = null;

@@ -683,12 +683,49 @@ void main() {
 
       final events = transport.start(const TurnRequest(text: 'hi')).toList();
       await _pumpUntil(() => turnPostsStarted == 1);
-      // Connecting: the id is unknown, so the stop is latched — reported in
-      // effect (it will fire), not a failure, and nothing is POSTed yet.
-      expect(await transport.cancel(), isTrue);
+      // Connecting: the id is unknown, so the stop is latched and nothing is
+      // POSTed yet. Its REAL outcome (202 here) resolves once [start] mints the
+      // id and fires the deferred POST — not an optimistic guess (adityas/ai/146).
+      final stopped = transport.cancel();
       expect(cancelPaths, isEmpty);
       gate.complete();
       await events;
+      expect(await stopped, isTrue);
+      expect(cancelPaths.single, '/v1/ai/turns/t-late/cancel');
+    });
+
+    test('a Stop while still connecting whose deferred POST fails reports the '
+        'failure once the id is minted (adityas/ai/146)', () async {
+      final gate = Completer<void>();
+      var turnPostsStarted = 0;
+      final cancelPaths = <String>[];
+      final mock = MockClient((request) async {
+        if (request.url.path.endsWith('/conversations')) {
+          return http.Response(jsonEncode({'conversation_id': 'c1'}), 201);
+        }
+        if (request.url.path.endsWith('/turns')) {
+          turnPostsStarted++;
+          await gate.future;
+          return http.Response(jsonEncode({'turn_id': 't-late'}), 202);
+        }
+        cancelPaths.add(request.url.path);
+        return http.Response('', 500); // the stop POST fails
+      });
+      final transport = SseTurnTransport(
+        tokenProvider: ({forceRefresh = false}) async => 'jwt',
+        baseUrl: 'https://api.test',
+        httpClient: mock,
+        byteSource: _FakeByteSource(_happyStream).call,
+      );
+
+      final events = transport.start(const TurnRequest(text: 'hi')).toList();
+      await _pumpUntil(() => turnPostsStarted == 1);
+      final stopped = transport.cancel();
+      gate.complete();
+      await events;
+      // The deferred POST fired against the exact id but returned 500 — the
+      // latched cancel must surface that failure, not a false success.
+      expect(await stopped, isFalse);
       expect(cancelPaths.single, '/v1/ai/turns/t-late/cancel');
     });
 
@@ -734,10 +771,12 @@ void main() {
       await _pumpUntil(
         () => turnPostsStarted == 1,
       ); // turn POST in flight, no id
-      await transport.cancel(); // Stop during TurnConnecting — latches intent
+      final stopped = transport
+          .cancel(); // Stop during TurnConnecting — latches
       expect(cancelPaths, isEmpty); // nothing to POST yet — id unknown
       gate.complete();
       final emitted = await events;
+      expect(await stopped, isTrue); // deferred POST returned 202
 
       // The exact minted id was cancelled — not a no-op that leaves it running.
       expect(cancelPaths.single, '/v1/ai/turns/t-late/cancel');
@@ -778,9 +817,10 @@ void main() {
       nextTurnId = 't2';
       final events = transport.start(const TurnRequest(text: 'two')).toList();
       await _pumpUntil(() => turnPostsStarted == 2);
-      await transport.cancel(); // must not target t1
+      final stopped = transport.cancel(); // must not target t1
       gate.complete();
       await events;
+      expect(await stopped, isTrue);
 
       expect(cancelPaths.single, '/v1/ai/turns/t2/cancel');
     });
