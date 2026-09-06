@@ -45,15 +45,7 @@ import 'tokens.dart';
       colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
     );
   } else if (glyphPath != null) {
-    leading = ColorFiltered(
-      colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
-      child: Image.asset(
-        glyphPath,
-        width: 28,
-        height: 28,
-        filterQuality: FilterQuality.medium,
-      ),
-    );
+    leading = _BeingTypeEmblem(path: glyphPath, color: color, size: 28);
   } else {
     leading = null;
   }
@@ -67,6 +59,31 @@ import 'tokens.dart';
       : adityaName(beingSign) ?? '';
 
   return (leading: leading, title: title);
+}
+
+/// The being-type emblem (Rishi, Yaksha, …) is a fine-line mandala shown at a
+/// tiny size. It's a single-path vector trace, so it rasterizes crisply at any
+/// size with no minification aliasing. `srcIn` tints the shape.
+class _BeingTypeEmblem extends StatelessWidget {
+  final String path;
+  final Color color;
+  final double size;
+
+  const _BeingTypeEmblem({
+    required this.path,
+    required this.color,
+    required this.size,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SvgPicture.asset(
+      path,
+      width: size,
+      height: size,
+      colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
+    );
+  }
 }
 
 class BeingOverlayBody extends StatelessWidget {
@@ -134,15 +151,7 @@ class BeingOverlayBody extends StatelessWidget {
         const SizedBox(height: 16),
         if (glyphPath != null)
           Center(
-            child: ColorFiltered(
-              colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
-              child: Image.asset(
-                glyphPath,
-                width: 56,
-                height: 56,
-                filterQuality: FilterQuality.medium,
-              ),
-            ),
+            child: _BeingTypeEmblem(path: glyphPath, color: color, size: 56),
           ),
         if (content != null) ...[
           const SizedBox(height: 16),

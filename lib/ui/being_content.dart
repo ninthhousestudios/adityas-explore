@@ -26,7 +26,7 @@ String? adityaGlyphPath(int sign) => adityaSigns[sign]?.glyph;
 
 String? beingTypeGlyphPath(String type) {
   final normalized = type.toLowerCase();
-  return 'assets/glyphs/beings/$normalized.png';
+  return 'assets/glyphs/beings/$normalized.svg';
 }
 
 String? adityaName(int sign) => adityaSigns[sign]?.name;

@@ -40,7 +40,6 @@ class AssetPreloader {
     await _precacheImages(
       [
         'assets/images/hero-dawn-temple_seed4830.webp',
-        for (final type in _beingTypes) beingTypeGlyphPath(type),
         ..._beingTypeEmblems,
         for (final name in defaultGrahas) planetImagePath(name),
         for (var sign = 1; sign <= 12; sign++) beingImagePath(sign, 'aditya'),
@@ -51,6 +50,7 @@ class AssetPreloader {
     await _precacheSvgs([
       ...planetGlyphs.values,
       for (final sign in adityaSigns.values) sign.glyph,
+      for (final type in _beingTypes) ?beingTypeGlyphPath(type),
     ]);
   }
 
