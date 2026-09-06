@@ -89,7 +89,7 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
   void _onScroll() {
     if (!_scroll.hasClients) return;
     final pos = _scroll.position;
-    _stickToBottom = pos.maxScrollExtent - pos.pixels < 80;
+    _stickToBottom = nearBottom(pos.maxScrollExtent, pos.pixels);
   }
 
   @override
@@ -843,6 +843,19 @@ int? compactionSeamIndex(
 /// older turns above were condensed to keep the conversation focused. Mirrors the
 /// backend contract's own suggested marker text (adityas/ai/119).
 const _seamLabel = 'Earlier messages condensed to keep this focused';
+
+/// Distance from the bottom, in logical px, within which the chat view is
+/// treated as "at the end" and keeps auto-pinning to new content (adityas/ai/29).
+/// A small band, not zero, so a stream that overshoots the exact extent by a
+/// pixel or two still counts as stuck.
+const double kStickToBottomThreshold = 80;
+
+/// Whether the scroll position is close enough to the bottom to keep sticking to
+/// it as messages arrive or tokens stream. [_ChatPanelState._onScroll] flips its
+/// stick flag from this; [_ChatPanelState._scrollToEnd] honours it (force aside).
+/// Pure so the sticky/read-back boundary is unit-testable without a scroll view.
+bool nearBottom(double maxScrollExtent, double pixels) =>
+    maxScrollExtent - pixels < kStickToBottomThreshold;
 
 /// PLACEHOLDER renew-prompt copy for the mid-session access lapse
 /// ([TurnAccessLapsed], adityas/ai/99). Not final — adityas/ai/85 swaps this for
