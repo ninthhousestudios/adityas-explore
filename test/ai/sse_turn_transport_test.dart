@@ -562,4 +562,107 @@ void main() {
       },
     );
   });
+
+  group('SseTurnTransport.cancel (adityas/ai/137)', () {
+    // Drive a happy turn to completion so the transport holds a turn id, then
+    // hand the caller the mock's recorded cancel request. Every case shares this
+    // setup; only the cancel-route response differs.
+    Future<http.Request?> startThenCancel(
+      http.Response Function() cancelResponse,
+    ) async {
+      http.Request? cancelRequest;
+      final mock = MockClient((request) async {
+        if (request.url.path.endsWith('/conversations')) {
+          return http.Response(jsonEncode({'conversation_id': 'c1'}), 201);
+        }
+        if (request.url.path.endsWith('/turns')) {
+          return http.Response(jsonEncode({'turn_id': 't1'}), 202);
+        }
+        cancelRequest = request;
+        return cancelResponse();
+      });
+      final transport = SseTurnTransport(
+        tokenProvider: ({forceRefresh = false}) async => 'jwt',
+        baseUrl: 'https://api.test',
+        httpClient: mock,
+        byteSource: _FakeByteSource(_happyStream).call,
+      );
+      await transport.start(const TurnRequest(text: 'hi')).toList();
+      await transport.cancel();
+      return cancelRequest;
+    }
+
+    test('POSTs the cancel route for the in-flight turn, bearer auth, no '
+        'body; a 202 completes', () async {
+      final request = await startThenCancel(() => http.Response('', 202));
+      expect(request, isNotNull);
+      expect(request!.method, 'POST');
+      expect(request.url.path, '/v1/ai/turns/t1/cancel');
+      expect(request.headers['authorization'], 'Bearer jwt');
+      expect(request.body, isEmpty);
+    });
+
+    test('idempotent: a 404 (turn already finished/evicted/not ours) does not '
+        'throw', () async {
+      await expectLater(
+        startThenCancel(() => http.Response('', 404)),
+        completes,
+      );
+    });
+
+    test('best-effort: a 5xx is swallowed — the open SSE stream is the real '
+        'settlement path', () async {
+      await expectLater(
+        startThenCancel(() => http.Response('nope', 500)),
+        completes,
+      );
+    });
+
+    test('best-effort: a transport throw is swallowed', () async {
+      await expectLater(
+        startThenCancel(() => throw Exception('network down')),
+        completes,
+      );
+    });
+
+    test('no-op before any turn has been started — no POST fired', () async {
+      var posts = 0;
+      final transport = SseTurnTransport(
+        tokenProvider: ({forceRefresh = false}) async => 'jwt',
+        baseUrl: 'https://api.test',
+        httpClient: MockClient((_) async {
+          posts++;
+          return http.Response('', 202);
+        }),
+      );
+      await transport.cancel();
+      expect(posts, 0);
+    });
+
+    test('no-op when signed out — a null token fires no POST', () async {
+      var cancelPosts = 0;
+      final mock = MockClient((request) async {
+        if (request.url.path.endsWith('/conversations')) {
+          return http.Response(jsonEncode({'conversation_id': 'c1'}), 201);
+        }
+        if (request.url.path.endsWith('/turns')) {
+          return http.Response(jsonEncode({'turn_id': 't1'}), 202);
+        }
+        cancelPosts++;
+        return http.Response('', 202);
+      });
+      // Token present to open the turn, gone by the time the user hits Stop.
+      String? token = 'jwt';
+      final transport = SseTurnTransport(
+        tokenProvider: ({forceRefresh = false}) async => token,
+        baseUrl: 'https://api.test',
+        httpClient: mock,
+        byteSource: _FakeByteSource(_happyStream).call,
+      );
+      await transport.start(const TurnRequest(text: 'hi')).toList();
+      token = null; // signed out
+      await transport.cancel();
+      expect(cancelPosts, 0);
+    });
+  });
 }

@@ -139,10 +139,28 @@ class SseTurnTransport implements TurnTransport {
 
   @override
   Future<void> cancel() async {
-    // TODO(adityas/backend/54): server-side stop. The durable path has no cancel
-    // route yet, so this is a no-op: the notifier keeps the stream open and
-    // settles TurnCancelled on the server's real trailing usage/done, so billing
-    // stays accurate even though the generation is not stopped early.
+    // Server-side stop (adityas/backend/54, contract in adityas/ai/94): POST the
+    // cancel and return. The actual stop is NOT the 202 — it arrives over the
+    // turn's already-open SSE stream as the terminal `error "generation was
+    // cancelled" → usage → done`, which the notifier is holding the stream open
+    // to receive (and which settles the non-refunding billing). The 202 only
+    // acks; 404 means the turn is already gone (finished, evicted, or not this
+    // user's) — nothing to stop either way. So both are success here, and every
+    // other outcome is swallowed: a failed POST must not block the client,
+    // because the open SSE stream is the real settlement path regardless (the
+    // turn either truly cancels and settles, or completes normally).
+    final turnId = _turnId;
+    if (turnId == null) return; // no turn opened yet — nothing to stop
+    try {
+      final token = await _token();
+      if (token == null) return; // signed out — nothing to authorize
+      await _http.post(
+        Uri.parse('$_baseUrl/v1/ai/turns/$turnId/cancel'),
+        headers: {'authorization': 'Bearer $token'},
+      );
+    } catch (_) {
+      // Best-effort: the open SSE stream settles the turn regardless.
+    }
   }
 
   /// Reset the cached conversation (call on a user change, or New Chat). The

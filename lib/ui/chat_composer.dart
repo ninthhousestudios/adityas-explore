@@ -54,6 +54,11 @@ class _ChatComposerState extends ConsumerState<ChatComposer> {
     _input.clear();
   }
 
+  /// Stop the in-flight turn server-side (adityas/ai/137). The notifier POSTs the
+  /// cancel and keeps the stream open for the terminal `done`; it no-ops unless a
+  /// turn is active, so this is safe to fire whenever the button shows Stop.
+  void _stop() => ref.read(chatTurnProvider.notifier).cancel();
+
   /// Enter sends; Shift+Enter (or Alt+Enter) inserts a newline.
   ///
   /// Handled on an ancestor [Focus] whose `onKeyEvent` fires *before* Flutter's
@@ -152,12 +157,16 @@ class _ChatComposerState extends ConsumerState<ChatComposer> {
             ),
           ),
         ),
+        // While a turn is in flight the send affordance becomes a Stop button:
+        // it cancels the turn server-side (adityas/ai/137) rather than sitting
+        // disabled, so the user is never stuck watching a reply they don't want.
         IconButton(
-          onPressed: active ? null : _submit,
+          onPressed: active ? _stop : _submit,
+          tooltip: active ? 'Stop' : 'Send',
           icon: Icon(
-            Icons.send,
+            active ? Icons.stop : Icons.send,
             size: fontSize * 1.2,
-            color: active ? dimColor : color,
+            color: color,
           ),
         ),
       ],
