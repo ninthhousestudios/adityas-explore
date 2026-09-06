@@ -158,9 +158,12 @@ class _AccountButtonState extends ConsumerState<AccountButton> {
   }
 
   void _showConversationsDialog(BuildContext context) {
+    // Lapsed access → history is viewable but read-only: no rename/delete
+    // (adityas/ai/123 finding 3, the I22 read-only contract).
+    final readOnly = ref.read(chatAccessProvider) == ChatAccess.lapsed;
     showDialog<void>(
       context: context,
-      builder: (context) => const _ConversationsDialog(),
+      builder: (context) => _ConversationsDialog(readOnly: readOnly),
     );
   }
 }
@@ -552,7 +555,13 @@ class _MyChartsDialog extends StatelessWidget {
 /// docs/chat-state-architecture.md). Rows expose Resume, Download, Delete, and
 /// Rename — resume is deliberately one option among several, not a one-tap.
 class _ConversationsDialog extends ConsumerStatefulWidget {
-  const _ConversationsDialog();
+  const _ConversationsDialog({required this.readOnly});
+
+  /// Access has lapsed: past conversations stay viewable but immutable. Keep
+  /// Resume + Download; suppress the mutating Rename + Delete actions, whose
+  /// PATCH/DELETE writes the backend refuses on lapse anyway (I22 read-only
+  /// contract, adityas/ai/123 finding 3).
+  final bool readOnly;
 
   @override
   ConsumerState<_ConversationsDialog> createState() =>
@@ -866,13 +875,15 @@ class _ConversationsDialogState extends ConsumerState<_ConversationsDialog> {
             color.withValues(alpha: 0.7),
             () => _download(c),
           ),
-          _action(
-            Icons.edit,
-            'Rename',
-            color.withValues(alpha: 0.7),
-            () => _rename(c),
-          ),
-          _action(Icons.delete_outline, 'Delete', t.error, () => _delete(c)),
+          if (!widget.readOnly) ...[
+            _action(
+              Icons.edit,
+              'Rename',
+              color.withValues(alpha: 0.7),
+              () => _rename(c),
+            ),
+            _action(Icons.delete_outline, 'Delete', t.error, () => _delete(c)),
+          ],
         ],
       ),
     );

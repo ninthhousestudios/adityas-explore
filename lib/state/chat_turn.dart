@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../ai/chat_access.dart';
 import '../format/date_labels.dart';
 import '../ui/being_slug.dart';
 import 'active_chart.dart';
@@ -160,6 +161,16 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
   // fresh turn would tear down the subscription and lose the trailing usage.
   bool _cancelling = false;
 
+  // Authoritative access-lapse latch. Set when a `/v1/ai` write route returns
+  // 403, or the clock crosses `access_until` on a non-allowlisted account
+  // ([_lapse]). While set, [send] hard-refuses new turns into the renew prompt —
+  // it does NOT re-derive availability from [chatAccessProvider], whose value can
+  // still read `available` off a stale cached entitlement during the post-403
+  // refetch window. Cleared only when the [chatAvailableProvider] listen sees
+  // access flip back to true (a fresh fetch proving renewed access).
+  // (adityas/ai/123 finding 2.)
+  bool _lapsed = false;
+
   // Fires at `access_until` to end an in-flight turn the instant entitlement
   // lapses. Driven by the injected [Clock] (delay) + a real [Timer]; the
   // [chatAvailableProvider] listen only reacts to provider *changes*, which
@@ -178,7 +189,13 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     // WITHOUT rebuilding (which would reset the turn). listen, not watch.
     ref
       ..listen(chatAvailableProvider, (_, available) {
-        if (available == false) _expire();
+        if (available == false) {
+          _expire();
+        } else {
+          // A fresh entitlement fetch proved access is live again — release the
+          // lapse latch so sends resume (adityas/ai/123 finding 2).
+          _lapsed = false;
+        }
       })
       ..onDispose(() {
         _closeSub();
@@ -197,6 +214,17 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     // owns the transport subscription. Opening a new turn now would reset it and
     // drop the stopped turn's (billable) usage.
     if (_isActive || _cancelling) return;
+    // A prior authoritative lapse (a 403 on a write route, or the clock crossing
+    // `access_until`) hard-stops new turns until a fresh entitlement fetch proves
+    // renewed access. The derived [chatAccessProvider] below can still read
+    // `available` off a stale cached entitlement in the refetch window right
+    // after a 403; this latch does not, so it is the reliable gate there. It also
+    // refuses the immediate resend that would otherwise append a second user
+    // message and re-hit the same 403 (adityas/ai/123 finding 2).
+    if (_lapsed) {
+      state = const TurnAccessLapsed(text: '', usage: null);
+      return;
+    }
     // UX gate; the backend is the authoritative entitlement check. Defense in
     // depth against opening a turn the server will refuse anyway. A *lapsed*
     // window refuses into the renew prompt ([TurnAccessLapsed], adityas/ai/120) —
@@ -498,6 +526,24 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
   /// 403; guarded so a fired timer on an already-settled turn is a no-op.
   void _expire() {
     if (!_isActive) return;
+    // The timer is armed at a cached `access_until`, but the clock crossing it
+    // does not always mean access ended. Two cases must NOT lapse a valid turn
+    // (adityas/ai/123 finding 4):
+    //   - an allowlisted account stays available independently of the entitlement
+    //     window ([chatEnabledProvider]); the entitlement clock is not its gate.
+    //   - a mid-turn renewal may have pushed the deadline into the future.
+    // Re-read the authoritative seams directly — not the cached
+    // [chatAvailableProvider], which recomputes only on dependency change and so
+    // still reads its pre-boundary value at the instant the timer fires.
+    if (ref.read(chatEnabledProvider)) {
+      _cancelExpiryTimer();
+      return;
+    }
+    final deadline = ref.read(accessDeadlineProvider);
+    if (deadline != null && deadline.isAfter(ref.read(clockProvider).now())) {
+      _scheduleExpiry(); // renewal extended the window — re-arm at the new deadline
+      return;
+    }
     _lapse();
   }
 
@@ -513,6 +559,20 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     _throttle.cancel();
     _cancelExpiryTimer();
     unawaited(_transport.cancel());
+    // Persist whatever streamed before the lapse as an incomplete assistant
+    // message, exactly as [_finish] commits a completed reply — otherwise the
+    // partial answer the user was watching vanishes the instant the renew prompt
+    // replaces the streaming bubble, and is lost on the next transition
+    // (adityas/ai/123 finding 1).
+    if (_buffer.isNotEmpty) {
+      ref
+          .read(conversationProvider.notifier)
+          .appendAssistant(_buffer.toString());
+    }
+    // Latch the lapse so [send] hard-refuses further turns until a fresh fetch
+    // proves renewed access (adityas/ai/123 finding 2). Invalidate drives that
+    // refetch; the [chatAvailableProvider] listen clears the latch on renewal.
+    _lapsed = true;
     ref.invalidate(entitlementProvider);
     state = TurnAccessLapsed(text: _buffer.toString(), usage: _usage);
   }

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:explore/ai/chat_access.dart';
 import 'package:explore/state/auth.dart';
 import 'package:explore/state/chat_turn.dart';
 import 'package:explore/state/clock.dart';
@@ -146,6 +147,7 @@ ProviderContainer _container(
   TurnTransport transport, {
   DateTime? deadline,
   Clock? clock,
+  bool? chatEnabled,
 }) {
   final container = ProviderContainer(
     overrides: [
@@ -160,6 +162,11 @@ ProviderContainer _container(
       // supplies an explicit deadline + advanceable clock.
       accessDeadlineProvider.overrideWithValue(deadline),
       if (clock != null) clockProvider.overrideWithValue(clock),
+      // The allowlist seam _expire re-reads directly (adityas/ai/123 finding 4).
+      // Defaults to the real provider, which returns false for the stubbed
+      // non-allowlisted user; a false-lapse test overrides it true.
+      if (chatEnabled != null)
+        chatEnabledProvider.overrideWith((ref) => chatEnabled),
     ],
   );
   addTearDown(container.dispose);
@@ -398,6 +405,106 @@ void main() {
     expect(lapsed, isA<TurnAccessLapsed>());
     expect(transport.resumes, 0); // a gate is terminal, never retried
     expect(transport.cancels, 1); // best-effort server stop
+  });
+
+  test('a mid-stream lapse persists the partial reply to the conversation '
+      '(adityas/ai/123 finding 1)', () async {
+    final transport = _FakeTransport();
+    final container = _container(transport);
+
+    container.read(chatTurnProvider.notifier).send('hi');
+    transport.emit(const DeltaEvent('partial answer', 'e1'));
+    await _pump();
+
+    // Access lapses while the reply is still streaming.
+    container.read(_gateProvider.notifier).update(false);
+    await _pump();
+
+    expect(container.read(chatTurnProvider), isA<TurnAccessLapsed>());
+    // The partial the user was watching is committed as an assistant message
+    // (like a completed turn) rather than dropped when the renew prompt
+    // replaces the streaming bubble.
+    final convo = container.read(conversationProvider);
+    expect(convo.messages.map((m) => m.role), [
+      MessageRole.user,
+      MessageRole.assistant,
+    ]);
+    expect(convo.messages.last.text, 'partial answer');
+  });
+
+  test('after a 403 the resend is hard-refused even while the gate still reads '
+      'available (adityas/ai/123 finding 2)', () async {
+    final transport = _FakeTransport();
+    // The stale window right after a 403: the gate still reads available and a
+    // future deadline is cached, before the entitlement refetch resolves.
+    final container = _container(transport, deadline: DateTime.utc(2999));
+
+    final notifier = container.read(chatTurnProvider.notifier)..send('hi');
+    transport.dropStream(
+      const TurnTransportException('no access', statusCode: 403),
+    );
+    await _pump();
+    expect(container.read(chatTurnProvider), isA<TurnAccessLapsed>());
+
+    // chatAccess would still derive `available` here — only the authoritative
+    // latch refuses the resend, so no second turn opens and no duplicate user
+    // message / duplicate 403 is produced.
+    expect(container.read(chatAvailableProvider), isTrue);
+    notifier.send('again');
+    expect(container.read(chatTurnProvider), isA<TurnAccessLapsed>());
+    expect(transport.starts, 1);
+  });
+
+  test('the expiry timer does not lapse an allowlisted turn '
+      '(adityas/ai/123 finding 4)', () {
+    fakeAsync((async) {
+      final transport = _FakeTransport();
+      final clock = _FakeClock(DateTime.utc(2026, 1, 1, 12));
+      final deadline = clock.now().add(const Duration(minutes: 5));
+      // Allowlisted: availability does not hinge on the entitlement clock.
+      final container = _container(
+        transport,
+        deadline: deadline,
+        clock: clock,
+        chatEnabled: true,
+      );
+
+      container.read(chatTurnProvider.notifier).send('hi');
+      transport.emit(const DeltaEvent('mid', 'e1'));
+      async.flushMicrotasks();
+      expect(container.read(chatTurnProvider), isA<TurnStreaming>());
+
+      // The clock crosses the stale entitlement deadline; the allowlist stands.
+      clock.advance(const Duration(minutes: 5, seconds: 1));
+      async.elapse(const Duration(minutes: 5, seconds: 1));
+
+      // No false lapse — the turn keeps streaming.
+      expect(container.read(chatTurnProvider), isA<TurnStreaming>());
+      expect(transport.cancels, 0);
+    });
+  });
+
+  test('a fired expiry timer re-arms when the deadline is still ahead '
+      '(mid-turn renewal, adityas/ai/123 finding 4)', () {
+    fakeAsync((async) {
+      final transport = _FakeTransport();
+      final clock = _FakeClock(DateTime.utc(2026, 1, 1, 12));
+      final deadline = clock.now().add(const Duration(minutes: 5));
+      final container = _container(transport, deadline: deadline, clock: clock);
+
+      container.read(chatTurnProvider.notifier).send('hi');
+      transport.emit(const DeltaEvent('mid', 'e1'));
+
+      // The timer fires, but the injected clock has NOT crossed the deadline
+      // (a mid-turn renewal effectively pushed the boundary ahead). The
+      // re-check must re-arm, not lapse.
+      async
+        ..flushMicrotasks()
+        ..elapse(const Duration(minutes: 5, seconds: 1));
+
+      expect(container.read(chatTurnProvider), isA<TurnStreaming>());
+      expect(transport.cancels, 0);
+    });
   });
 
   test('a non-gate status is transient → reconnects', () async {
