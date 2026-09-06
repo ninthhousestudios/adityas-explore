@@ -419,14 +419,28 @@ void main() {
     expect(transport.resumes, 1);
   });
 
-  test('send is refused when chat is unavailable', () {
+  test('send is refused (never-entitled) with a generic error', () {
     final transport = _FakeTransport();
+    // No deadline → chatAccess is `none` (never entitled / signed out).
     final container = _container(transport);
     container.read(_gateProvider.notifier).update(false);
 
     container.read(chatTurnProvider.notifier).send('hi');
 
     expect(container.read(chatTurnProvider), isA<TurnError>());
+    expect(transport.starts, 0); // no turn opened
+  });
+
+  test('send while lapsed refuses into the renew prompt', () {
+    final transport = _FakeTransport();
+    // A non-null (past) deadline while unavailable → chatAccess is `lapsed`.
+    final container = _container(transport, deadline: DateTime.utc(2000));
+    container.read(_gateProvider.notifier).update(false);
+
+    container.read(chatTurnProvider.notifier).send('hi');
+
+    // The renew prompt, not a generic error — same surface as a mid-session 403.
+    expect(container.read(chatTurnProvider), isA<TurnAccessLapsed>());
     expect(transport.starts, 0); // no turn opened
   });
 

@@ -78,12 +78,20 @@ The chart-shrink machinery already exists; resize just feeds `_geometryFor` a
 ## 3. Visible-but-gated presentation
 
 The pill is visible to **everyone** so the feature is discoverable. Behavior
-forks on `chatEnabledProvider` (entitled = allowlisted, today):
+forks on `chatAccessProvider` — a three-state signal (`available` / `lapsed` /
+`none`, `lib/state/entitlement.dart`) that supersedes the old
+`chatEnabledProvider` boolean for surface reachability. `available` folds in the
+allowlist (the only non-`none` population today) and a live paid window:
 
-- **Entitled** — real composer. Type, Enter, ramp into conversation.
-- **Not entitled** — the pill is a *look-alike button*, not a real field. It does
-  not accept focus/typing. **Tapping it opens a modal.** This is the deliberate
-  choice over let-them-type-then-reject.
+- **Available** — real composer. Type, Enter, ramp into conversation.
+- **Lapsed** (adityas/ai/120) — a former subscriber whose window closed. The
+  wired surface stays reachable **read-only**: past conversations open from the
+  picker, the composer stays visible, but a new turn is refused into the *renew
+  prompt* (`TurnAccessLapsed`) — the same surface a mid-session 403 lands on. The
+  backend serves reads during the retention window (adityas/ai/89).
+- **None** — never entitled / signed out. The pill is a *look-alike button*, not a
+  real field. It does not accept focus/typing. **Tapping it opens a modal.** This
+  is the deliberate choice over let-them-type-then-reject.
 
 ### Focus-to-trigger, not submit-to-reject
 
@@ -104,14 +112,19 @@ signing in unlocks nothing until purchase ships.
   coming-soon placeholder. That placeholder and the pill modal must render the
   **same copy from one source**. Two routes, one message.
 
-**At launch** (see the pre-launch task, gates adityas/ai/74) the single modal
-splits into the two real states:
+The modal and the placeholder are the **`none`** surface only. A **`lapsed`**
+user does *not* see them — they get their read-only history + renew prompt
+(adityas/ai/120), a distinct branch.
+
+**At launch** (see the pre-launch task, gates adityas/ai/74) the single `none`
+modal splits into the two real states:
 
 - **Logged out** → invitation to sign in / create an account.
 - **Logged in, no entitlement** → prompt to buy the Solar Prism.
 
-This is the client face of the `chatAvailable` gating in adityas/ai/18 — keep the
-two in sync so entitlement truth and its presentation don't drift.
+This is the client face of the `chatAvailable`/`chatAccess` gating in
+adityas/ai/18 — keep the two in sync so entitlement truth and its presentation
+don't drift.
 
 ## 4. Transient popups vs. an expanded chat
 

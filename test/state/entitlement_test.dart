@@ -162,4 +162,60 @@ void main() {
       expect(container.read(chatAvailableProvider), isFalse);
     },
   );
+
+  // ── chatAccessProvider: available / lapsed / none (adityas/ai/120) ──
+
+  test('chatAccess is available inside a live window', () async {
+    final container = _container(
+      user: _stubUser,
+      client: _FakeEntitlementClient(Entitlement(accessUntil: accessUntil)),
+      clock: _FakeClock(DateTime.utc(2026, 8, 1)), // before expiry
+    );
+    final sub = container.listen(chatAccessProvider, (_, _) {});
+    addTearDown(sub.close);
+    await container.read(entitlementProvider.future);
+
+    expect(container.read(chatAccessProvider), ChatAccess.available);
+  });
+
+  test('chatAccess is lapsed once a real window closes', () async {
+    final container = _container(
+      user: _stubUser,
+      client: _FakeEntitlementClient(Entitlement(accessUntil: accessUntil)),
+      clock: _FakeClock(accessUntil.add(const Duration(days: 1))), // after
+    );
+    final sub = container.listen(chatAccessProvider, (_, _) {});
+    addTearDown(sub.close);
+    await container.read(entitlementProvider.future);
+
+    // access_until is set but past → read-only history, renew-on-send.
+    expect(container.read(chatAccessProvider), ChatAccess.lapsed);
+  });
+
+  test('chatAccess is none for a never-entitled user', () async {
+    final container = _container(
+      user: _stubUser,
+      client: _FakeEntitlementClient(const Entitlement.none()),
+      clock: _FakeClock(DateTime.utc(2026, 8, 1)),
+    );
+    final sub = container.listen(chatAccessProvider, (_, _) {});
+    addTearDown(sub.close);
+    await container.read(entitlementProvider.future);
+
+    // No access_until ever → the coming-soon / buy surface, not lapsed history.
+    expect(container.read(chatAccessProvider), ChatAccess.none);
+  });
+
+  test('chatAccess is none for a signed-out user', () async {
+    final container = _container(
+      user: null,
+      client: _FakeEntitlementClient(Entitlement(accessUntil: accessUntil)),
+      clock: _FakeClock(DateTime.utc(2026, 8, 1)),
+    );
+    final sub = container.listen(chatAccessProvider, (_, _) {});
+    addTearDown(sub.close);
+    await container.read(entitlementProvider.future);
+
+    expect(container.read(chatAccessProvider), ChatAccess.none);
+  });
 }

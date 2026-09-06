@@ -198,13 +198,21 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     // drop the stopped turn's (billable) usage.
     if (_isActive || _cancelling) return;
     // UX gate; the backend is the authoritative entitlement check. Defense in
-    // depth against opening a turn the server will refuse anyway.
-    if (ref.read(chatAvailableProvider) != true) {
-      state = const TurnError(
-        message: 'Chat is not available.',
-        cursor: null,
-        usage: null,
-      );
+    // depth against opening a turn the server will refuse anyway. A *lapsed*
+    // window refuses into the renew prompt ([TurnAccessLapsed], adityas/ai/120) —
+    // the same surface a mid-session 403 lands on — so a former subscriber who
+    // opens their read-only history and types gets "renew", not a generic error.
+    // Never-entitled/signed-out stays the generic refusal (its buy/sign-in
+    // surface is the coming-soon gate, adityas/ai/85).
+    final access = ref.read(chatAccessProvider);
+    if (access != ChatAccess.available) {
+      state = access == ChatAccess.lapsed
+          ? const TurnAccessLapsed(text: '', usage: null)
+          : const TurnError(
+              message: 'Chat is not available.',
+              cursor: null,
+              usage: null,
+            );
       return;
     }
     final message = text.trim();

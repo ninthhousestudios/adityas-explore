@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../ai/chat_access.dart';
 import '../api/chart_service.dart';
 import '../api/conversation_service.dart';
 import '../file_util.dart';
@@ -15,6 +14,7 @@ import '../state/backend.dart';
 import '../state/chat_open_request.dart';
 import '../state/chat_turn.dart';
 import '../state/conversation.dart';
+import '../state/entitlement.dart';
 import '../state/turn_transport.dart';
 import 'tokens.dart';
 
@@ -42,9 +42,11 @@ class _AccountButtonState extends ConsumerState<AccountButton> {
     final user = ref.watch(authProvider);
     if (user != null) {
       final atLimit = widget.savedCharts.length >= 25;
-      // The Conversations picker is only meaningful for accounts that can chat
-      // (allowlist today) — no dead menu item for everyone else.
-      final showConversations = ref.watch(chatEnabledProvider);
+      // The Conversations picker is shown to anyone with chat history — a live
+      // window or a lapsed one (read-only history stays reachable for the
+      // retention window, adityas/ai/120). Only the never-entitled get no item.
+      final showConversations =
+          ref.watch(chatAccessProvider) != ChatAccess.none;
       return PopupMenuButton<String>(
         icon: const Icon(Icons.person),
         tooltip: 'Account',

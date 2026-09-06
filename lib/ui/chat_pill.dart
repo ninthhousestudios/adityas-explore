@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../ai/chat_access.dart';
+import '../state/entitlement.dart';
 import 'chat_coming_soon.dart';
 import 'chat_composer.dart';
 
@@ -35,7 +35,10 @@ class ChatPill extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final enabled = ref.watch(chatEnabledProvider);
+    // Reachable to anyone with chat history — a live window OR a lapsed one
+    // (read-only history + renew-on-send, adityas/ai/120). Only the never-entitled
+    // get the look-alike that opens the coming-soon modal (adityas/ai/85).
+    final enabled = ref.watch(chatAccessProvider) != ChatAccess.none;
     return Container(
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(

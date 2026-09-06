@@ -2,9 +2,9 @@ import 'package:charts_dart/charts_dart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../ai/chat_access.dart';
 import '../state/chat_turn.dart';
 import '../state/conversation.dart';
+import '../state/entitlement.dart';
 import 'chat_coming_soon.dart';
 import 'chat_composer.dart';
 import 'message_markdown.dart';
@@ -13,9 +13,11 @@ import 'tokens.dart';
 /// Chat panel for the `conversation` layout mode.
 ///
 /// Anyone can open the panel — it doubles as the layout-mode stub. The *wired*
-/// chat (send + live token stream) is gated to the allowlist ([chatEnabledProvider],
-/// mirroring the durable server `ai_chat_allowlist`); everyone else sees the
-/// "coming soon" placeholder.
+/// chat (send + live token stream, plus read-only history) is shown to anyone
+/// with chat access that is not [ChatAccess.none]: a live window OR a lapsed one
+/// (a former subscriber keeps read-only history + a renew-on-send prompt,
+/// adityas/ai/120; the allowlist folds into "available"). The never-entitled see
+/// the "coming soon" placeholder (adityas/ai/85).
 ///
 /// The conversation and in-flight turn live in keepAlive out-of-tree providers
 /// ([conversationProvider], [chatTurnProvider]) — NOT this widget's `State` — so
@@ -92,7 +94,10 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
     final color = widget.color;
     final fontSize = widget.fontSize;
     final dimColor = color.withValues(alpha: 0.6);
-    final enabled = ref.watch(chatEnabledProvider);
+    // Wired surface (history + composer) for a live or lapsed window; the
+    // placeholder only for the never-entitled (adityas/ai/120). A lapsed user's
+    // composer stays visible — new turns are refused into the renew prompt.
+    final enabled = ref.watch(chatAccessProvider) != ChatAccess.none;
 
     return Container(
       padding: const EdgeInsets.all(16),

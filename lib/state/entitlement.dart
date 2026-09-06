@@ -88,3 +88,34 @@ final chatAvailableProvider = Provider<bool>((ref) {
 final accessDeadlineProvider = Provider<DateTime?>(
   (ref) => ref.watch(entitlementProvider).value?.accessUntil,
 );
+
+/// The chat surface's three access states, richer than the [chatAvailableProvider]
+/// boolean (adityas/ai/120). The distinction the boolean can't make is between a
+/// window that *closed* and one that *never opened*:
+///
+///   - [available] — chat is usable now (allowlisted, or a live paid window).
+///   - [lapsed]    — a paid window closed: `access_until` is set but not in the
+///     future. Past conversations stay **read-only** for the retention window
+///     (I22, backend served by ai/89); new turns are refused with a renew prompt.
+///   - [none]      — never entitled, or signed out: no chat history to show. This
+///     is the coming-soon / sign-in-vs-buy surface (adityas/ai/85).
+///
+/// The lapsed-vs-none split is what lets a former subscriber reach their history
+/// read-only instead of being dropped onto the never-entitled placeholder.
+enum ChatAccess { available, lapsed, none }
+
+/// Derives [ChatAccess] from the existing seams — [chatAvailableProvider] (which
+/// already folds in the allowlist and the live-window check) plus
+/// [accessDeadlineProvider] (the `access_until` timestamp). Composing from those
+/// two, rather than re-reading [entitlementProvider], keeps this testable through
+/// the same overrides the chat-turn tests already use.
+///
+/// A non-null deadline while *not* available means the window is in the past
+/// (an available future window would have made [chatAvailableProvider] true), so
+/// it reads as [ChatAccess.lapsed]; a null deadline reads as [ChatAccess.none].
+final chatAccessProvider = Provider<ChatAccess>((ref) {
+  if (ref.watch(chatAvailableProvider)) return ChatAccess.available;
+  return ref.watch(accessDeadlineProvider) != null
+      ? ChatAccess.lapsed
+      : ChatAccess.none;
+});
