@@ -247,6 +247,54 @@ void main() {
     expect(cancelled.text, 'partial');
   });
 
+  test('a cancelled turn commits its partial reply to the conversation, once '
+      '(adityas/ai/126)', () async {
+    final transport = _FakeTransport();
+    final container = _container(transport);
+    final notifier = container.read(chatTurnProvider.notifier)..send('hi');
+
+    transport.emit(const DeltaEvent('partial', 'e1'));
+    await _pump();
+    await notifier.cancel();
+
+    expect(container.read(chatTurnProvider), isA<TurnCancelled>());
+    // The partial the user was reading is preserved as an assistant message
+    // immediately on stop — not deferred to a trailing done that may not come.
+    final convo = container.read(conversationProvider);
+    expect(convo.messages.map((m) => m.role), [
+      MessageRole.user,
+      MessageRole.assistant,
+    ]);
+    expect(convo.messages.last.text, 'partial');
+
+    // The server's trailing usage/done settles billing but must NOT append a
+    // duplicate assistant message.
+    transport
+      ..emit(const UsageEvent(TurnUsage(inputTokens: 1, outputTokens: 1), 'e2'))
+      ..emit(const DoneEvent('e3'));
+    await _pump();
+    expect(container.read(conversationProvider).messages, hasLength(2));
+  });
+
+  test('a cancelled partial survives a broken stream that never delivers done '
+      '(adityas/ai/126)', () async {
+    final transport = _FakeTransport();
+    final container = _container(transport);
+    final notifier = container.read(chatTurnProvider.notifier)..send('hi');
+
+    transport.emit(const DeltaEvent('partial', 'e1'));
+    await _pump();
+    await notifier.cancel();
+
+    // The stopped turn's stream breaks before any trailing done arrives.
+    await transport.closeStream();
+    await _pump();
+
+    final convo = container.read(conversationProvider);
+    expect(convo.messages.last.text, 'partial'); // not lost
+    expect(convo.messages, hasLength(2));
+  });
+
   test('broken stream: closes before done → error, no usage', () async {
     final transport = _FakeTransport();
     final container = _container(transport);

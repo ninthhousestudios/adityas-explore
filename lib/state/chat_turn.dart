@@ -289,6 +289,17 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     // Reflect the stop immediately; the subscription stays open to receive the
     // server's trailing usage/done for the stopped turn.
     state = TurnCancelled(text: _buffer.toString(), usage: _usage);
+    // Commit whatever streamed before the stop as an incomplete assistant
+    // message — the partial the user was reading (option (a), adityas/ai/126).
+    // Done here, the single entry point to a cancelled turn, it lands exactly
+    // once regardless of how the stopped stream later settles (trailing
+    // usage/done, a clean close, or a broken stream that never delivers done).
+    // _finish therefore appends only on its TurnDone (non-cancelling) path.
+    if (_buffer.isNotEmpty) {
+      ref
+          .read(conversationProvider.notifier)
+          .appendAssistant(_buffer.toString());
+    }
     await _transport.cancel();
   }
 
@@ -487,16 +498,18 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
 
   void _finish() {
     if (_cancelling) {
+      // A cancelled turn already committed its partial in [cancel]; settling on
+      // a trailing done must not append it a second time (adityas/ai/126).
       _settleCancelled();
-    } else {
-      _closeSub();
-      _throttle.cancel();
-      _cancelExpiryTimer();
-      // `_usage` stays null when done arrived without a usage event: a billing
-      // gap, NOT a zero-cost turn. TurnDone.usage is nullable precisely so the
-      // ledger can tell the two apart (see TurnDone).
-      state = TurnDone(text: _buffer.toString(), usage: _usage);
+      return;
     }
+    _closeSub();
+    _throttle.cancel();
+    _cancelExpiryTimer();
+    // `_usage` stays null when done arrived without a usage event: a billing
+    // gap, NOT a zero-cost turn. TurnDone.usage is nullable precisely so the
+    // ledger can tell the two apart (see TurnDone).
+    state = TurnDone(text: _buffer.toString(), usage: _usage);
     if (_buffer.isNotEmpty) {
       ref
           .read(conversationProvider.notifier)
