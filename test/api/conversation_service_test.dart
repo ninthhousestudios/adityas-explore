@@ -154,6 +154,49 @@ void main() {
     expect(history.messages.first.fromUser, isTrue);
     expect(history.messages.first.content, 'what is my Soul Stance?');
     expect(history.messages.last.fromUser, isFalse);
+    expect(history.messages.first.createdAt, DateTime.utc(2026, 9, 2, 9, 0, 0));
+    // Absent compacted_through (the common, never-compacted case) → null.
+    expect(history.compactedThrough, isNull);
+  });
+
+  test('fetch decodes compacted_through as the seam watermark '
+      '(adityas/ai/121)', () async {
+    final service = _service(
+      MockClient((request) async {
+        return http.Response(
+          jsonEncode({
+            'id': 'c1',
+            'title': 'Mitra · Sep 2',
+            'mode': 'open',
+            'created_at': '2026-09-02T09:00:00Z',
+            'updated_at': '2026-09-02T10:00:00Z',
+            'compacted_through': '2026-09-02T09:00:00Z',
+            'messages': [
+              {
+                'id': 'm1',
+                'turn_id': 't1',
+                'role': 'user',
+                'content': 'early question',
+                'created_at': '2026-09-02T09:00:00Z',
+              },
+              {
+                'id': 'm2',
+                'turn_id': 't2',
+                'role': 'assistant',
+                'content': 'later answer',
+                'created_at': '2026-09-02T09:30:00Z',
+              },
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      }),
+    );
+
+    final history = await service.fetch('c1');
+
+    expect(history.compactedThrough, DateTime.utc(2026, 9, 2, 9, 0, 0));
   });
 
   test('rename PATCHes the title and accepts 204', () async {

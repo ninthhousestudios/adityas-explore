@@ -42,14 +42,21 @@ class ConversationHistoryMessage {
   final bool fromUser;
   final String content;
 
+  /// Server-assigned creation time — the axis the compaction seam is placed on
+  /// (adityas/ai/121): the divider sits above the first message later than the
+  /// conversation's `compacted_through` watermark.
+  final DateTime createdAt;
+
   const ConversationHistoryMessage({
     required this.fromUser,
     required this.content,
+    required this.createdAt,
   });
 
   ConversationHistoryMessage.fromJson(Map<String, Object?> json)
     : fromUser = json['role'] == 'user',
-      content = json['content'] as String? ?? '';
+      content = json['content'] as String? ?? '',
+      createdAt = DateTime.parse(json['created_at'] as String);
 }
 
 /// A conversation's decrypted transcript plus its label (adityas/ai/87). The
@@ -61,17 +68,29 @@ class ConversationHistory {
   final DateTime updatedAt;
   final List<ConversationHistoryMessage> messages;
 
+  /// The compaction seam watermark (adityas/ai/119 contract): the `created_at`
+  /// up to and including which older turns were condensed into a summary the
+  /// model now sees in their place. `null` when nothing has been compacted (the
+  /// field is omitted from the payload in that case). The full transcript is
+  /// still returned — this only marks where the honesty divider goes.
+  final DateTime? compactedThrough;
+
   ConversationHistory({
     required this.id,
     required this.title,
     required this.updatedAt,
     required this.messages,
+    this.compactedThrough,
   });
 
   ConversationHistory.fromJson(Map<String, Object?> json)
     : id = json['id'] as String,
       title = json['title'] as String?,
       updatedAt = DateTime.parse(json['updated_at'] as String),
+      compactedThrough = switch (json['compacted_through']) {
+        final String s => DateTime.parse(s),
+        _ => null,
+      },
       messages = ((json['messages'] as List<Object?>?) ?? const [])
           .map(
             (e) =>

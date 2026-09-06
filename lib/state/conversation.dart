@@ -23,11 +23,19 @@ class ChatMessage {
   final MessageRole role;
   final String text;
 
+  /// Server-assigned creation time, or `null` for a message appended locally
+  /// that has not been reconciled from a server fetch (same "local until the
+  /// backend knows" shape as [id]). Only the compaction seam reads it: the
+  /// divider goes above the first message later than [Conversation.compactedThrough]
+  /// (adityas/ai/121).
+  final DateTime? createdAt;
+
   const ChatMessage({
     required this.id,
     required this.parentId,
     required this.role,
     required this.text,
+    this.createdAt,
   });
 }
 
@@ -37,7 +45,19 @@ class Conversation {
   final String? id;
   final List<ChatMessage> messages;
 
-  const Conversation({this.id, this.messages = const []});
+  /// The compaction seam watermark from the last resumed transcript
+  /// (adityas/ai/121). `null` for a fresh conversation or one that was never
+  /// compacted; the transcript renders an "earlier messages condensed" divider
+  /// above the first message later than this time. Only [loadTranscript] sets
+  /// it — the live-append path (nothing is re-fetched mid-session) carries it
+  /// forward unchanged, so the seam stays put as new turns land below it.
+  final DateTime? compactedThrough;
+
+  const Conversation({
+    this.id,
+    this.messages = const [],
+    this.compactedThrough,
+  });
 
   ChatMessage? get lastMessage => messages.isEmpty ? null : messages.last;
 }
@@ -85,7 +105,11 @@ class ConversationNotifier extends Notifier<Conversation> {
       role: role,
       text: text,
     );
-    state = Conversation(id: state.id, messages: [...state.messages, message]);
+    state = Conversation(
+      id: state.id,
+      messages: [...state.messages, message],
+      compactedThrough: state.compactedThrough,
+    );
     return message;
   }
 
@@ -97,6 +121,7 @@ class ConversationNotifier extends Notifier<Conversation> {
     state = Conversation(
       id: state.id,
       messages: state.messages.where((m) => m.id != id).toList(),
+      compactedThrough: state.compactedThrough,
     );
   }
 
@@ -106,8 +131,9 @@ class ConversationNotifier extends Notifier<Conversation> {
   /// past the loaded messages so a subsequent [appendUser] stays unique.
   void loadTranscript(
     String id,
-    List<({MessageRole role, String text})> messages,
-  ) {
+    List<({MessageRole role, String text, DateTime? createdAt})> messages, {
+    DateTime? compactedThrough,
+  }) {
     _seq = 0;
     final loaded = <ChatMessage>[];
     String? parentId;
@@ -117,11 +143,16 @@ class ConversationNotifier extends Notifier<Conversation> {
         parentId: parentId,
         role: m.role,
         text: m.text,
+        createdAt: m.createdAt,
       );
       loaded.add(message);
       parentId = message.id;
     }
-    state = Conversation(id: id, messages: loaded);
+    state = Conversation(
+      id: id,
+      messages: loaded,
+      compactedThrough: compactedThrough,
+    );
   }
 
   /// Clear to a fresh, empty conversation (New Chat, or deleting the active

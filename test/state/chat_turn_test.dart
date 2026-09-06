@@ -918,12 +918,13 @@ void main() {
     final transport = _FakeTransport();
     final container = _container(transport);
 
-    container
-        .read(chatTurnProvider.notifier)
-        .resumeConversation('server-1', const [
-          (role: MessageRole.user, text: 'earlier question'),
-          (role: MessageRole.assistant, text: 'earlier answer'),
-        ]);
+    container.read(chatTurnProvider.notifier).resumeConversation(
+      'server-1',
+      const [
+        (role: MessageRole.user, text: 'earlier question', createdAt: null),
+        (role: MessageRole.assistant, text: 'earlier answer', createdAt: null),
+      ],
+    );
 
     expect(transport.adopts, 1);
     expect(transport.lastAdoptedId, 'server-1');

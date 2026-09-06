@@ -619,12 +619,17 @@ class _ConversationsDialogState extends ConsumerState<_ConversationsDialog> {
             (m) => (
               role: m.fromUser ? MessageRole.user : MessageRole.assistant,
               text: m.content,
+              createdAt: m.createdAt,
             ),
           )
           .toList();
       ref
           .read(chatTurnProvider.notifier)
-          .resumeConversation(history.id, messages);
+          .resumeConversation(
+            history.id,
+            messages,
+            compactedThrough: history.compactedThrough,
+          );
       ref.read(chatOpenRequestProvider.notifier).request();
       if (mounted) Navigator.of(context).pop();
     } on ConversationApiException catch (e) {

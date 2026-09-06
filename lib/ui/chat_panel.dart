@@ -231,7 +231,9 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
       ..listen(conversationProvider, (_, _) => _scrollToEnd())
       ..listen(chatTurnProvider, (_, _) => _scrollToEnd());
 
-    final messages = ref.watch(conversationProvider).messages;
+    final conversation = ref.watch(conversationProvider);
+    final messages = conversation.messages;
+    final seamIndex = _seamIndex(messages, conversation.compactedThrough);
     final turn = ref.watch(chatTurnProvider);
     final active = _activeTurnBubble(turn, color, dimColor, fontSize);
 
@@ -254,7 +256,17 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
       itemCount: messages.length + (active == null ? 0 : 1),
       itemBuilder: (_, i) {
         if (i < messages.length) {
-          return _messageBubble(messages[i], color, fontSize);
+          final bubble = _messageBubble(messages[i], color, fontSize);
+          // The compaction seam sits above the first message that post-dates the
+          // watermark (adityas/ai/121) — an honesty marker, not a truncation:
+          // everything above still renders in full.
+          if (i == seamIndex) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [_seamDivider(dimColor, fontSize), bubble],
+            );
+          }
+          return bubble;
         }
         return active!;
       },
@@ -302,6 +314,52 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
       TurnCeiling() => _ceilingBubble(color, dimColor, fontSize),
       TurnIdle() || TurnDone() || TurnCancelled() => null,
     };
+  }
+
+  /// Index of the first message rendered *after* the compaction seam — the
+  /// first whose server time is later than [compactedThrough] (adityas/ai/121).
+  /// Returns `null` when nothing was compacted, no message post-dates the
+  /// watermark, or the boundary sits at the very top (no earlier messages to
+  /// mark). Live-appended messages carry a null `createdAt` and always land
+  /// below a resumed seam, so they never match.
+  int? _seamIndex(List<ChatMessage> messages, DateTime? compactedThrough) {
+    if (compactedThrough == null) return null;
+    for (var i = 0; i < messages.length; i++) {
+      final createdAt = messages[i].createdAt;
+      if (createdAt != null && createdAt.isAfter(compactedThrough)) {
+        return i > 0 ? i : null;
+      }
+    }
+    return null;
+  }
+
+  /// The inline honesty divider marking the compaction seam (adityas/ai/121): a
+  /// thin rule with a centered, dim label. Everything above it still renders in
+  /// full — this only tells the reader the model's working memory of those
+  /// earlier turns was condensed.
+  Widget _seamDivider(Color dimColor, double fontSize) {
+    final lineColor = dimColor.withValues(alpha: 0.4);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(child: Divider(color: lineColor, height: 1)),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Text(
+              _seamLabel,
+              style: TextStyle(
+                color: dimColor,
+                fontSize: fontSize * 0.8,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ),
+          Expanded(child: Divider(color: lineColor, height: 1)),
+        ],
+      ),
+    );
   }
 
   Widget _messageBubble(ChatMessage m, Color color, double fontSize) {
@@ -582,6 +640,12 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
     );
   }
 }
+
+/// The compaction-seam divider label (adityas/ai/121). Plain, honest system
+/// voice — no jargon ("compaction", "tokens"): the reader only needs to know the
+/// older turns above were condensed to keep the conversation focused. Mirrors the
+/// backend contract's own suggested marker text (adityas/ai/119).
+const _seamLabel = 'Earlier messages condensed to keep this focused';
 
 /// PLACEHOLDER renew-prompt copy for the mid-session access lapse
 /// ([TurnAccessLapsed], adityas/ai/99). Not final — adityas/ai/85 swaps this for

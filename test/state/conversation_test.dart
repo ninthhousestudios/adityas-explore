@@ -57,9 +57,17 @@ void main() {
     final notifier = container.read(conversationProvider.notifier)
       ..appendUser('a stale message from the previous thread')
       ..loadTranscript('server-convo-1', const [
-        (role: MessageRole.user, text: 'what is my Soul Stance?'),
-        (role: MessageRole.assistant, text: 'Your Sun sits with the Adityas…'),
-        (role: MessageRole.user, text: 'tell me more'),
+        (
+          role: MessageRole.user,
+          text: 'what is my Soul Stance?',
+          createdAt: null,
+        ),
+        (
+          role: MessageRole.assistant,
+          text: 'Your Sun sits with the Adityas…',
+          createdAt: null,
+        ),
+        (role: MessageRole.user, text: 'tell me more', createdAt: null),
       ]);
 
     final convo = container.read(conversationProvider);
@@ -78,6 +86,39 @@ void main() {
       container.read(conversationProvider).messages.map((m) => m.id).toSet(),
       hasLength(4),
     );
+  });
+
+  test('loadTranscript carries the compaction seam and per-message createdAt, '
+      'and appends survive it (adityas/ai/121)', () {
+    final container = ProviderContainer(
+      overrides: [authProvider.overrideWith(() => _MutableAuth(_stubUser))],
+    );
+    addTearDown(container.dispose);
+
+    final watermark = DateTime.utc(2026, 9, 2, 9, 0, 0);
+    final notifier = container.read(conversationProvider.notifier)
+      ..loadTranscript('server-convo-1', [
+        (
+          role: MessageRole.user,
+          text: 'early question',
+          createdAt: DateTime.utc(2026, 9, 2, 9, 0, 0),
+        ),
+        (
+          role: MessageRole.assistant,
+          text: 'later answer',
+          createdAt: DateTime.utc(2026, 9, 2, 9, 30, 0),
+        ),
+      ], compactedThrough: watermark);
+
+    var convo = container.read(conversationProvider);
+    expect(convo.compactedThrough, watermark);
+    expect(convo.messages.first.createdAt, DateTime.utc(2026, 9, 2, 9, 0, 0));
+
+    // A live append (null createdAt) must not drop the seam — it lands below it.
+    notifier.appendUser('a fresh live message');
+    convo = container.read(conversationProvider);
+    expect(convo.compactedThrough, watermark);
+    expect(convo.messages.last.createdAt, isNull);
   });
 
   test('removeMessage rolls back the tail and keeps the chain linear '
@@ -117,7 +158,7 @@ void main() {
 
     container.read(conversationProvider.notifier).loadTranscript(
       'server-convo-1',
-      const [(role: MessageRole.user, text: 'hi')],
+      const [(role: MessageRole.user, text: 'hi', createdAt: null)],
     );
     expect(container.read(conversationProvider).id, 'server-convo-1');
 

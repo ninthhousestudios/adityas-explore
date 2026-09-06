@@ -385,11 +385,14 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
   /// idle — nothing is sent until the user types. Does not touch the chart.
   void resumeConversation(
     String id,
-    List<({MessageRole role, String text})> messages,
-  ) {
+    List<({MessageRole role, String text, DateTime? createdAt})> messages, {
+    DateTime? compactedThrough,
+  }) {
     _stopActiveForRotation();
     _transport.adoptConversation(id);
-    ref.read(conversationProvider.notifier).loadTranscript(id, messages);
+    ref
+        .read(conversationProvider.notifier)
+        .loadTranscript(id, messages, compactedThrough: compactedThrough);
     state = const TurnIdle();
   }
 
