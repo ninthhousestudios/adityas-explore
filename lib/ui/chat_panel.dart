@@ -233,7 +233,10 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
 
     final conversation = ref.watch(conversationProvider);
     final messages = conversation.messages;
-    final seamIndex = _seamIndex(messages, conversation.compactedThrough);
+    final seamIndex = compactionSeamIndex(
+      messages,
+      conversation.compactedThrough,
+    );
     final turn = ref.watch(chatTurnProvider);
     final active = _activeTurnBubble(turn, color, dimColor, fontSize);
 
@@ -314,23 +317,6 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
       TurnCeiling() => _ceilingBubble(color, dimColor, fontSize),
       TurnIdle() || TurnDone() || TurnCancelled() => null,
     };
-  }
-
-  /// Index of the first message rendered *after* the compaction seam — the
-  /// first whose server time is later than [compactedThrough] (adityas/ai/121).
-  /// Returns `null` when nothing was compacted, no message post-dates the
-  /// watermark, or the boundary sits at the very top (no earlier messages to
-  /// mark). Live-appended messages carry a null `createdAt` and always land
-  /// below a resumed seam, so they never match.
-  int? _seamIndex(List<ChatMessage> messages, DateTime? compactedThrough) {
-    if (compactedThrough == null) return null;
-    for (var i = 0; i < messages.length; i++) {
-      final createdAt = messages[i].createdAt;
-      if (createdAt != null && createdAt.isAfter(compactedThrough)) {
-        return i > 0 ? i : null;
-      }
-    }
-    return null;
   }
 
   /// The inline honesty divider marking the compaction seam (adityas/ai/121): a
@@ -639,6 +625,32 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
       ),
     );
   }
+}
+
+/// Index of the first message rendered *after* the compaction seam — the first
+/// whose server time is later than [compactedThrough] (adityas/ai/121). The
+/// divider is drawn immediately above that message: everything above it was
+/// condensed in the model's prompt (though still shown in full here).
+///
+/// Returns `null` only when there is nothing to disclose — no watermark, or no
+/// message post-dates it. When the *first* message already post-dates the
+/// watermark (index 0) the divider still renders at the very top: the condensed
+/// content sits above the whole transcript, and hiding the marker there would
+/// suppress the honesty disclosure exactly when it matters (adityas/ai/133).
+/// Live-appended messages carry a null `createdAt` and always land below a
+/// resumed seam, so they never match.
+int? compactionSeamIndex(
+  List<ChatMessage> messages,
+  DateTime? compactedThrough,
+) {
+  if (compactedThrough == null) return null;
+  for (var i = 0; i < messages.length; i++) {
+    final createdAt = messages[i].createdAt;
+    if (createdAt != null && createdAt.isAfter(compactedThrough)) {
+      return i;
+    }
+  }
+  return null;
 }
 
 /// The compaction-seam divider label (adityas/ai/121). Plain, honest system
