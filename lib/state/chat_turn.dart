@@ -18,8 +18,9 @@ import 'turn_transport.dart';
 /// ```
 /// idle → connecting → streaming ⇄ reconnecting
 ///                        │  │
-///                        │  ├→ cancelled   (client stop → server stop; still billed)
-///                        │  ├→ error       (terminal-with-retry; carries the cursor)
+///                        │  ├→ cancelled      (client stop → server stop; still billed)
+///                        │  ├→ error          (terminal-with-retry; carries the cursor)
+///                        │  ├→ access-lapsed   (window closed: clock or 403; renew prompt, no retry)
 ///                        │  └→ done
 /// ```
 ///
@@ -101,6 +102,27 @@ class TurnError extends ChatTurn {
     required this.cursor,
     required this.usage,
   });
+}
+
+/// Access lapsed — the entitlement window closed on this turn (adityas/ai/99).
+///
+/// Terminal and distinct from [TurnError]: the UI surfaces a calm *renew* prompt,
+/// not a retryable error, because retrying would only re-lapse until the window
+/// is renewed. Reached two ways, both converging here:
+///   - the injected [Clock] crossed `access_until` mid-turn ([_expire]); or
+///   - a `/v1/ai` write route returned **403** (the server's authoritative gate),
+///     surfaced by the transport as a status-carrying `TurnTransportException`.
+/// [text] is whatever streamed before the lapse (usually empty — a 403 fires on
+/// the opening POST, before any delta); [usage] is any billing that settled.
+///
+/// No [cursor]: a lapsed turn is not resumable from the client (the server will
+/// refuse it), so nothing carries a retry point. Distinct from **402** (ceiling,
+/// ai/100) and **428** (consent, ai/98), which get their own states.
+class TurnAccessLapsed extends ChatTurn {
+  final String text;
+  final TurnUsage? usage;
+
+  const TurnAccessLapsed({required this.text, required this.usage});
 }
 
 /// The chat turn.
@@ -370,6 +392,15 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
       return;
     }
     if (_isTerminal(state)) return;
+    // A deliberate server gate is terminal, NOT a transient drop — do not spend
+    // the reconnect budget retrying it (a retry only re-hits the same gate).
+    // 403 = access lapsed → the renew prompt (adityas/ai/99). 402 (ceiling,
+    // ai/100) and 428 (consent, ai/98) branch here too when those land; until
+    // then they fall through to the generic terminal error below.
+    if (error is TurnTransportException && error.statusCode == 403) {
+      _lapse();
+      return;
+    }
     if (_reconnects >= _maxReconnects) {
       _fail('Stream failed after $_maxReconnects reconnect attempts: $error');
       return;
@@ -454,20 +485,28 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     state = TurnError(message: message, cursor: _cursor, usage: _usage);
   }
 
-  /// Access lapsed mid-turn. Best-effort server stop so a lapsed turn does not
-  /// keep generating on our budget; the server enforces entitlement
-  /// authoritatively regardless.
+  /// The injected [Clock] crossed `access_until` mid-turn — the entitlement
+  /// window closed. Converges on [_lapse] (the renew prompt), same as a server
+  /// 403; guarded so a fired timer on an already-settled turn is a no-op.
   void _expire() {
     if (!_isActive) return;
+    _lapse();
+  }
+
+  /// Terminal access-lapse → the renew prompt ([TurnAccessLapsed], adityas/ai/99).
+  /// Reached by the clock ([_expire]) or a `/v1/ai` write route's 403. Best-effort
+  /// server stop so a lapsed turn does not keep generating on our budget (the
+  /// server enforces entitlement regardless), then invalidate the cached
+  /// entitlement so the derived [chatAvailableProvider] re-fetches the
+  /// authoritative `access_until` and further sends are refused (or self-heal if
+  /// the window was renewed).
+  void _lapse() {
     _closeSub();
     _throttle.cancel();
     _cancelExpiryTimer();
     unawaited(_transport.cancel());
-    state = TurnError(
-      message: 'Access expired during the turn.',
-      cursor: _cursor,
-      usage: _usage,
-    );
+    ref.invalidate(entitlementProvider);
+    state = TurnAccessLapsed(text: _buffer.toString(), usage: _usage);
   }
 
   /// Arm the mid-turn expiry timer at the current `access_until`. The delay is
@@ -510,11 +549,15 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
 
   bool get _isActive => switch (state) {
     TurnConnecting() || TurnStreaming() || TurnReconnecting() => true,
-    TurnIdle() || TurnDone() || TurnCancelled() || TurnError() => false,
+    TurnIdle() ||
+    TurnDone() ||
+    TurnCancelled() ||
+    TurnError() ||
+    TurnAccessLapsed() => false,
   };
 
   bool _isTerminal(ChatTurn turn) => switch (turn) {
-    TurnDone() || TurnCancelled() || TurnError() => true,
+    TurnDone() || TurnCancelled() || TurnError() || TurnAccessLapsed() => true,
     TurnIdle() ||
     TurnConnecting() ||
     TurnStreaming() ||

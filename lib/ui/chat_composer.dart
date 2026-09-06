@@ -108,7 +108,11 @@ class _ChatComposerState extends ConsumerState<ChatComposer> {
     final turn = ref.watch(chatTurnProvider);
     final active = switch (turn) {
       TurnConnecting() || TurnStreaming() || TurnReconnecting() => true,
-      TurnIdle() || TurnDone() || TurnCancelled() || TurnError() => false,
+      TurnIdle() ||
+      TurnDone() ||
+      TurnCancelled() ||
+      TurnError() ||
+      TurnAccessLapsed() => false,
     };
     final border = OutlineInputBorder(
       borderRadius: BorderRadius.circular(12),

@@ -155,13 +155,26 @@ Notes:
 ```
 idle → connecting → streaming ⇄ reconnecting
                        │  │
-                       │  ├→ cancelled   (client stop → server-side stop; usage still billed)
-                       │  ├→ error       (terminal-with-retry; carries last cursor)
+                       │  ├→ cancelled     (client stop → server-side stop; usage still billed)
+                       │  ├→ error         (terminal-with-retry; carries last cursor)
+                       │  ├→ access-lapsed  (window closed: clock crossed access_until, or a 403; renew prompt, no retry)
                        │  └→ done
 ```
 
 A sealed class hierarchy (`idle` / `connecting` / `streaming` / `reconnecting` /
-`done` / `error` / `cancelled`), exhaustively matched.
+`done` / `error` / `cancelled` / `access-lapsed`), exhaustively matched.
+
+- **`access-lapsed` is a deliberate gate, not an error** (adityas/ai/99).
+  Two paths converge on it: the injected clock crossing `access_until` mid-turn,
+  and a `/v1/ai` write route returning **403**. The UI renders a calm *renew*
+  prompt rather than the retryable error bubble — retrying only re-hits the gate
+  until the window is renewed. On entry the notifier invalidates
+  `entitlementProvider` so the derived `chatAvailableProvider` re-fetches the
+  authoritative `access_until`. The transport surfaces the status via a
+  status-carrying `TurnTransportException` (defined in `turn_transport.dart`, part
+  of the contract so `lib/state` reads it without importing the wire). Sibling
+  gates **402** (usage ceiling, ai/100) and **428** (consent, ai/98) branch at the
+  same point in `_onStreamError` when they land.
 
 - **Delta buffer + `Last-Event-ID` cursor live in the Notifier**, not the widget.
   `reconnecting` replays from the cursor. The buffer is the streaming text

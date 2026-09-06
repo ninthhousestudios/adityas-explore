@@ -134,6 +134,26 @@ class UnknownEvent extends TurnEvent {
   const UnknownEvent(this.type, super.eventId);
 }
 
+/// Raised when the transport rejects a request (a non-2xx REST response, or a
+/// pre-flight failure like a missing token). Part of the transport *contract* —
+/// it lives here, not in the concrete wire, so the notifier can catch it without
+/// importing lib/ai (the `state-no-sse-wire` guard). Surfaces as a stream error
+/// the notifier turns into a terminal state.
+///
+/// [statusCode] carries the REST status when the rejection was an HTTP response
+/// (null for a pre-flight failure), so the notifier can branch a deliberate
+/// server *gate* apart from a transient transport drop: **403** = access lapsed
+/// (adityas/ai/99 → renew prompt, no retry), **402** = usage ceiling (ai/100),
+/// **428** = consent stale (ai/98). Any other status, or null, is a generic
+/// terminal error handled after the reconnect budget.
+class TurnTransportException implements Exception {
+  final String message;
+  final int? statusCode;
+  const TurnTransportException(this.message, {this.statusCode});
+  @override
+  String toString() => message;
+}
+
 /// The seam the chat turn drives itself through.
 ///
 /// Production will implement this over `fetch`+`ReadableStream` (web) /

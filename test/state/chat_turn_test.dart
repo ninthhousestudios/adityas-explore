@@ -357,22 +357,66 @@ void main() {
     expect(container.read(overlayControllerProvider).isEmpty, isTrue);
   });
 
-  test('entitlement expiry mid-turn ends the turn in error', () async {
+  test(
+    'entitlement expiry mid-turn lapses the turn to a renew prompt',
+    () async {
+      final transport = _FakeTransport();
+      final container = _container(transport);
+
+      container.read(chatTurnProvider.notifier).send('hi');
+      transport.emit(const DeltaEvent('mid', 'e1'));
+      await _pump();
+      expect(container.read(chatTurnProvider), isA<TurnStreaming>());
+
+      // Access lapses while streaming (the derived gate flips false).
+      container.read(_gateProvider.notifier).update(false);
+      await _pump();
+
+      final lapsed = container.read(chatTurnProvider);
+      expect(lapsed, isA<TurnAccessLapsed>());
+      expect((lapsed as TurnAccessLapsed).text, 'mid'); // partial preserved
+      expect(transport.cancels, 1); // best-effort server stop
+    },
+  );
+
+  test('a 403 on the opening POST lapses the turn — no retry', () async {
     final transport = _FakeTransport();
     final container = _container(transport);
 
     container.read(chatTurnProvider.notifier).send('hi');
-    transport.emit(const DeltaEvent('mid', 'e1'));
-    await _pump();
-    expect(container.read(chatTurnProvider), isA<TurnStreaming>());
+    expect(container.read(chatTurnProvider), isA<TurnConnecting>());
 
-    // Access lapses while streaming.
-    container.read(_gateProvider.notifier).update(false);
+    // The durable write route rejects with 403: the entitlement window closed.
+    // Surfaces as a stream error carrying the status (as the real async* wire
+    // propagates a thrown TurnTransportException to the subscription).
+    transport.dropStream(
+      const TurnTransportException('no access', statusCode: 403),
+    );
     await _pump();
 
-    final errored = container.read(chatTurnProvider);
-    expect(errored, isA<TurnError>());
+    final lapsed = container.read(chatTurnProvider);
+    expect(lapsed, isA<TurnAccessLapsed>());
+    expect(transport.resumes, 0); // a gate is terminal, never retried
     expect(transport.cancels, 1); // best-effort server stop
+  });
+
+  test('a non-gate status is transient → reconnects', () async {
+    final transport = _FakeTransport();
+    final container = _container(transport);
+
+    container.read(chatTurnProvider.notifier).send('hi');
+    transport.emit(const DeltaEvent('one', 'e1'));
+    await _pump();
+
+    // A 500 (or any non-403/402/428) is treated as a transient drop, not a
+    // deliberate gate — it still spends the reconnect budget.
+    transport.dropStream(
+      const TurnTransportException('server error', statusCode: 500),
+    );
+    await _pump();
+
+    expect(container.read(chatTurnProvider), isA<TurnReconnecting>());
+    expect(transport.resumes, 1);
   });
 
   test('send is refused when chat is unavailable', () {
@@ -488,9 +532,8 @@ void main() {
       clock.advance(const Duration(minutes: 5, seconds: 1));
       async.elapse(const Duration(minutes: 5, seconds: 1));
 
-      final errored = container.read(chatTurnProvider);
-      expect(errored, isA<TurnError>());
-      expect((errored as TurnError).message, contains('expired'));
+      final lapsed = container.read(chatTurnProvider);
+      expect(lapsed, isA<TurnAccessLapsed>());
       expect(transport.cancels, 1); // best-effort server stop
     });
   });

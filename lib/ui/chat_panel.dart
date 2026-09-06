@@ -188,7 +188,11 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
     final turn = ref.read(chatTurnProvider);
     final streaming = switch (turn) {
       TurnConnecting() || TurnStreaming() || TurnReconnecting() => true,
-      TurnIdle() || TurnDone() || TurnCancelled() || TurnError() => false,
+      TurnIdle() ||
+      TurnDone() ||
+      TurnCancelled() ||
+      TurnError() ||
+      TurnAccessLapsed() => false,
     };
     if (streaming) {
       final proceed = await showDialog<bool>(
@@ -273,6 +277,9 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
         status: 'Reconnecting…',
       ),
       TurnError(:final message) => _errorBubble(message, fontSize),
+      // Access lapsed mid-session (adityas/ai/99): a calm renew prompt, not the
+      // red error bubble — retrying is futile until the window is renewed.
+      TurnAccessLapsed() => _renewBubble(color, dimColor, fontSize),
       TurnIdle() || TurnDone() || TurnCancelled() => null,
     };
   }
@@ -374,6 +381,33 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
     );
   }
 
+  /// The renew prompt shown when access lapsed mid-session ([TurnAccessLapsed],
+  /// adityas/ai/99). A calm, non-error notice: past turns stay readable, new
+  /// turns wait until the window is renewed.
+  ///
+  /// PLACEHOLDER copy + no live renew CTA yet — purchase/renewal is not wired.
+  /// adityas/ai/85 replaces [_renewPromptCopy] with the real launch copy and
+  /// adds the purchase link right before go-live.
+  Widget _renewBubble(Color color, Color dimColor, double fontSize) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        constraints: const BoxConstraints(maxWidth: 320),
+        decoration: BoxDecoration(
+          color: context.tokens.bubbleAgent,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: context.tokens.gold.withValues(alpha: 0.4)),
+        ),
+        child: Text(
+          _renewPromptCopy,
+          style: TextStyle(color: color, fontSize: fontSize, height: 1.4),
+        ),
+      ),
+    );
+  }
+
   // ── Placeholder (not allowlisted) ────────────────────────────────
 
   Widget _placeholder(Color color, Color dimColor, double fontSize) {
@@ -456,6 +490,14 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
     );
   }
 }
+
+/// PLACEHOLDER renew-prompt copy for the mid-session access lapse
+/// ([TurnAccessLapsed], adityas/ai/99). Not final — adityas/ai/85 swaps this for
+/// the real launch copy (and wires a live renew/purchase CTA) right before
+/// go-live, alongside the sign-in-vs-buy gate split.
+const _renewPromptCopy =
+    'Your access has ended, so new messages are paused. Your past conversation '
+    'stays here to read. Renew your access to continue the conversation.';
 
 /// Confirm starting a new chat while a reply is still streaming — the current
 /// turn is stopped server-side (still billed), never silently orphaned.

@@ -17,16 +17,6 @@ import 'sse.dart';
 typedef SseByteSource =
     Stream<List<int>> Function(Uri uri, Map<String, String> headers);
 
-/// Raised when the durable wire rejects a request (a non-2xx REST response, or a
-/// missing token). Surfaces as a stream error the notifier turns into a terminal
-/// [TurnError] after its reconnect budget.
-class TurnTransportException implements Exception {
-  final String message;
-  const TurnTransportException(this.message);
-  @override
-  String toString() => message;
-}
-
 /// Internal sentinel: an in-flight [SseTurnTransport.start] discovered that a
 /// [adoptConversation]/[resetConversation] rotated the conversation out from
 /// under it (the epoch changed). It unwinds the opening turn without writing any
@@ -204,7 +194,7 @@ class SseTurnTransport implements TurnTransport {
     );
     if (_epoch != epoch) throw const _ConversationSuperseded();
     if (response.statusCode != 201) {
-      throw TurnTransportException(_httpError(response));
+      throw _httpError(response);
     }
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     final id = data['conversation_id'] as String;
@@ -231,7 +221,7 @@ class SseTurnTransport implements TurnTransport {
     if (_epoch != epoch) throw const _ConversationSuperseded();
     if (response.statusCode == 404) {
       if (_adopted) {
-        throw TurnTransportException(_httpError(response));
+        throw _httpError(response);
       }
       _conversationId = null;
       final fresh = await _ensureConversation(token, epoch, title: title);
@@ -265,7 +255,7 @@ class SseTurnTransport implements TurnTransport {
 
   String _turnIdFrom(http.Response response) {
     if (response.statusCode != 202) {
-      throw TurnTransportException(_httpError(response));
+      throw _httpError(response);
     }
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     return data['turn_id'] as String;
@@ -292,13 +282,18 @@ class SseTurnTransport implements TurnTransport {
     'content-type': 'application/json',
   };
 
-  String _httpError(http.Response response) {
+  /// Turn a non-2xx REST response into a status-carrying exception. The
+  /// [statusCode] is what lets the notifier branch a deliberate gate (403/402/
+  /// 428) apart from a generic failure — always route rejections through here.
+  TurnTransportException _httpError(http.Response response) {
+    String message;
     try {
       final body = jsonDecode(response.body) as Map<String, dynamic>;
-      return body['error'] as String? ?? 'Request failed';
+      message = body['error'] as String? ?? 'Request failed';
     } catch (_) {
-      return 'Request failed (${response.statusCode})';
+      message = 'Request failed (${response.statusCode})';
     }
+    return TurnTransportException(message, statusCode: response.statusCode);
   }
 }
 
