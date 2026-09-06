@@ -572,6 +572,9 @@ class _ConversationsDialogState extends ConsumerState<_ConversationsDialog> {
   bool _loading = true;
   String? _loadError;
   String? _actionError;
+  // Id of the conversation whose PDF export is in flight; its Download button
+  // shows a spinner and is disabled to swallow re-taps (adityas/ai/106).
+  String? _downloadingId;
   List<ConversationSummary> _items = const [];
 
   ConversationService get _service => ref.read(conversationServiceProvider);
@@ -640,6 +643,12 @@ class _ConversationsDialogState extends ConsumerState<_ConversationsDialog> {
   }
 
   Future<void> _download(ConversationSummary c) async {
+    // The Typst compile takes a few seconds; ignore re-taps while it runs.
+    if (_downloadingId != null) return;
+    setState(() {
+      _downloadingId = c.id;
+      _actionError = null;
+    });
     try {
       final bytes = await _service.exportPdf(c.id);
       await saveFileBytes(
@@ -655,6 +664,8 @@ class _ConversationsDialogState extends ConsumerState<_ConversationsDialog> {
       );
     } catch (_) {
       _showActionError('Could not download that conversation.');
+    } finally {
+      if (mounted) setState(() => _downloadingId = null);
     }
   }
 
@@ -879,6 +890,7 @@ class _ConversationsDialogState extends ConsumerState<_ConversationsDialog> {
             'Download',
             color.withValues(alpha: 0.7),
             () => _download(c),
+            loading: _downloadingId == c.id,
           ),
           if (!widget.readOnly) ...[
             _action(
@@ -898,12 +910,19 @@ class _ConversationsDialogState extends ConsumerState<_ConversationsDialog> {
     IconData icon,
     String tooltip,
     Color color,
-    VoidCallback onPressed,
-  ) {
+    VoidCallback onPressed, {
+    bool loading = false,
+  }) {
     return IconButton(
-      icon: Icon(icon, size: 20, color: color),
+      icon: loading
+          ? SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2, color: color),
+            )
+          : Icon(icon, size: 20, color: color),
       tooltip: tooltip,
-      onPressed: onPressed,
+      onPressed: loading ? null : onPressed,
       visualDensity: VisualDensity.compact,
       padding: const EdgeInsets.all(6),
       constraints: const BoxConstraints(),
