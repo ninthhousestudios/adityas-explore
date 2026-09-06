@@ -439,28 +439,37 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
           color: context.tokens.bubbleAgent,
           borderRadius: BorderRadius.circular(12),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (hasText)
-              Text(
-                text,
-                style: TextStyle(color: color, fontSize: fontSize),
-              ),
-            if (status != null)
-              Padding(
-                padding: EdgeInsets.only(top: hasText ? 4 : 0),
-                child: Text(
-                  status,
-                  style: TextStyle(
-                    color: dimColor,
-                    fontSize: fontSize * 0.85,
-                    fontStyle: FontStyle.italic,
+        // The in-flight reply is a polite live region (adityas/ai/138) so a
+        // screen reader announces it as it streams. One region on the growing
+        // bubble — its label is the visible text plus any status note — rather
+        // than a live region per token widget. The visible Text nodes are
+        // excluded from semantics so the announcement is this single label, not
+        // a duplicate read of each child.
+        child: StreamingLiveRegion(
+          label: [if (hasText) text, ?status].join('. '),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (hasText)
+                Text(
+                  text,
+                  style: TextStyle(color: color, fontSize: fontSize),
+                ),
+              if (status != null)
+                Padding(
+                  padding: EdgeInsets.only(top: hasText ? 4 : 0),
+                  child: Text(
+                    status,
+                    style: TextStyle(
+                      color: dimColor,
+                      fontSize: fontSize * 0.85,
+                      fontStyle: FontStyle.italic,
+                    ),
                   ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -843,6 +852,37 @@ int? compactionSeamIndex(
 /// older turns above were condensed to keep the conversation focused. Mirrors the
 /// backend contract's own suggested marker text (adityas/ai/119).
 const _seamLabel = 'Earlier messages condensed to keep this focused';
+
+/// A polite ARIA live region wrapping the in-flight assistant reply so screen
+/// readers announce it as it streams (adityas/ai/138).
+///
+/// Flutter's [Semantics.liveRegion] maps to `aria-live="polite"` on web and
+/// re-announces when the node's [label] changes — so a single region on the
+/// growing bubble is all it takes; there is no per-token widget. Announce
+/// cadence rides on the delta throttle (lib/state/delta_throttle.dart), which
+/// paces the state updates that grow [label], so it is not read per token. The
+/// visible [child] is wrapped in [ExcludeSemantics] so the announcement is this
+/// one [label] rather than a duplicate read of each descendant Text.
+class StreamingLiveRegion extends StatelessWidget {
+  final String label;
+  final Widget child;
+
+  const StreamingLiveRegion({
+    super.key,
+    required this.label,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      liveRegion: true,
+      container: true,
+      label: label,
+      child: ExcludeSemantics(child: child),
+    );
+  }
+}
 
 /// Distance from the bottom, in logical px, within which the chat view is
 /// treated as "at the end" and keeps auto-pinning to new content (adityas/ai/29).
