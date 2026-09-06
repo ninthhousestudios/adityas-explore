@@ -515,14 +515,17 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
         _finish();
         return;
       case ErrorEvent(:final message):
-        // A server error on a turn the user already stopped settles the cancel
-        // (keep TurnCancelled + whatever usage arrived); it does not un-cancel
-        // into TurnError.
         if (_cancelling) {
-          _settleCancelled();
-        } else {
-          _fail(message);
+          // The cancellation terminal sequence is error → usage → done. This
+          // error is the LEADING "generation was cancelled" marker, NOT the end:
+          // keep the subscription open so the trailing usage settles onto
+          // TurnCancelled and done (or a stream close) releases the latch.
+          // Settling here would tear the sub down and drop the trailing
+          // usage/done, leaving TurnCancelled.usage stale (adityas/ai/140). It
+          // does not un-cancel into TurnError either way.
+          return;
         }
+        _fail(message);
         return;
       case ToolStartEvent(:final tool, :final args):
         // The `show_being` seam: the model *intentionally* calls the show_being

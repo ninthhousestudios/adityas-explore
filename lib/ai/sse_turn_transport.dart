@@ -71,6 +71,14 @@ class SseTurnTransport implements TurnTransport {
   // server-side [cancel].
   String? _turnId;
 
+  // A Stop pressed while a turn is still opening (TurnConnecting) has no id to
+  // target yet, so [cancel] latches the intent here and [start] fires it the
+  // moment the id is minted. Without this, an early Stop reads a null [_turnId]
+  // (no-op, turn keeps generating) or a stale previous id (cancels the wrong
+  // turn) — the Stop-during-connecting race (adityas/ai/140). Reset at the top
+  // of every [start] so it never carries across turns.
+  bool _pendingCancel = false;
+
   int _idempotencySeq = 0;
 
   // True while [_conversationId] holds a *resumed* (adopted) thread rather than
@@ -98,6 +106,11 @@ class SseTurnTransport implements TurnTransport {
   @override
   Stream<TurnEvent> start(TurnRequest request) async* {
     final epoch = _epoch;
+    // A fresh turn has no id and no carried-over Stop intent yet. Clear the
+    // previous turn's id so a Stop pressed while this one connects can't target
+    // it, and drop any stale pending-cancel (adityas/ai/140).
+    _turnId = null;
+    _pendingCancel = false;
     final String token;
     final String conversationId;
     final String turnId;
@@ -124,6 +137,13 @@ class SseTurnTransport implements TurnTransport {
     }
     if (_epoch != epoch) return;
     _turnId = turnId;
+    if (_pendingCancel) {
+      // A Stop pressed while this turn was still opening latched the intent;
+      // fire it now for the exact id, then still stream so the terminal
+      // error → usage → done flows to the notifier (adityas/ai/140).
+      _pendingCancel = false;
+      await _postCancel(turnId);
+    }
     yield* _stream(token, turnId, lastEventId: null);
   }
 
@@ -139,18 +159,29 @@ class SseTurnTransport implements TurnTransport {
 
   @override
   Future<void> cancel() async {
-    // Server-side stop (adityas/backend/54, contract in adityas/ai/94): POST the
-    // cancel and return. The actual stop is NOT the 202 — it arrives over the
-    // turn's already-open SSE stream as the terminal `error "generation was
-    // cancelled" → usage → done`, which the notifier is holding the stream open
-    // to receive (and which settles the non-refunding billing). The 202 only
-    // acks; 404 means the turn is already gone (finished, evicted, or not this
-    // user's) — nothing to stop either way. So both are success here, and every
-    // other outcome is swallowed: a failed POST must not block the client,
-    // because the open SSE stream is the real settlement path regardless (the
-    // turn either truly cancels and settles, or completes normally).
     final turnId = _turnId;
-    if (turnId == null) return; // no turn opened yet — nothing to stop
+    if (turnId == null) {
+      // The turn is still opening (TurnConnecting): its id isn't known yet, so
+      // latch the Stop intent for [start] to fire once the id is minted. A bare
+      // return here would leave the turn generating; POSTing against a stale
+      // previous id would cancel the wrong turn (adityas/ai/140).
+      _pendingCancel = true;
+      return;
+    }
+    await _postCancel(turnId);
+  }
+
+  // Server-side stop (adityas/backend/54, contract in adityas/ai/94): POST the
+  // cancel and return. The actual stop is NOT the 202 — it arrives over the
+  // turn's already-open SSE stream as the terminal `error "generation was
+  // cancelled" → usage → done`, which the notifier is holding the stream open to
+  // receive (and which settles the non-refunding billing). The 202 only acks;
+  // 404 means the turn is already gone (finished, evicted, or not this user's) —
+  // nothing to stop either way. So both are success here, and every other
+  // outcome is swallowed: a failed POST must not block the client, because the
+  // open SSE stream is the real settlement path regardless (the turn either
+  // truly cancels and settles, or completes normally).
+  Future<void> _postCancel(String turnId) async {
     try {
       final token = await _token();
       if (token == null) return; // signed out — nothing to authorize

@@ -302,6 +302,40 @@ void main() {
     expect(cancelled.text, 'partial');
   });
 
+  test('cancel: the full terminal sequence error → usage → done keeps the '
+      'stream open and settles the trailing usage (adityas/ai/140)', () async {
+    final transport = _FakeTransport();
+    final container = _container(transport);
+    final notifier = container.read(chatTurnProvider.notifier)..send('hi');
+
+    transport.emit(const DeltaEvent('partial', 'e1'));
+    await _pump();
+
+    await notifier.cancel();
+    expect(container.read(chatTurnProvider), isA<TurnCancelled>());
+
+    // The backend delivers the stop as error → usage → done (the LEADING error
+    // is "generation was cancelled"). The notifier must treat that error as an
+    // intermediate marker, NOT tear the subscription down on it, so the trailing
+    // usage still settles onto the cancelled turn.
+    transport.emit(const ErrorEvent('generation was cancelled', 'e2'));
+    await _pump();
+    // Still cancelled after the error — it does not un-cancel into TurnError.
+    expect(container.read(chatTurnProvider), isA<TurnCancelled>());
+
+    transport
+      ..emit(const UsageEvent(TurnUsage(inputTokens: 3, outputTokens: 4), 'e3'))
+      ..emit(const DoneEvent('e4'));
+    await _pump();
+
+    final cancelled = container.read(chatTurnProvider);
+    expect(cancelled, isA<TurnCancelled>());
+    // The usage that arrived AFTER the error is what would be dropped if the
+    // error tore the stream down early.
+    expect((cancelled as TurnCancelled).usage?.totalTokens, 7);
+    expect(cancelled.text, 'partial');
+  });
+
   test('a cancelled turn commits its partial reply to the conversation, once '
       '(adityas/ai/126)', () async {
     final transport = _FakeTransport();

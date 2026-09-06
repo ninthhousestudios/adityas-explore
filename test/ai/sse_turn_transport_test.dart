@@ -639,6 +639,85 @@ void main() {
       expect(posts, 0);
     });
 
+    test('Stop during TurnConnecting latches, then cancels the exact turn once '
+        'its id is minted (adityas/ai/140)', () async {
+      final gate = Completer<void>();
+      var turnPostsStarted = 0;
+      final cancelPaths = <String>[];
+      final mock = MockClient((request) async {
+        if (request.url.path.endsWith('/conversations')) {
+          return http.Response(jsonEncode({'conversation_id': 'c1'}), 201);
+        }
+        if (request.url.path.endsWith('/turns')) {
+          turnPostsStarted++;
+          await gate.future; // hold the turn open so Stop lands mid-connect
+          return http.Response(jsonEncode({'turn_id': 't-late'}), 202);
+        }
+        cancelPaths.add(request.url.path);
+        return http.Response('', 202);
+      });
+      final transport = SseTurnTransport(
+        tokenProvider: ({forceRefresh = false}) async => 'jwt',
+        baseUrl: 'https://api.test',
+        httpClient: mock,
+        byteSource: _FakeByteSource(_happyStream).call,
+      );
+
+      final events = transport.start(const TurnRequest(text: 'hi')).toList();
+      await _pumpUntil(
+        () => turnPostsStarted == 1,
+      ); // turn POST in flight, no id
+      await transport.cancel(); // Stop during TurnConnecting — latches intent
+      expect(cancelPaths, isEmpty); // nothing to POST yet — id unknown
+      gate.complete();
+      final emitted = await events;
+
+      // The exact minted id was cancelled — not a no-op that leaves it running.
+      expect(cancelPaths.single, '/v1/ai/turns/t-late/cancel');
+      // The stream still flowed so the terminal sequence reaches the notifier.
+      expect(emitted.last, isA<DoneEvent>());
+    });
+
+    test('Stop during TurnConnecting targets the new turn, never the stale '
+        'previous one (adityas/ai/140)', () async {
+      final gate = Completer<void>();
+      var turnPostsStarted = 0;
+      var nextTurnId = 't1';
+      final cancelPaths = <String>[];
+      final mock = MockClient((request) async {
+        if (request.url.path.endsWith('/conversations')) {
+          return http.Response(jsonEncode({'conversation_id': 'c1'}), 201);
+        }
+        if (request.url.path.endsWith('/turns')) {
+          turnPostsStarted++;
+          if (turnPostsStarted == 2) {
+            await gate.future; // hold the 2nd turn open across the Stop
+          }
+          return http.Response(jsonEncode({'turn_id': nextTurnId}), 202);
+        }
+        cancelPaths.add(request.url.path);
+        return http.Response('', 202);
+      });
+      final transport = SseTurnTransport(
+        tokenProvider: ({forceRefresh = false}) async => 'jwt',
+        baseUrl: 'https://api.test',
+        httpClient: mock,
+        byteSource: _FakeByteSource(_happyStream).call,
+      );
+
+      // First turn completes → the transport now holds a stale id (t1).
+      await transport.start(const TurnRequest(text: 'one')).toList();
+      // Second turn: hold it mid-connect and hit Stop.
+      nextTurnId = 't2';
+      final events = transport.start(const TurnRequest(text: 'two')).toList();
+      await _pumpUntil(() => turnPostsStarted == 2);
+      await transport.cancel(); // must not target t1
+      gate.complete();
+      await events;
+
+      expect(cancelPaths.single, '/v1/ai/turns/t2/cancel');
+    });
+
     test('no-op when signed out — a null token fires no POST', () async {
       var cancelPosts = 0;
       final mock = MockClient((request) async {
