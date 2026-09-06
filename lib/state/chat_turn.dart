@@ -199,16 +199,27 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
   // at-ceiling notice rather than opening one the server will 402 again (which
   // would also append a duplicate user message). Separate axis from [_lapsed]:
   // access can be live (a valid window) while its usage budget is exhausted.
-  // Released in [send] when a fresh [usageProvider] read proves headroom
-  // (`used_pct` < 100) — the window reset/renewed. (The panel keeps usage warm by
-  // watching it for the near-ceiling notice, so that read is live.)
+  // Released by [_recheckCeiling] — a direct, freshly-fetched headroom read below
+  // [usageNearCeilingThreshold] is the only proof the window reset/renewed
+  // (adityas/ai/129 findings 1 & 2). A ceilinged turn never settles, so nothing
+  // else ever refetches usage; the release cannot lean on the cached provider.
   bool _ceilinged = false;
+
+  // The id of the optimistic user message appended by the current [send], held
+  // until the turn is accepted (first event) so a pre-accept 402 can roll it back
+  // (adityas/ai/129 finding 3). Null once any event proves acceptance, or between
+  // turns.
+  String? _pendingUserId;
 
   // Fires at `access_until` to end an in-flight turn the instant entitlement
   // lapses. Driven by the injected [Clock] (delay) + a real [Timer]; the
   // [chatAvailableProvider] listen only reacts to provider *changes*, which
   // never fire on the wall-clock boundary by themselves.
   Timer? _expiryTimer;
+
+  // Set once the notifier is disposed, so the fire-and-forget [_recheckCeiling]
+  // future does not touch a torn-down `ref` if it resolves after dispose.
+  bool _disposed = false;
 
   @override
   ChatTurn build() {
@@ -231,6 +242,7 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
         }
       })
       ..onDispose(() {
+        _disposed = true;
         _closeSub();
         _throttle.cancel();
         _cancelExpiryTimer();
@@ -260,17 +272,18 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     }
     // The window budget is spent (a prior 402); refuse into the at-ceiling notice
     // — a doomed resend would re-hit the 402 and append a duplicate user message
-    // (adityas/ai/100). Release the latch only when a fresh usage read proves the
-    // window reset (headroom under the cap); a null/loading reading is not proof,
-    // so it holds. The 402 stays authoritative over a lagging usage signal.
+    // (adityas/ai/100). Do NOT release off the cached [usageProvider] value here:
+    // it is retained stale through loading/error, and the 402 came from the turn
+    // route (not the usage endpoint), so that cache can read a pre-ceiling <100
+    // and clear the latch into another 402 (adityas/ai/129 finding 2). Instead
+    // kick a direct, freshly-fetched headroom re-read ([_recheckCeiling]) that
+    // self-heals the latch once the window truly reset — the only reset signal,
+    // since a ceilinged turn never settles to trigger the settle-time refetch
+    // (adityas/ai/129 finding 1).
     if (_ceilinged) {
-      final pct = ref.read(usageProvider).value;
-      if (pct != null && pct < 100) {
-        _ceilinged = false;
-      } else {
-        state = const TurnCeiling(text: '', usage: null);
-        return;
-      }
+      state = const TurnCeiling(text: '', usage: null);
+      unawaited(_recheckCeiling());
+      return;
     }
     // UX gate; the backend is the authoritative entitlement check. Defense in
     // depth against opening a turn the server will refuse anyway. A *lapsed*
@@ -297,6 +310,11 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
         .read(conversationProvider.notifier)
         .appendUser(message);
     _resetTurn();
+    // Track the optimistic append so a pre-accept 402 can roll it back — the
+    // server never spawned that turn, so its user message must not linger as a
+    // ghost that diverges the local chain (adityas/ai/129 finding 3). Cleared the
+    // moment any event proves the turn was accepted (see [_onEvent]).
+    _pendingUserId = userMessage.id;
     state = const TurnConnecting();
     // Stream creation can throw synchronously (e.g. no transport wired, bad
     // request). Catch it here so the turn ends in a terminal error rather than
@@ -406,6 +424,9 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
   }
 
   void _onEvent(TurnEvent event) {
+    // Any event proves the server accepted the turn — the optimistic user append
+    // is real, so drop the pre-accept rollback tracking (adityas/ai/129).
+    _pendingUserId = null;
     _cursor = event.eventId; // advance on every event, even ignored ones
     switch (event) {
       case DeltaEvent(:final text):
@@ -662,6 +683,19 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     _throttle.cancel();
     _cancelExpiryTimer();
     unawaited(_transport.cancel());
+    // A 402 is a pre-accept gate: no turn was spawned, so the optimistic user
+    // message appended in [send] has no server counterpart. Roll it back so local
+    // history does not diverge from the server — a ghost message and an advanced
+    // parentId that a later turn would thread beneath (adityas/ai/129 finding 3).
+    // _pendingUserId is non-null only pre-accept, so this never removes a message
+    // from an accepted turn (and _buffer is empty in that case).
+    final pending = _pendingUserId;
+    if (pending != null) {
+      ref.read(conversationProvider.notifier).removeMessage(pending);
+      _pendingUserId = null;
+    }
+    // Symmetric with [_lapse]: commit any partial (normally empty for a 402, which
+    // fires before any delta).
     if (_buffer.isNotEmpty) {
       ref
           .read(conversationProvider.notifier)
@@ -670,6 +704,30 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     _ceilinged = true;
     ref.invalidate(usageProvider);
     state = TurnCeiling(text: _buffer.toString(), usage: _usage);
+  }
+
+  /// Re-read the window headroom directly from the usage seam after a ceilinged
+  /// [send], so the latch can self-heal once the window resets/renews — without a
+  /// wall-clock poll and without trusting the possibly-stale cached
+  /// [usageProvider] value (adityas/ai/129 findings 1 & 2). A settled read below
+  /// [usageNearCeilingThreshold] is the only proof the window truly reset (a value
+  /// still in the near-ceiling band, or a failed read, is not): release the latch,
+  /// refresh the near notice to match, and drop back to idle so the surface
+  /// unlocks. On failure the latch holds — an unproven window stays spent.
+  Future<void> _recheckCeiling() async {
+    final int pct;
+    try {
+      pct = await ref.read(usageClientProvider).fetchUsagePct();
+    } catch (_) {
+      return;
+    }
+    // The seam resolved after a dispose (panel torn down mid-recheck): the torn-
+    // down ref must not be touched, and there is no surface left to unlock.
+    if (_disposed) return;
+    if (pct >= usageNearCeilingThreshold) return;
+    _ceilinged = false;
+    ref.invalidate(usageProvider);
+    if (state is TurnCeiling) state = const TurnIdle();
   }
 
   /// Arm the mid-turn expiry timer at the current `access_until`. The delay is
@@ -702,6 +760,7 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     _usage = null;
     _reconnects = 0;
     _cancelling = false;
+    _pendingUserId = null;
   }
 
   void _closeSub() {

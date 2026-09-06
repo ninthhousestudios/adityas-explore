@@ -80,6 +80,35 @@ void main() {
     );
   });
 
+  test('removeMessage rolls back the tail and keeps the chain linear '
+      '(adityas/ai/129)', () {
+    final container = ProviderContainer(
+      overrides: [authProvider.overrideWith(() => _MutableAuth(_stubUser))],
+    );
+    addTearDown(container.dispose);
+
+    final notifier = container.read(conversationProvider.notifier);
+    final first = notifier.appendUser('what is my Soul Stance?');
+    notifier.appendAssistant('Your Sun sits with the Adityas…');
+    final ghost = notifier.appendUser('a pre-accept 402 message');
+
+    // Roll back the optimistic tail (the ghost user message).
+    notifier.removeMessage(ghost.id);
+    var convo = container.read(conversationProvider);
+    expect(convo.messages, hasLength(2));
+    expect(convo.messages.last.role, MessageRole.assistant);
+
+    // The next append threads off the new last message, not the removed one.
+    final next = notifier.appendUser('again');
+    expect(next.parentId, convo.messages.last.id);
+
+    // Removing an absent id is a no-op.
+    notifier.removeMessage('local-does-not-exist');
+    convo = container.read(conversationProvider);
+    expect(convo.messages, hasLength(3));
+    expect(convo.messages.first.id, first.id);
+  });
+
   test('reset clears to a fresh empty conversation', () {
     final container = ProviderContainer(
       overrides: [authProvider.overrideWith(() => _MutableAuth(_stubUser))],

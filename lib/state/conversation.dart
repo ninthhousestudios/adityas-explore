@@ -89,6 +89,17 @@ class ConversationNotifier extends Notifier<Conversation> {
     return message;
   }
 
+  /// Remove a message by id — a pre-accept 402 rolls back its optimistic user
+  /// append so local history does not diverge from the server (adityas/ai/129).
+  /// No-op if absent. v1 only ever removes the just-appended tail, so the chain
+  /// stays linear: the next [appendUser] threads off the new last message.
+  void removeMessage(String id) {
+    state = Conversation(
+      id: state.id,
+      messages: state.messages.where((m) => m.id != id).toList(),
+    );
+  }
+
   /// Replace the buffer with a resumed transcript (Resume, adityas/ai/86).
   /// [id] is the server conversation now being appended to — held so the picker
   /// can tell when a deleted conversation is the active one. Local ids continue

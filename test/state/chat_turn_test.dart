@@ -133,11 +133,13 @@ final _gateProvider = NotifierProvider<_Gate, bool>(_Gate.new);
 class _FakeUsage implements UsageClient {
   int pct;
   int fetches = 0;
+  bool fail = false;
   _FakeUsage([this.pct = 0]);
 
   @override
   Future<int> fetchUsagePct() async {
     fetches++;
+    if (fail) throw Exception('usage endpoint down');
     return pct;
   }
 }
@@ -166,7 +168,6 @@ ProviderContainer _container(
   Clock? clock,
   bool? chatEnabled,
   UsageClient? usageClient,
-  bool warmUsage = false,
 }) {
   final container = ProviderContainer(
     overrides: [
@@ -176,8 +177,8 @@ ProviderContainer _container(
         () => const ImmediateThrottle(),
       ),
       chatAvailableProvider.overrideWith((ref) => ref.watch(_gateProvider)),
-      // The turn notifier listens to usageProvider; keep it off the network with
-      // a scripted client (plenty of headroom by default).
+      // The ceiling recheck reads the usage seam directly; keep it off the
+      // network with a scripted client (plenty of headroom by default).
       usageClientProvider.overrideWithValue(usageClient ?? _FakeUsage()),
       // No time-based deadline by default: the turn schedules no expiry timer,
       // so tests that flip the boolean gate stay unaffected. A time-expiry test
@@ -191,7 +192,6 @@ ProviderContainer _container(
         chatEnabledProvider.overrideWith((ref) => chatEnabled),
     ],
   );
-  if (warmUsage) container.listen(usageProvider, (_, _) {});
   addTearDown(container.dispose);
   return container;
 }
@@ -624,35 +624,97 @@ void main() {
     },
   );
 
+  test('a fresh usage read showing headroom self-heals the ceiling latch — no '
+      'manual invalidate, panel stays mounted (adityas/ai/129 finding 1)', () async {
+    final transport = _FakeTransport();
+    final usage = _FakeUsage(100);
+    final container = _container(transport, usageClient: usage);
+
+    container.read(chatTurnProvider.notifier).send('hi');
+    transport.dropStream(
+      const TurnTransportException('limit reached', statusCode: 402),
+    );
+    await _pump();
+    expect(container.read(chatTurnProvider), isA<TurnCeiling>());
+
+    // The window resets server-side (usage now reports headroom). Nothing polls
+    // and NOTHING manually invalidates the provider — the ceilinged send itself
+    // re-reads the seam directly, proves headroom, releases the latch, and drops
+    // the surface back to idle. (The prior implementation could only recover via
+    // a manual `container.invalidate(usageProvider)`, which production never
+    // does; that is exactly the stuck-lockout this covers.)
+    usage.pct = 0;
+    container
+        .read(chatTurnProvider.notifier)
+        .send('again'); // refused; rechecks
+    expect(container.read(chatTurnProvider), isA<TurnCeiling>());
+    expect(transport.starts, 1); // that send opened no turn
+    await _pump();
+    expect(container.read(chatTurnProvider), isA<TurnIdle>()); // latch healed
+    expect(usage.fetches, greaterThan(0));
+
+    // With the latch released, a send now opens a fresh turn.
+    container.read(chatTurnProvider.notifier).send('once more');
+    expect(container.read(chatTurnProvider), isA<TurnConnecting>());
+    expect(transport.starts, 2);
+  });
+
+  test('the ceiling latch holds on a stale near-band value and on a failed usage '
+      'read (adityas/ai/129 finding 2)', () async {
+    final transport = _FakeTransport();
+    // The last successful usage read is 90 — still inside the near-ceiling band
+    // [80,100), NOT proof the window reset.
+    final usage = _FakeUsage(90);
+    final container = _container(transport, usageClient: usage);
+
+    container.read(chatTurnProvider.notifier).send('hi');
+    transport.dropStream(
+      const TurnTransportException('limit reached', statusCode: 402),
+    );
+    await _pump();
+    expect(container.read(chatTurnProvider), isA<TurnCeiling>());
+
+    // A resend re-reads headroom directly. 90 is still near-ceiling, so the
+    // latch must NOT clear — clearing it would let the turn re-hit the 402.
+    container.read(chatTurnProvider.notifier).send('again');
+    await _pump();
+    expect(container.read(chatTurnProvider), isA<TurnCeiling>());
+    expect(transport.starts, 1);
+
+    // The usage endpoint then fails outright: a failed read is not proof of a
+    // reset either, so the latch still holds.
+    usage.fail = true;
+    container.read(chatTurnProvider.notifier).send('still again');
+    await _pump();
+    expect(container.read(chatTurnProvider), isA<TurnCeiling>());
+    expect(transport.starts, 1);
+  });
+
   test(
-    'a fresh usage fetch showing headroom self-heals the ceiling latch',
+    'a pre-accept 402 leaves conversation history unchanged — no ghost user '
+    'message, and blocked resends do not accumulate (adityas/ai/129 finding 3)',
     () async {
       final transport = _FakeTransport();
-      final usage = _FakeUsage(100);
-      // warmUsage: the panel keeps usage warm by watching it for the near notice;
-      // mirror that so the send-time headroom read sees a resolved value.
-      final container = _container(
-        transport,
-        usageClient: usage,
-        warmUsage: true,
-      );
+      final container = _container(transport, usageClient: _FakeUsage(100));
 
       container.read(chatTurnProvider.notifier).send('hi');
+      // The optimistic user message shows while the POST is in flight…
+      expect(container.read(conversationProvider).messages, hasLength(1));
+
+      // …but the POST is refused pre-accept with 402 (no turn spawned), so it is
+      // rolled back: no ghost message, no advanced parent chain.
       transport.dropStream(
         const TurnTransportException('limit reached', statusCode: 402),
       );
       await _pump();
       expect(container.read(chatTurnProvider), isA<TurnCeiling>());
+      expect(container.read(conversationProvider).messages, isEmpty);
 
-      // The window resets: usage now reports headroom, so the next send releases
-      // the latch and opens a fresh turn.
-      usage.pct = 0;
-      container.invalidate(usageProvider);
-      await _pump();
-
+      // A ceiling-blocked resend is refused before any append, so history stays
+      // empty rather than accumulating dead user messages.
       container.read(chatTurnProvider.notifier).send('again');
-      expect(container.read(chatTurnProvider), isA<TurnConnecting>());
-      expect(transport.starts, 2);
+      await _pump();
+      expect(container.read(conversationProvider).messages, isEmpty);
     },
   );
 
