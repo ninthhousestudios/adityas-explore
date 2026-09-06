@@ -180,7 +180,15 @@ abstract interface class TurnTransport {
   /// still finalizes a usage event for tokens already produced. Closing the
   /// client stream alone is not enough — you keep paying (../ai tier-1 notes
   /// § Client notes).
-  Future<void> cancel();
+  ///
+  /// Returns whether the stop is in effect: **true** when the server
+  /// acknowledged it (202), when the turn is already gone (404 — nothing left to
+  /// stop), or when the turn is still connecting and the stop was latched to fire
+  /// the moment its id is minted (adityas/ai/140). **false** when the stop was
+  /// NOT acknowledged — any other status, or a transport failure — so the turn
+  /// may still be generating over the still-open stream and the caller must not
+  /// assert cancellation (adityas/ai/141).
+  Future<bool> cancel();
 
   /// Append subsequent turns to an existing server conversation [id] (Resume,
   /// adityas/ai/86). Replaces the cached conversation and clears the turn

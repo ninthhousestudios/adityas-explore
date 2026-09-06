@@ -247,6 +247,12 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
   // that same partial. Reset per turn in [_resetTurn].
   bool _partialCommitted = false;
 
+  // The id of the partial assistant message [cancel] optimistically committed,
+  // held so a stop the server did NOT acknowledge can un-commit it before
+  // reverting to the still-open stream (adityas/ai/141). Null when no partial is
+  // pending un-commit. Reset per turn in [_resetTurn].
+  String? _cancelledPartialId;
+
   // Fires at `access_until` to end an in-flight turn the instant entitlement
   // lapses. Driven by the injected [Clock] (delay) + a real [Timer]; the
   // [chatAvailableProvider] listen only reacts to provider *changes*, which
@@ -309,14 +315,16 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     return const TurnIdle();
   }
 
-  /// Send a user message, opening a new turn. No-op if a turn is already active
-  /// (one turn at a time), if a cancelled turn is still settling, or if the
-  /// message is blank.
-  void send(String text) {
+  /// Send a user message, opening a new turn. Returns whether the message was
+  /// accepted (a turn opened): **false** when it is refused — a turn already
+  /// active, a cancelled turn still settling, a lapse/ceiling/consent gate, no
+  /// entitlement, or a blank message — so the composer can keep the typed text
+  /// instead of silently discarding it (adityas/ai/142).
+  bool send(String text) {
     // `_cancelling`: a cancelled turn awaiting its trailing usage/done still
     // owns the transport subscription. Opening a new turn now would reset it and
     // drop the stopped turn's (billable) usage.
-    if (_isActive || _cancelling) return;
+    if (_isActive || _cancelling) return false;
     // A prior authoritative lapse (a 403 on a write route, or the clock crossing
     // `access_until`) hard-stops new turns until a fresh entitlement fetch proves
     // renewed access. The derived [chatAccessProvider] below can still read
@@ -326,7 +334,7 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     // message and re-hit the same 403 (adityas/ai/123 finding 2).
     if (_lapsed) {
       state = const TurnAccessLapsed(text: '', usage: null);
-      return;
+      return false;
     }
     // The window budget is spent (a prior 402); refuse into the at-ceiling notice
     // — a doomed resend would re-hit the 402 and append a duplicate user message
@@ -341,7 +349,7 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     if (_ceilinged) {
       state = const TurnCeiling(text: '', usage: null);
       unawaited(_recheckCeiling());
-      return;
+      return false;
     }
     // Consent went stale (a prior 428 on a write route). Refuse new turns into
     // the re-consent gate until the updated terms are agreed — a doomed resend
@@ -350,7 +358,7 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     // refetches, but this latch is the reliable stop in the refetch window.
     if (_needsConsent) {
       state = const TurnConsentRequired(text: '', usage: null);
-      return;
+      return false;
     }
     // UX gate; the backend is the authoritative entitlement check. Defense in
     // depth against opening a turn the server will refuse anyway. A *lapsed*
@@ -368,10 +376,10 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
               cursor: null,
               usage: null,
             );
-      return;
+      return false;
     }
     final message = text.trim();
-    if (message.isEmpty) return;
+    if (message.isEmpty) return false;
 
     final userMessage = ref
         .read(conversationProvider.notifier)
@@ -403,11 +411,14 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
         ),
       );
     } catch (error) {
+      // The message was accepted (already appended to history) but the turn
+      // failed to open — the composer should still clear, so report accepted.
       _fail('Failed to start the turn: $error');
-      return;
+      return true;
     }
     _subscribe(events);
     _scheduleExpiry();
+    return true;
   }
 
   /// Stop the turn. Maps to a server-side stop, not merely closing the client
@@ -428,14 +439,40 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     // usage/done, a clean close, or a broken stream that never delivers done).
     // _finish therefore appends only on its TurnDone (non-cancelling) path.
     if (_buffer.isNotEmpty) {
-      ref
+      _cancelledPartialId = ref
           .read(conversationProvider.notifier)
-          .appendAssistant(_buffer.toString());
+          .appendAssistant(_buffer.toString())
+          .id;
       // A gate that later races this cancel (403/402/428 on the write route)
       // must not commit the same partial a second time (adityas/ai/136).
       _partialCommitted = true;
     }
-    await _transport.cancel();
+    final stopped = await _transport.cancel();
+    // The stream may have settled this turn during the await (trailing done/
+    // usage, a gate, or a broken stream); its terminal handler already owns the
+    // outcome, so leave it alone.
+    if (!_cancelling) return;
+    // The stop is in effect (server acked, or latched while connecting) — the
+    // TurnCancelled state stands and the still-open stream settles it.
+    if (stopped) {
+      _cancelledPartialId = null;
+      return;
+    }
+    // The stop did NOT take: the server is still generating and the SSE stream
+    // is still delivering. Don't assert "cancelled" over a live stream
+    // (adityas/ai/141) — un-commit the optimistic partial and revert to the open
+    // stream so the reply stays visible and Stop can be retried. The eventual
+    // terminal event settles it normally (a done then re-appends the full reply).
+    final pending = _cancelledPartialId;
+    if (pending != null) {
+      ref.read(conversationProvider.notifier).removeMessage(pending);
+      _cancelledPartialId = null;
+    }
+    _partialCommitted = false;
+    _cancelling = false;
+    state = _buffer.isEmpty
+        ? const TurnConnecting()
+        : TurnStreaming(text: _buffer.toString(), cursor: _cursor);
   }
 
   /// Rotate to a fresh conversation without changing the chart (New Chat, and
@@ -607,8 +644,11 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     }
     if (_cancelling) {
       // The stopped turn's stream broke before (or after) settling — the
-      // settlement window is over. Release the latch so a new turn can open.
+      // settlement window is over. Release the latch so a new turn can open, and
+      // re-assign the state so a composer watching [isSettling] re-reads it as
+      // clear (adityas/ai/142).
       _cancelling = false;
+      state = TurnCancelled(text: _buffer.toString(), usage: _usage);
       return;
     }
     if (_isTerminal(state)) return;
@@ -641,9 +681,12 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
   void _onStreamDone() {
     if (_cancelling) {
       // The stopped turn's stream closed — settlement is over (usage arrived on
-      // it, or never). Release the latch; the TurnCancelled state stands.
+      // it, or never). Release the latch; the TurnCancelled state stands, but
+      // re-assign it so a composer watching [isSettling] re-reads it as clear
+      // (adityas/ai/142).
       _cancelling = false;
       _closeSub();
+      state = TurnCancelled(text: _buffer.toString(), usage: _usage);
       return;
     }
     if (_isTerminal(state)) return;
@@ -885,8 +928,16 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     _reconnects = 0;
     _cancelling = false;
     _partialCommitted = false;
+    _cancelledPartialId = null;
     _pendingUserId = null;
   }
+
+  /// True during the post-Stop settling window: the turn shows [TurnCancelled]
+  /// but still owns its subscription awaiting the server's trailing usage/done,
+  /// so a new send is refused. The composer keeps showing Stop until it clears
+  /// (adityas/ai/142). Every transition that clears the latch re-notifies
+  /// [chatTurnProvider] so a watcher re-reads this.
+  bool get isSettling => _cancelling;
 
   void _closeSub() {
     final sub = _sub;

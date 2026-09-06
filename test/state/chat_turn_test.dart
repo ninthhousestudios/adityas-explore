@@ -29,6 +29,10 @@ class _FakeTransport implements TurnTransport {
   String? lastResumeCursor;
   TurnRequest? lastRequest;
 
+  /// Whether [cancel] reports the server-side stop as in effect. Set false to
+  /// drive a stop the server did not acknowledge (adityas/ai/141).
+  bool cancelSucceeds = true;
+
   StreamController<TurnEvent> get _current => _controllers.last;
 
   @override
@@ -53,8 +57,9 @@ class _FakeTransport implements TurnTransport {
   }
 
   @override
-  Future<void> cancel() async {
+  Future<bool> cancel() async {
     cancels++;
+    return cancelSucceeds;
   }
 
   int adopts = 0;
@@ -96,7 +101,7 @@ class _ThrowingTransport implements TurnTransport {
   Stream<TurnEvent> resume(String cursor) => throw StateError('no wire');
 
   @override
-  Future<void> cancel() async {}
+  Future<bool> cancel() async => true;
 
   @override
   void adoptConversation(String id) {}
@@ -334,6 +339,160 @@ void main() {
     // error tore the stream down early.
     expect((cancelled as TurnCancelled).usage?.totalTokens, 7);
     expect(cancelled.text, 'partial');
+  });
+
+  test('a stop the server does not acknowledge reverts to the live stream '
+      'rather than asserting cancelled (adityas/ai/141)', () async {
+    final transport = _FakeTransport()..cancelSucceeds = false;
+    final container = _container(transport);
+    final notifier = container.read(chatTurnProvider.notifier)..send('hi');
+
+    transport.emit(const DeltaEvent('partial', 'e1'));
+    await _pump();
+
+    await notifier.cancel();
+    // The stop did not take: the SSE stream is still open and delivering, so the
+    // turn must NOT freeze on a false "cancelled" — it reverts to streaming.
+    final reverted = container.read(chatTurnProvider);
+    expect(reverted, isA<TurnStreaming>());
+    expect((reverted as TurnStreaming).text, 'partial');
+    expect(transport.cancels, 1);
+    // The optimistically-committed partial was un-committed — only the user
+    // message remains, so the eventual done appends the full reply exactly once.
+    expect(container.read(conversationProvider).messages.map((m) => m.role), [
+      MessageRole.user,
+    ]);
+
+    // The reply keeps streaming and completes normally.
+    transport
+      ..emit(const DeltaEvent(' answer', 'e2'))
+      ..emit(const UsageEvent(TurnUsage(inputTokens: 1, outputTokens: 2), 'e3'))
+      ..emit(const DoneEvent('e4'));
+    await _pump();
+
+    final done = container.read(chatTurnProvider);
+    expect(done, isA<TurnDone>());
+    expect((done as TurnDone).text, 'partial answer');
+    final convo = container.read(conversationProvider);
+    expect(convo.messages.map((m) => m.role), [
+      MessageRole.user,
+      MessageRole.assistant,
+    ]);
+    expect(convo.messages.last.text, 'partial answer'); // one reply, in full
+  });
+
+  test('after a stop that did not take, Stop can be retried and then settles '
+      '(adityas/ai/141)', () async {
+    final transport = _FakeTransport()..cancelSucceeds = false;
+    final container = _container(transport);
+    final notifier = container.read(chatTurnProvider.notifier)..send('hi');
+    transport.emit(const DeltaEvent('partial', 'e1'));
+    await _pump();
+
+    await notifier.cancel(); // refused → reverts to streaming
+    expect(container.read(chatTurnProvider), isA<TurnStreaming>());
+    expect(transport.cancels, 1);
+
+    // The retried Stop is acknowledged this time — the turn cancels for real.
+    transport.cancelSucceeds = true;
+    await notifier.cancel();
+    expect(container.read(chatTurnProvider), isA<TurnCancelled>());
+    expect(transport.cancels, 2);
+    // The partial committed once on the acknowledged stop, not duplicated.
+    final convo = container.read(conversationProvider);
+    expect(convo.messages.map((m) => m.role), [
+      MessageRole.user,
+      MessageRole.assistant,
+    ]);
+    expect(convo.messages.last.text, 'partial');
+  });
+
+  test('a Stop pressed while still connecting is latched (in effect), not '
+      'treated as a failed cancel (adityas/ai/141 + ai/140)', () async {
+    final transport = _FakeTransport();
+    final container = _container(transport);
+    final notifier = container.read(chatTurnProvider.notifier)..send('hi');
+    expect(container.read(chatTurnProvider), isA<TurnConnecting>());
+
+    // The fake reports connecting-time cancel as in effect (latched), so the
+    // notifier keeps the cancelled state and the stream settles it — it must not
+    // revert to a phantom stream that never opened.
+    await notifier.cancel();
+    expect(container.read(chatTurnProvider), isA<TurnCancelled>());
+
+    transport
+      ..emit(const UsageEvent(TurnUsage(inputTokens: 0, outputTokens: 0), 'e1'))
+      ..emit(const DoneEvent('e2'));
+    await _pump();
+    expect(container.read(chatTurnProvider), isA<TurnCancelled>());
+  });
+
+  test('the post-Stop settling window is observable via isSettling and refuses '
+      'a send until it clears (adityas/ai/142)', () async {
+    final transport = _FakeTransport();
+    final container = _container(transport);
+    final notifier = container.read(chatTurnProvider.notifier)..send('hi');
+    transport.emit(const DeltaEvent('partial', 'e1'));
+    await _pump();
+
+    expect(notifier.isSettling, isFalse);
+    await notifier.cancel();
+    // Cancelled, but still settling: the subscription is open for trailing usage.
+    expect(container.read(chatTurnProvider), isA<TurnCancelled>());
+    expect(notifier.isSettling, isTrue);
+
+    // A send during the settling window is REFUSED (returns false) and opens no
+    // turn — the composer keeps the typed text rather than discarding it.
+    expect(notifier.send('while settling'), isFalse);
+    expect(transport.starts, 1);
+
+    // The server settles the stopped turn; the latch clears with a notification.
+    transport
+      ..emit(const UsageEvent(TurnUsage(inputTokens: 1, outputTokens: 1), 'e2'))
+      ..emit(const DoneEvent('e3'));
+    await _pump();
+    expect(notifier.isSettling, isFalse);
+
+    // A send is now accepted (returns true) and opens a fresh turn.
+    expect(notifier.send('now'), isTrue);
+    expect(transport.starts, 2);
+  });
+
+  test('isSettling clears (with a notification) even when the stopped stream '
+      'just breaks (adityas/ai/142)', () async {
+    final transport = _FakeTransport();
+    final container = _container(transport);
+    var notifications = 0;
+    container.listen(chatTurnProvider, (_, _) => notifications++);
+    final notifier = container.read(chatTurnProvider.notifier)..send('hi');
+    transport.emit(const DeltaEvent('partial', 'e1'));
+    await _pump();
+    await notifier.cancel();
+    expect(notifier.isSettling, isTrue);
+
+    final before = notifications;
+    // The stopped turn's stream breaks with no trailing usage/done.
+    await transport.closeStream();
+    await _pump();
+
+    expect(notifier.isSettling, isFalse);
+    // The clear fired a state notification so a composer watching the provider
+    // re-reads isSettling and drops the Stop affordance.
+    expect(notifications, greaterThan(before));
+  });
+
+  test('send reports acceptance so refused text can be preserved '
+      '(adityas/ai/142)', () async {
+    final transport = _FakeTransport();
+    final container = _container(transport);
+    final notifier = container.read(chatTurnProvider.notifier);
+
+    expect(notifier.send('   '), isFalse); // blank refused
+    expect(notifier.send('hello'), isTrue); // accepted → opens a turn
+    transport.emit(const DeltaEvent('x', 'e1'));
+    await _pump();
+    expect(notifier.send('second'), isFalse); // a second turn is refused
+    expect(transport.starts, 1);
   });
 
   test('a cancelled turn commits its partial reply to the conversation, once '

@@ -592,37 +592,104 @@ void main() {
       return cancelRequest;
     }
 
+    // Like [startThenCancel] but returns cancel()'s own result — whether the
+    // stop is in effect (adityas/ai/141).
+    Future<bool> startThenCancelResult(
+      http.Response Function() cancelResponse,
+    ) async {
+      final mock = MockClient((request) async {
+        if (request.url.path.endsWith('/conversations')) {
+          return http.Response(jsonEncode({'conversation_id': 'c1'}), 201);
+        }
+        if (request.url.path.endsWith('/turns')) {
+          return http.Response(jsonEncode({'turn_id': 't1'}), 202);
+        }
+        return cancelResponse();
+      });
+      final transport = SseTurnTransport(
+        tokenProvider: ({forceRefresh = false}) async => 'jwt',
+        baseUrl: 'https://api.test',
+        httpClient: mock,
+        byteSource: _FakeByteSource(_happyStream).call,
+      );
+      await transport.start(const TurnRequest(text: 'hi')).toList();
+      return transport.cancel();
+    }
+
     test('POSTs the cancel route for the in-flight turn, bearer auth, no '
-        'body; a 202 completes', () async {
+        'body; a 202 reports the stop in effect', () async {
       final request = await startThenCancel(() => http.Response('', 202));
       expect(request, isNotNull);
       expect(request!.method, 'POST');
       expect(request.url.path, '/v1/ai/turns/t1/cancel');
       expect(request.headers['authorization'], 'Bearer jwt');
       expect(request.body, isEmpty);
+      // 202 acks the stop.
+      expect(await startThenCancelResult(() => http.Response('', 202)), isTrue);
     });
 
-    test('idempotent: a 404 (turn already finished/evicted/not ours) does not '
-        'throw', () async {
-      await expectLater(
-        startThenCancel(() => http.Response('', 404)),
-        completes,
+    test('idempotent: a 404 (turn already finished/evicted/not ours) reports '
+        'the stop in effect — nothing left to stop', () async {
+      expect(await startThenCancelResult(() => http.Response('', 404)), isTrue);
+    });
+
+    test('a non-202/404 status reports the stop NOT in effect — the turn may '
+        'still be generating (adityas/ai/141)', () async {
+      // 500 and other statuses: the stop did not take. The caller keeps the open
+      // stream visible instead of asserting a cancellation that never happened.
+      expect(
+        await startThenCancelResult(() => http.Response('nope', 500)),
+        isFalse,
+      );
+      expect(
+        await startThenCancelResult(() => http.Response('', 409)),
+        isFalse,
       );
     });
 
-    test('best-effort: a 5xx is swallowed — the open SSE stream is the real '
-        'settlement path', () async {
-      await expectLater(
-        startThenCancel(() => http.Response('nope', 500)),
-        completes,
-      );
-    });
+    test(
+      'a transport throw reports the stop NOT in effect (adityas/ai/141)',
+      () async {
+        expect(
+          await startThenCancelResult(() => throw Exception('network down')),
+          isFalse,
+        );
+      },
+    );
 
-    test('best-effort: a transport throw is swallowed', () async {
-      await expectLater(
-        startThenCancel(() => throw Exception('network down')),
-        completes,
+    test('a Stop while still connecting reports the stop in effect (latched), '
+        'with no POST yet (adityas/ai/140 + ai/141)', () async {
+      final gate = Completer<void>();
+      var turnPostsStarted = 0;
+      final cancelPaths = <String>[];
+      final mock = MockClient((request) async {
+        if (request.url.path.endsWith('/conversations')) {
+          return http.Response(jsonEncode({'conversation_id': 'c1'}), 201);
+        }
+        if (request.url.path.endsWith('/turns')) {
+          turnPostsStarted++;
+          await gate.future;
+          return http.Response(jsonEncode({'turn_id': 't-late'}), 202);
+        }
+        cancelPaths.add(request.url.path);
+        return http.Response('', 202);
+      });
+      final transport = SseTurnTransport(
+        tokenProvider: ({forceRefresh = false}) async => 'jwt',
+        baseUrl: 'https://api.test',
+        httpClient: mock,
+        byteSource: _FakeByteSource(_happyStream).call,
       );
+
+      final events = transport.start(const TurnRequest(text: 'hi')).toList();
+      await _pumpUntil(() => turnPostsStarted == 1);
+      // Connecting: the id is unknown, so the stop is latched — reported in
+      // effect (it will fire), not a failure, and nothing is POSTed yet.
+      expect(await transport.cancel(), isTrue);
+      expect(cancelPaths, isEmpty);
+      gate.complete();
+      await events;
+      expect(cancelPaths.single, '/v1/ai/turns/t-late/cancel');
     });
 
     test('no-op before any turn has been started — no POST fired', () async {

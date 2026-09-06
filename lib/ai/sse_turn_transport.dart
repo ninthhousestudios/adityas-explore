@@ -158,39 +158,44 @@ class SseTurnTransport implements TurnTransport {
   }
 
   @override
-  Future<void> cancel() async {
+  Future<bool> cancel() async {
     final turnId = _turnId;
     if (turnId == null) {
       // The turn is still opening (TurnConnecting): its id isn't known yet, so
       // latch the Stop intent for [start] to fire once the id is minted. A bare
       // return here would leave the turn generating; POSTing against a stale
-      // previous id would cancel the wrong turn (adityas/ai/140).
+      // previous id would cancel the wrong turn (adityas/ai/140). The stop is
+      // queued, not failed, so report it in effect (adityas/ai/141).
       _pendingCancel = true;
-      return;
+      return true;
     }
-    await _postCancel(turnId);
+    return _postCancel(turnId);
   }
 
   // Server-side stop (adityas/backend/54, contract in adityas/ai/94): POST the
-  // cancel and return. The actual stop is NOT the 202 — it arrives over the
-  // turn's already-open SSE stream as the terminal `error "generation was
-  // cancelled" → usage → done`, which the notifier is holding the stream open to
-  // receive (and which settles the non-refunding billing). The 202 only acks;
-  // 404 means the turn is already gone (finished, evicted, or not this user's) —
-  // nothing to stop either way. So both are success here, and every other
-  // outcome is swallowed: a failed POST must not block the client, because the
-  // open SSE stream is the real settlement path regardless (the turn either
-  // truly cancels and settles, or completes normally).
-  Future<void> _postCancel(String turnId) async {
+  // cancel and report whether the stop is in effect. The actual stop is NOT the
+  // 202 — it arrives over the turn's already-open SSE stream as the terminal
+  // `error "generation was cancelled" → usage → done`, which the notifier is
+  // holding the stream open to receive (and which settles the non-refunding
+  // billing). The 202 only acks; a 404 means the turn is already gone (finished,
+  // evicted, or not this user's) — nothing to stop either way, so both are
+  // success. Every OTHER outcome — a non-202/404 status, a signed-out token, or a
+  // transport throw — means the stop did NOT reach the server: the turn may still
+  // be generating over the open stream, so report false rather than silently
+  // claiming success. The caller keeps that live stream visible instead of
+  // asserting a cancellation that never happened (adityas/ai/141).
+  Future<bool> _postCancel(String turnId) async {
     try {
       final token = await _token();
-      if (token == null) return; // signed out — nothing to authorize
-      await _http.post(
+      if (token == null) return false; // signed out — could not authorize
+      final response = await _http.post(
         Uri.parse('$_baseUrl/v1/ai/turns/$turnId/cancel'),
         headers: {'authorization': 'Bearer $token'},
       );
+      return response.statusCode == 202 || response.statusCode == 404;
     } catch (_) {
-      // Best-effort: the open SSE stream settles the turn regardless.
+      // The stop never reached the server (network down, etc.).
+      return false;
     }
   }
 
