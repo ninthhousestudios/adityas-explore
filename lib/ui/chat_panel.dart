@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:charts_dart/charts_dart.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../navigate.dart' if (dart.library.js_interop) '../navigate_web.dart';
@@ -41,12 +42,18 @@ class ChatPanel extends ConsumerStatefulWidget {
   /// into the turn request without re-wiring the panel.
   final ChartData? chartData;
 
+  /// Dismiss the chat surface and return to Explore mode. When null (e.g. the
+  /// mobile shell, which owns its own tab switching), the close affordance is
+  /// hidden.
+  final VoidCallback? onExit;
+
   const ChatPanel({
     super.key,
     required this.color,
     required this.backdropColor,
     required this.fontSize,
     this.chartData,
+    this.onExit,
   });
 
   @override
@@ -82,6 +89,14 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
   late final TapGestureRecognizer _termsTapRecognizer = TapGestureRecognizer()
     ..onTap = () => openUrlNewTab('/chat-terms-and-conditions');
 
+  /// Tap target for the "Send Feedback" link under the composer. Opens a mailto
+  /// so users can report a bad Prism (Gemini) answer straight to us.
+  late final TapGestureRecognizer _feedbackTapRecognizer =
+      TapGestureRecognizer()
+        ..onTap = () => openUrlNewTab(
+          'mailto:hello@84beings.com?subject=Solar%20Prism%20feedback',
+        );
+
   /// The text the panel-level polite live region currently announces
   /// (adityas/ai/143). One persistent region rather than one on the transient
   /// bubble, so the final reply can be flushed to it AFTER the streaming bubble
@@ -113,6 +128,7 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
   void dispose() {
     _scroll.dispose();
     _termsTapRecognizer.dispose();
+    _feedbackTapRecognizer.dispose();
     _announceTimer?.cancel();
     super.dispose();
   }
@@ -269,6 +285,10 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
               fontSize: fontSize,
               onSubmit: _onComposerSubmit,
             ),
+          // Standard AI disclaimer + a direct feedback line under the composer,
+          // shown whenever the live composer is (i.e. not locked / gated).
+          if (enabled && !consentGated)
+            _composerDisclaimer(color, dimColor, fontSize),
         ],
       ),
     );
@@ -325,7 +345,47 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
               visualDensity: VisualDensity.compact,
             ),
           ),
+        // Close the chat surface and return to Explore mode. Hidden where the
+        // host owns its own navigation (mobile shell passes no onExit).
+        if (widget.onExit != null)
+          IconButton(
+            onPressed: widget.onExit,
+            icon: Icon(Icons.close, size: fontSize, color: color),
+            tooltip: 'Back to Explore',
+            visualDensity: VisualDensity.compact,
+            padding: const EdgeInsets.all(4),
+            constraints: const BoxConstraints(),
+            style: IconButton.styleFrom(foregroundColor: color),
+          ),
       ],
+    );
+  }
+
+  /// Standard "AI can make mistakes" disclaimer plus a direct "Send Feedback"
+  /// mailto, sitting just under the composer. The feedback line is deliberate:
+  /// we want bad Prism answers reported straight from users (adityas/ai).
+  Widget _composerDisclaimer(Color color, Color dimColor, double fontSize) {
+    final noteStyle = TextStyle(color: dimColor, fontSize: fontSize * 0.72);
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Text.rich(
+        TextSpan(
+          children: [
+            const TextSpan(text: 'Solar Prism is AI and can make mistakes. '),
+            TextSpan(
+              text: 'Send Feedback',
+              style: TextStyle(
+                color: color,
+                decoration: TextDecoration.underline,
+                decorationColor: color.withValues(alpha: 0.5),
+              ),
+              recognizer: _feedbackTapRecognizer,
+            ),
+          ],
+        ),
+        textAlign: TextAlign.center,
+        style: noteStyle,
+      ),
     );
   }
 
@@ -392,25 +452,32 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
       );
     }
 
-    return ListView.builder(
-      controller: _scroll,
-      itemCount: messages.length + (active == null ? 0 : 1),
-      itemBuilder: (_, i) {
-        if (i < messages.length) {
-          final bubble = _messageBubble(messages[i], color, fontSize);
-          // The compaction seam sits above the first message that post-dates the
-          // watermark (adityas/ai/121) — an honesty marker, not a truncation:
-          // everything above still renders in full.
-          if (i == seamIndex) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [_seamDivider(dimColor, fontSize), bubble],
-            );
+    // SelectionArea makes the whole transcript selectable/copyable with native
+    // gestures (drag-select across bubbles, Ctrl/Cmd+C, right-click Copy, and
+    // long-press on touch) — the baseline copy affordance. Per-bubble hover
+    // Copy buttons (see [_MessageBubble]) layer a one-click whole-message copy
+    // on top for discoverability.
+    return SelectionArea(
+      child: ListView.builder(
+        controller: _scroll,
+        itemCount: messages.length + (active == null ? 0 : 1),
+        itemBuilder: (_, i) {
+          if (i < messages.length) {
+            final bubble = _messageBubble(messages[i], color, fontSize);
+            // The compaction seam sits above the first message that post-dates
+            // the watermark (adityas/ai/121) — an honesty marker, not a
+            // truncation: everything above still renders in full.
+            if (i == seamIndex) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [_seamDivider(dimColor, fontSize), bubble],
+              );
+            }
+            return bubble;
           }
-          return bubble;
-        }
-        return active!;
-      },
+          return active!;
+        },
+      ),
     );
   }
 
@@ -494,31 +561,35 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
 
   Widget _messageBubble(ChatMessage m, Color color, double fontSize) {
     final fromUser = m.role == MessageRole.user;
-    return Align(
-      alignment: fromUser ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        constraints: const BoxConstraints(maxWidth: 320),
-        decoration: BoxDecoration(
-          color: fromUser
-              ? context.tokens.bubbleUser
-              : context.tokens.bubbleAgent,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        // User text renders verbatim; a completed assistant reply is markdown.
-        child: fromUser
-            ? Text(
-                m.text,
-                style: TextStyle(color: color, fontSize: fontSize),
-              )
-            : MessageMarkdown(
-                m.text,
-                style: TextStyle(color: color, fontSize: fontSize),
-                linkColor: context.tokens.gold,
-                isStreaming: false,
-              ),
+    final bubble = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      constraints: const BoxConstraints(maxWidth: 320),
+      decoration: BoxDecoration(
+        color: fromUser
+            ? context.tokens.bubbleUser
+            : context.tokens.bubbleAgent,
+        borderRadius: BorderRadius.circular(12),
       ),
+      // User text renders verbatim; a completed assistant reply is markdown.
+      child: fromUser
+          ? Text(
+              m.text,
+              style: TextStyle(color: color, fontSize: fontSize),
+            )
+          : MessageMarkdown(
+              m.text,
+              style: TextStyle(color: color, fontSize: fontSize),
+              linkColor: context.tokens.gold,
+              isStreaming: false,
+            ),
+    );
+    return _CopyableBubble(
+      copyText: m.text,
+      fromUser: fromUser,
+      fontSize: fontSize,
+      iconColor: color.withValues(alpha: 0.6),
+      copiedColor: context.tokens.gold,
+      bubble: bubble,
     );
   }
 
@@ -578,21 +649,27 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
   }
 
   Widget _errorBubble(String message, double fontSize) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        constraints: const BoxConstraints(maxWidth: 320),
-        decoration: BoxDecoration(
-          color: context.tokens.errorBg,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Text(
-          message,
-          style: TextStyle(color: context.tokens.error, fontSize: fontSize),
-        ),
+    final bubble = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      constraints: const BoxConstraints(maxWidth: 320),
+      decoration: BoxDecoration(
+        color: context.tokens.errorBg,
+        borderRadius: BorderRadius.circular(12),
       ),
+      child: Text(
+        message,
+        style: TextStyle(color: context.tokens.error, fontSize: fontSize),
+      ),
+    );
+    // Errors are the text a user most wants to paste into Send Feedback, so the
+    // same one-click copy applies here (adityas/ai).
+    return _CopyableBubble(
+      copyText: message,
+      fromUser: false,
+      fontSize: fontSize,
+      iconColor: context.tokens.error.withValues(alpha: 0.7),
+      copiedColor: context.tokens.gold,
+      bubble: bubble,
     );
   }
 
@@ -918,6 +995,106 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
           ),
           Icon(Icons.send, size: fontSize * 1.2, color: dimColor),
         ],
+      ),
+    );
+  }
+}
+
+/// A transcript bubble ([bubble]) with a hover-reveal one-click Copy button.
+///
+/// Copy affordance is two-layered: the enclosing [SelectionArea] handles native
+/// select + copy (partial and cross-message), while this button is the
+/// discoverable "copy the whole thing" — it puts [copyText] on the clipboard
+/// (the raw markdown source for an assistant reply, the full text for an error).
+/// Hover-only, so it is a desktop nicety; touch users copy via the long-press
+/// selection through the [SelectionArea]. [fromUser] drives alignment and which
+/// side the button sits on (inner edge of the bubble).
+class _CopyableBubble extends StatefulWidget {
+  const _CopyableBubble({
+    required this.bubble,
+    required this.copyText,
+    required this.fromUser,
+    required this.fontSize,
+    required this.iconColor,
+    required this.copiedColor,
+  });
+
+  final Widget bubble;
+  final String copyText;
+  final bool fromUser;
+  final double fontSize;
+
+  /// Idle icon tint (dimmed message/error colour).
+  final Color iconColor;
+
+  /// Tint for the brief post-copy checkmark (brand gold).
+  final Color copiedColor;
+
+  @override
+  State<_CopyableBubble> createState() => _CopyableBubbleState();
+}
+
+class _CopyableBubbleState extends State<_CopyableBubble> {
+  bool _hovering = false;
+  bool _copied = false;
+  Timer? _copiedReset;
+
+  @override
+  void dispose() {
+    _copiedReset?.cancel();
+    super.dispose();
+  }
+
+  void _copy() {
+    Clipboard.setData(ClipboardData(text: widget.copyText));
+    setState(() => _copied = true);
+    _copiedReset?.cancel();
+    _copiedReset = Timer(const Duration(seconds: 2), () {
+      if (mounted) setState(() => _copied = false);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fromUser = widget.fromUser;
+    // The button sits on the bubble's inner side (left of a user bubble, right
+    // of an agent bubble). Kept laid out at all times and only faded in, so it
+    // never shifts the bubble as the pointer enters/leaves.
+    final copyButton = AnimatedOpacity(
+      opacity: _hovering || _copied ? 1 : 0,
+      duration: const Duration(milliseconds: 120),
+      child: IconButton(
+        onPressed: _copy,
+        tooltip: _copied ? 'Copied' : 'Copy',
+        iconSize: widget.fontSize,
+        visualDensity: VisualDensity.compact,
+        padding: const EdgeInsets.all(4),
+        constraints: const BoxConstraints(),
+        icon: Icon(
+          _copied ? Icons.check : Icons.copy_outlined,
+          color: _copied ? widget.copiedColor : widget.iconColor,
+        ),
+      ),
+    );
+
+    // The bubble is Flexible so a wide message (which reaches its own 320 max)
+    // yields space to the button instead of overflowing the panel edge.
+    final flexBubble = Flexible(child: widget.bubble);
+    final row = Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: fromUser ? [copyButton, flexBubble] : [flexBubble, copyButton],
+    );
+
+    return Align(
+      alignment: fromUser ? Alignment.centerRight : Alignment.centerLeft,
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: MouseRegion(
+          onEnter: (_) => setState(() => _hovering = true),
+          onExit: (_) => setState(() => _hovering = false),
+          child: row,
+        ),
       ),
     );
   }

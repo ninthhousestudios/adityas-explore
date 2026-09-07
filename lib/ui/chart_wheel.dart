@@ -426,6 +426,7 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
                           backdropColor: backdropColor,
                           fontSize: panelFontSize,
                           chartData: widget.chartData,
+                          onExit: () => _setMode(LayoutMode.explore),
                         ),
                       ),
                     ),
