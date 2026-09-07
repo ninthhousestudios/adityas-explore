@@ -77,8 +77,13 @@ abstract interface class UsageClient {
 /// never), and whether a (re-)consent is needed.
 ///
 /// [needsConsent] is the authoritative gate signal — the client never derives it
-/// from the two version strings, and dev-allowlisted users are reported `false`
-/// server-side. The version strings are carried for display/audit only.
+/// from the two version strings. The backend sets it purely from the acceptance
+/// log (`accepted_version != current_version`); it does NOT special-case
+/// dev-allowlisted callers, who — having no checkout-written consent row — read as
+/// `needsConsent = true` and see the gate like anyone else. [currentVersion] is
+/// not display-only: [ConsentClient.recordConsent] echoes it back on agreement so
+/// the backend can reject a stale client (adityas/ai/101). [acceptedVersion] is
+/// for display/audit.
 class ChatConsent {
   final String currentVersion;
   final String? acceptedVersion;
