@@ -13,6 +13,7 @@ class _FakeConsent implements ConsentClient {
   bool needsConsent;
   int fetches = 0;
   int records = 0;
+  String? recordedVersion;
   _FakeConsent({this.needsConsent = false});
 
   @override
@@ -26,8 +27,9 @@ class _FakeConsent implements ConsentClient {
   }
 
   @override
-  Future<void> recordConsent() async {
+  Future<void> recordConsent(String version) async {
     records++;
+    recordedVersion = version;
     needsConsent = false;
   }
 }
@@ -151,6 +153,21 @@ void main() {
   });
 
   test(
+    'accept echoes the displayed current version to the backend — a stale client '
+    'cannot record consent for terms it did not show (adityas/ai/101)',
+    () async {
+      final consent = _FakeConsent(needsConsent: true);
+      final container = _container(consent, available: true)
+        ..listen(consentRequiredProvider, (_, _) {});
+
+      await _pump();
+      await container.read(consentProvider.notifier).accept();
+      await _pump();
+      expect(consent.recordedVersion, 'chat-terms-v1');
+    },
+  );
+
+  test(
     'a failed fetch fails open — the gate does not block on a transient read '
     '(the 428 backstop enforces consent regardless)',
     () async {
@@ -176,5 +193,5 @@ class _ThrowingConsent implements ConsentClient {
   Future<ChatConsent> fetchConsent() async => throw Exception('consent down');
 
   @override
-  Future<void> recordConsent() async {}
+  Future<void> recordConsent(String version) async {}
 }

@@ -176,7 +176,7 @@ class _FakeConsent implements ConsentClient {
   }
 
   @override
-  Future<void> recordConsent() async {
+  Future<void> recordConsent(String version) async {
     records++;
     needsConsent = false;
   }

@@ -46,11 +46,20 @@ class ConsentNotifier extends AsyncNotifier<ChatConsent?> {
   }
 
   /// Record agreement to the current T&C version, then refetch so the gate
-  /// clears. POST `/v1/ai/consent` is append-only and idempotent by version, so a
-  /// double-tap is harmless. Rethrows on failure — the caller keeps the gate (and
-  /// its button) so the user can retry.
+  /// clears. The version echoed to the backend is the one this seam last read
+  /// (`current_version` from the GET) — the exact string the gate displayed — so a
+  /// stale client cannot record consent for terms the user never saw (the backend
+  /// 400s a mismatch, adityas/ai/101). POST `/v1/ai/consent` is append-only and
+  /// idempotent by version, so a double-tap is harmless. Rethrows on failure — the
+  /// caller keeps the gate (and its button) so the user can retry.
   Future<void> accept() async {
-    await ref.read(consentClientProvider).recordConsent();
+    final version = state.value?.currentVersion;
+    if (version == null) {
+      throw StateError(
+        'cannot record consent before the current version is known',
+      );
+    }
+    await ref.read(consentClientProvider).recordConsent(version);
     ref.invalidateSelf();
   }
 }

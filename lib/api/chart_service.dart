@@ -106,10 +106,13 @@ abstract interface class ConsentClient {
   /// entitlement-gated).
   Future<ChatConsent> fetchConsent();
 
-  /// POST `/v1/ai/consent` → records agreement to the current version (`204`).
-  /// Append-only and idempotent by version on the backend, so a double-tap is
-  /// harmless.
-  Future<void> recordConsent();
+  /// POST `/v1/ai/consent` → records agreement to [version] (`204`). The caller
+  /// passes the version string it actually displayed (from
+  /// [ChatConsent.currentVersion]); the backend rejects anything but the current
+  /// version with a 400, so a stale client cannot record consent for terms it did
+  /// not show (adityas/ai/101). Append-only and idempotent by version on the
+  /// backend, so a double-tap is harmless.
+  Future<void> recordConsent(String version);
 }
 
 typedef TokenProvider = Future<String?> Function({bool forceRefresh});
@@ -253,13 +256,19 @@ class ChartService implements EntitlementClient, UsageClient, ConsentClient {
     return ChatConsent.fromJson(data);
   }
 
-  /// POST `/v1/ai/consent` → records agreement to the current version
-  /// (adityas/ai/98). Expects `204`; append-only and idempotent by version.
+  /// POST `/v1/ai/consent` → records agreement to [version] (adityas/ai/98).
+  /// Echoes the displayed version as `{ chat_tc_version }`; the backend 400s a
+  /// missing or non-current value (adityas/ai/101). Expects `204`; append-only and
+  /// idempotent by version.
   @override
-  Future<void> recordConsent() async {
+  Future<void> recordConsent(String version) async {
     final uri = Uri.parse('$apiBaseUrl/v1/ai/consent');
     final response = await _request(
-      (headers) => _client.post(uri, headers: headers),
+      (headers) => _client.post(
+        uri,
+        headers: headers,
+        body: jsonEncode({'chat_tc_version': version}),
+      ),
     );
 
     if (response.statusCode != 204) {
