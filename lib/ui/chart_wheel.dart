@@ -15,6 +15,7 @@ import 'aditya_data.dart';
 import 'being_overlay.dart';
 import 'being_type_detail_overlay.dart';
 import 'beings_panel.dart';
+import 'chat_coming_soon.dart';
 import 'chat_panel.dart';
 import 'chat_pill.dart';
 import 'overlay_shell.dart';
@@ -496,8 +497,29 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
                           final accepted = ref
                               .read(chatTurnProvider.notifier)
                               .send(text);
-                          if (accepted) _setMode(LayoutMode.conversation);
-                          return accepted;
+                          if (accepted) {
+                            _setMode(LayoutMode.conversation);
+                            return true;
+                          }
+                          // Refused: surface *why* where explore has room for it,
+                          // rather than a dead Send button (you type, press Enter,
+                          // nothing happens). The re-consent gate lives only in the
+                          // panel (it replaces the composer), so ramp there
+                          // (adityas/ai/98). A lapsed window has no panel to host
+                          // its in-thread renew bubble here, so a placeholder renew
+                          // modal informs the former subscriber instead
+                          // (adityas/ai/120; ai/85 wires the real CTA). Any other
+                          // refusal (the post-Stop settling window) keeps the draft
+                          // in place (adityas/ai/146).
+                          switch (ref.read(chatTurnProvider)) {
+                            case TurnConsentRequired():
+                              _setMode(LayoutMode.conversation);
+                            case TurnAccessLapsed():
+                              showChatRenewModal(context);
+                            default:
+                              break;
+                          }
+                          return false;
                         },
                       ),
                     ),

@@ -678,7 +678,7 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
   /// turns wait until the window is renewed.
   ///
   /// PLACEHOLDER copy + no live renew CTA yet — purchase/renewal is not wired.
-  /// adityas/ai/85 replaces [_renewPromptCopy] with the real launch copy and
+  /// adityas/ai/85 replaces [chatRenewPromptCopy] with the real launch copy and
   /// adds the purchase link right before go-live.
   Widget _renewBubble(Color color, Color dimColor, double fontSize) {
     return Align(
@@ -693,7 +693,7 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
           border: Border.all(color: context.tokens.gold.withValues(alpha: 0.4)),
         ),
         child: Text(
-          _renewPromptCopy,
+          chatRenewPromptCopy,
           style: TextStyle(color: color, fontSize: fontSize, height: 1.4),
         ),
       ),
@@ -1184,14 +1184,6 @@ const double kStickToBottomThreshold = 80;
 /// Pure so the sticky/read-back boundary is unit-testable without a scroll view.
 bool nearBottom(double maxScrollExtent, double pixels) =>
     maxScrollExtent - pixels < kStickToBottomThreshold;
-
-/// PLACEHOLDER renew-prompt copy for the mid-session access lapse
-/// ([TurnAccessLapsed], adityas/ai/99). Not final — adityas/ai/85 swaps this for
-/// the real launch copy (and wires a live renew/purchase CTA) right before
-/// go-live, alongside the sign-in-vs-buy gate split.
-const _renewPromptCopy =
-    'Your access has ended, so new messages are paused. Your past conversation '
-    'stays here to read. Renew your access to continue the conversation.';
 
 /// The at-ceiling notice for a spent usage window ([TurnCeiling], adityas/ai/100).
 /// Mirrors the 402 body's human message; deliberately carries no dollar or token
