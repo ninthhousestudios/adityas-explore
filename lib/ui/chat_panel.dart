@@ -139,7 +139,7 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
   /// decoupled from the ~16ms visual repaint that grows the bubble. A terminal
   /// transition (done / cancelled) flushes the final text IMMEDIATELY — before
   /// the transient bubble is torn down — so a burst of deltas followed at once by
-  /// `done` still announces the answer rather than a stale "Thinking…".
+  /// `done` still announces the answer rather than a stale "Contemplating…".
   void _announce(ChatTurn turn) {
     if (_isAnnounceTerminal(turn)) {
       // Done / Cancelled: flush the final text at once, before the transient
@@ -183,8 +183,8 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
   /// Terminal states carry the full/partial reply; the in-flight states carry
   /// the growing text (or a status note when no text has streamed yet).
   static String? _spokenLabel(ChatTurn turn) => switch (turn) {
-    TurnConnecting() => 'Thinking…',
-    TurnStreaming(:final text) => text.isEmpty ? 'Thinking…' : text,
+    TurnConnecting() => 'Contemplating…',
+    TurnStreaming(:final text) => text.isEmpty ? 'Contemplating…' : text,
     TurnReconnecting(:final text) =>
       text.isEmpty ? 'Reconnecting…' : '$text. Reconnecting…',
     TurnDone(:final text) => text.isEmpty ? null : text,
@@ -496,14 +496,14 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
         color,
         dimColor,
         fontSize,
-        status: 'Thinking…',
+        status: 'Contemplating…',
       ),
       TurnStreaming(:final text) => _agentBubble(
         color,
         dimColor,
         fontSize,
         text: text,
-        status: text.isEmpty ? 'Thinking…' : null,
+        status: text.isEmpty ? 'Contemplating…' : null,
       ),
       TurnReconnecting(:final text) => _agentBubble(
         color,
