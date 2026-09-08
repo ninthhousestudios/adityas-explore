@@ -488,6 +488,11 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
                         dimColor: color.withValues(alpha: 0.6),
                         backdropColor: backdropColor,
                         fontSize: panelFontSize,
+                        // Re-consent gated (adityas/ai/98): the pill is a
+                        // look-alike, not a live composer, so tapping it ramps to
+                        // conversation to raise the gate *before* the user types
+                        // — never after, which would bin a typed paragraph.
+                        onConsentGate: () => _setMode(LayoutMode.conversation),
                         onSubmit: (text) {
                           // Send first, switch modes only when accepted. The
                           // mode switch unmounts the pill and disposes its

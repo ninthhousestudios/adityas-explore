@@ -1139,9 +1139,12 @@ void main() {
       expect(container.read(consentRequiredProvider), isTrue);
       expect(container.read(chatTurnProvider), isA<TurnConsentRequired>());
 
-      // The ChatPill calls send() directly (it reads only entitlement, never the
-      // gate provider). Without the proactive latch this opened a doomed turn;
-      // now send() must refuse without touching the transport.
+      // The ChatPill now reads the gate proactively and shows a look-alike (not
+      // a live composer) when consent-gated, so it no longer sends into this
+      // state. But send() stays the defense-in-depth backstop for the window
+      // where the proactive GET is still loading (fail-open) and a 428 lands:
+      // without the latch this opened a doomed turn; now it must refuse without
+      // touching the transport.
       notifier.send('hi');
       expect(container.read(chatTurnProvider), isA<TurnConsentRequired>());
       expect(transport.starts, 0); // no doomed write left the client
