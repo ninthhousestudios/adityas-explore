@@ -338,7 +338,7 @@ class _ChartWheelState extends ConsumerState<ChartWheel>
           );
 
           // Full-screen reuse of the desktop chat surface — same composer,
-          // gating (chatEnabledProvider → inline ChatComingSoonMessage), and
+          // gating (chatAccessProvider → inline ChatComingSoonMessage), and
           // keepAlive conversation/turn providers, no re-authoring.
           final chatPage = Padding(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),

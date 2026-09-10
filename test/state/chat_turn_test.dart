@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'package:explore/ai/chat_access.dart';
 import 'package:explore/api/chart_service.dart';
 import 'package:explore/state/auth.dart';
 import 'package:explore/state/chat_turn.dart';
@@ -204,7 +203,6 @@ ProviderContainer _container(
   TurnTransport transport, {
   DateTime? deadline,
   Clock? clock,
-  bool? chatEnabled,
   UsageClient? usageClient,
   ConsentClient? consentClient,
 }) {
@@ -228,11 +226,6 @@ ProviderContainer _container(
       // supplies an explicit deadline + advanceable clock.
       accessDeadlineProvider.overrideWithValue(deadline),
       if (clock != null) clockProvider.overrideWithValue(clock),
-      // The allowlist seam _expire re-reads directly (adityas/ai/123 finding 4).
-      // Defaults to the real provider, which returns false for the stubbed
-      // non-allowlisted user; a false-lapse test overrides it true.
-      if (chatEnabled != null)
-        chatEnabledProvider.overrideWith((ref) => chatEnabled),
     ],
   );
   addTearDown(container.dispose);
@@ -823,35 +816,6 @@ void main() {
     notifier.send('again');
     expect(container.read(chatTurnProvider), isA<TurnAccessLapsed>());
     expect(transport.starts, 1);
-  });
-
-  test('the expiry timer does not lapse an allowlisted turn '
-      '(adityas/ai/123 finding 4)', () {
-    fakeAsync((async) {
-      final transport = _FakeTransport();
-      final clock = _FakeClock(DateTime.utc(2026, 1, 1, 12));
-      final deadline = clock.now().add(const Duration(minutes: 5));
-      // Allowlisted: availability does not hinge on the entitlement clock.
-      final container = _container(
-        transport,
-        deadline: deadline,
-        clock: clock,
-        chatEnabled: true,
-      );
-
-      container.read(chatTurnProvider.notifier).send('hi');
-      transport.emit(const DeltaEvent('mid', 'e1'));
-      async.flushMicrotasks();
-      expect(container.read(chatTurnProvider), isA<TurnStreaming>());
-
-      // The clock crosses the stale entitlement deadline; the allowlist stands.
-      clock.advance(const Duration(minutes: 5, seconds: 1));
-      async.elapse(const Duration(minutes: 5, seconds: 1));
-
-      // No false lapse — the turn keeps streaming.
-      expect(container.read(chatTurnProvider), isA<TurnStreaming>());
-      expect(transport.cancels, 0);
-    });
   });
 
   test('a fired expiry timer re-arms when the deadline is still ahead '

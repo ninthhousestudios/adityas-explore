@@ -1,6 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../ai/chat_access.dart';
 import '../api/chart_service.dart';
 import 'auth.dart';
 import 'backend.dart';
@@ -42,21 +41,16 @@ class EntitlementNotifier extends AsyncNotifier<Entitlement> {
 
 /// Whether the chat feature is available to the current user right now.
 ///
-/// Derived, never stored. Available when signed in AND either:
-///   1. the account is chat-allowlisted ([chatEnabledProvider]) — the current
-///      access mechanism for the durable lane, whose backend gate is a
-///      membership list (`AI_CHAT_ALLOWLIST`), NOT a paid entitlement; or
-///   2. a non-null `access_until` still in the future per the injected
-///      [clockProvider] — the production path for non-allowlisted paying users.
+/// Derived, never stored. Available when signed in AND a non-null `access_until`
+/// still in the future per the injected [clockProvider] — pure paid entitlement.
+/// (The pre-launch allowlist was retired at cutover, adityas/ai/122; a comp
+/// entitlement grant now preserves operator access through the same seam.)
 ///
-/// Recomputes whenever auth, allowlist membership, or entitlement changes. An
-/// allowlisted tester with no purchase is available (no entitlement required);
-/// at final cutover, when the allowlists are deleted, only clause (2) remains.
-///
-/// Time is read at compute; crossing `access_until` reflects on the next
-/// recompute. The production trigger for that recompute near expiry (a timer,
-/// or a per-turn re-check) belongs to the chat turn (adityas/explore/44); this
-/// task delivers the derived logic and its clock seam.
+/// Recomputes whenever auth or entitlement changes. Time is read at compute;
+/// crossing `access_until` reflects on the next recompute. The production
+/// trigger for that recompute near expiry (a timer, or a per-turn re-check)
+/// belongs to the chat turn (adityas/explore/44); this provider delivers the
+/// derived logic and its clock seam.
 ///
 /// UX gate only — it decides whether to *show* the chat entry point. It is not
 /// the security boundary: the authoritative check runs server-side at the chat
@@ -66,10 +60,6 @@ final chatAvailableProvider = Provider<bool>((ref) {
   final user = ref.watch(authProvider);
   if (user == null) return false;
 
-  // Allowlist membership is the current access grant for both lanes.
-  if (ref.watch(chatEnabledProvider)) return true;
-
-  // Otherwise fall back to a live paid entitlement (future production path).
   final accessUntil = ref.watch(entitlementProvider).value?.accessUntil;
   if (accessUntil == null) return false;
 
@@ -93,7 +83,7 @@ final accessDeadlineProvider = Provider<DateTime?>(
 /// boolean (adityas/ai/120). The distinction the boolean can't make is between a
 /// window that *closed* and one that *never opened*:
 ///
-///   - [available] — chat is usable now (allowlisted, or a live paid window).
+///   - [available] — chat is usable now (a live paid window).
 ///   - [lapsed]    — a paid window closed: `access_until` is set but not in the
 ///     future. Past conversations stay **read-only** for the retention window
 ///     (I22, backend served by ai/89); new turns are refused with a renew prompt.
@@ -104,9 +94,9 @@ final accessDeadlineProvider = Provider<DateTime?>(
 /// read-only instead of being dropped onto the never-entitled placeholder.
 enum ChatAccess { available, lapsed, none }
 
-/// Derives [ChatAccess] from the existing seams — [chatAvailableProvider] (which
-/// already folds in the allowlist and the live-window check) plus
-/// [accessDeadlineProvider] (the `access_until` timestamp). Composing from those
+/// Derives [ChatAccess] from the existing seams — [chatAvailableProvider] (the
+/// live-window check) plus [accessDeadlineProvider] (the `access_until`
+/// timestamp). Composing from those
 /// two, rather than re-reading [entitlementProvider], keeps this testable through
 /// the same overrides the chat-turn tests already use.
 ///

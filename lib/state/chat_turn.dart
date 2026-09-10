@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../ai/chat_access.dart';
 import '../format/date_labels.dart';
 import '../ui/being_slug.dart';
 import 'active_chart.dart';
@@ -807,18 +806,11 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
   void _expire() {
     if (!_isActive) return;
     // The timer is armed at a cached `access_until`, but the clock crossing it
-    // does not always mean access ended. Two cases must NOT lapse a valid turn
-    // (adityas/ai/123 finding 4):
-    //   - an allowlisted account stays available independently of the entitlement
-    //     window ([chatEnabledProvider]); the entitlement clock is not its gate.
-    //   - a mid-turn renewal may have pushed the deadline into the future.
-    // Re-read the authoritative seams directly — not the cached
-    // [chatAvailableProvider], which recomputes only on dependency change and so
-    // still reads its pre-boundary value at the instant the timer fires.
-    if (ref.read(chatEnabledProvider)) {
-      _cancelExpiryTimer();
-      return;
-    }
+    // does not always mean access ended: a mid-turn renewal may have pushed the
+    // deadline into the future (adityas/ai/123 finding 4). Re-read the
+    // authoritative seam directly — not the cached [chatAvailableProvider],
+    // which recomputes only on dependency change and so still reads its
+    // pre-boundary value at the instant the timer fires.
     final deadline = ref.read(accessDeadlineProvider);
     if (deadline != null && deadline.isAfter(ref.read(clockProvider).now())) {
       _scheduleExpiry(); // renewal extended the window — re-arm at the new deadline
