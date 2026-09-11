@@ -776,7 +776,7 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
         children: [
           Expanded(
             child: Text(
-              "You've used about $pct% of your usage this period.",
+              "You've used about $pct% of this period's limit.",
               style: TextStyle(
                 color: color,
                 fontSize: fontSize * 0.85,
@@ -1217,10 +1217,16 @@ bool nearBottom(double maxScrollExtent, double pixels) =>
 /// The at-ceiling notice for a spent usage window ([TurnCeiling], adityas/ai/100).
 /// Mirrors the 402 body's human message; deliberately carries no dollar or token
 /// figure (the no-meter invariant) — a coarse "usage limit for this period."
+///
+/// The limit is per 30-day period of access. The reset line is phrased
+/// conditionally on purpose: a subscription rolls into a fresh period each month,
+/// but a one-time month simply ends (no renew), so it must not *promise* a reset
+/// the client can't guarantee — the entitlement model carries only `access_until`,
+/// not the plan type, so this copy can't branch on it.
 const _ceilingNoticeCopy =
     "You've reached your usage limit for this period, so new messages are "
-    'paused. Your past conversation stays here to read, and you can continue '
-    'once your usage resets.';
+    'paused. Your past conversation stays here to read. If your access '
+    'continues into a new 30-day period, your limit resets then.';
 
 /// Confirm starting a new chat while a reply is still streaming — the current
 /// turn is stopped server-side (still billed), never silently orphaned.
