@@ -1,7 +1,9 @@
 <explore>
-Interactive birth chart explorer for 84beings.com. Flutter app targeting
-web (primary) and Linux desktop. Calculates Vedic astrology charts
-client-side using Arrow engine via FFI (desktop) or WASM (web).
+Interactive birth chart explorer for 84beings.com. Flutter web app —
+web is the only supported target. (Some conditional imports carry native
+stubs, e.g. navigate.dart, but desktop is not shipped; adding a real
+desktop target would be a large, separate effort.) Calculates Vedic
+astrology charts client-side using the Arrow engine via WASM.
 </explore>
 
 <stack>
@@ -56,7 +58,6 @@ lib/
 
 <running>
 Web: `flutter run -d chrome`
-Linux desktop: `flutter run -d linux`
 Analyze: `flutter analyze lib/`
 Ephemeris files in assets/ephe/, glyphs in assets/glyphs/.
 </running>
