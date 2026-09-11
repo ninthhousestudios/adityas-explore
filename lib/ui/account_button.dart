@@ -16,6 +16,7 @@ import '../state/chat_turn.dart';
 import '../state/conversation.dart';
 import '../state/entitlement.dart';
 import '../state/turn_transport.dart';
+import 'chat_coming_soon.dart';
 import 'tokens.dart';
 
 class AccountButton extends ConsumerStatefulWidget {
@@ -42,11 +43,16 @@ class _AccountButtonState extends ConsumerState<AccountButton> {
     final user = ref.watch(authProvider);
     if (user != null) {
       final atLimit = widget.savedCharts.length >= 25;
-      // The Conversations picker is shown to anyone with chat history — a live
-      // window or a lapsed one (read-only history stays reachable for the
-      // retention window, adityas/ai/120). Only the never-entitled get no item.
+      // Show *Conversations* when chat is live, or whenever a stored archive
+      // exists. Gating on existence rather than entitlement lets a former
+      // subscriber (lapsed, or access expired to none) still reach their
+      // history to download / rename / delete it, and survives access_until
+      // being cleared — the ai/120 entitlement proxy hid the item exactly then
+      // (adityas/ai/181, superseding that proxy). The archive naturally ages
+      // out with the retention-window crypto-shred.
       final showConversations =
-          ref.watch(chatAccessProvider) != ChatAccess.none;
+          ref.watch(chatAccessProvider) == ChatAccess.available ||
+          (ref.watch(hasConversationsProvider).value ?? false);
       return PopupMenuButton<String>(
         icon: const Icon(Icons.person),
         tooltip: 'Account',
@@ -158,12 +164,15 @@ class _AccountButtonState extends ConsumerState<AccountButton> {
   }
 
   void _showConversationsDialog(BuildContext context) {
-    // Lapsed access → history is viewable but read-only: no rename/delete
-    // (adityas/ai/123 finding 3, the I22 read-only contract).
-    final readOnly = ref.read(chatAccessProvider) == ChatAccess.lapsed;
+    // Resume (reopen the thread in live chat to send new turns) is the one
+    // entitlement-gated action — the backend refuses turns without a live
+    // window. Managing your own archive (download / rename / delete) is
+    // owner-gated, so it stays available whether access is live or lapsed
+    // (adityas/ai/181). Offer Resume only while access is live.
+    final canResume = ref.read(chatAccessProvider) == ChatAccess.available;
     showDialog<void>(
       context: context,
-      builder: (context) => _ConversationsDialog(readOnly: readOnly),
+      builder: (context) => _ConversationsDialog(canResume: canResume),
     );
   }
 }
@@ -555,13 +564,15 @@ class _MyChartsDialog extends StatelessWidget {
 /// docs/chat-state-architecture.md). Rows expose Resume, Download, Delete, and
 /// Rename — resume is deliberately one option among several, not a one-tap.
 class _ConversationsDialog extends ConsumerStatefulWidget {
-  const _ConversationsDialog({required this.readOnly});
+  const _ConversationsDialog({required this.canResume});
 
-  /// Access has lapsed: past conversations stay viewable but immutable. Keep
-  /// Resume + Download; suppress the mutating Rename + Delete actions, whose
-  /// PATCH/DELETE writes the backend refuses on lapse anyway (I22 read-only
-  /// contract, adityas/ai/123 finding 3).
-  final bool readOnly;
+  /// Whether the live chat window is open. Resume reopens the thread in the
+  /// chat panel to send new turns — an entitlement-gated action the backend
+  /// refuses on lapse (403), so a lapsed user gets a "Renew to resume"
+  /// placeholder instead of a play button that would dead-end on send
+  /// (adityas/ai/181 → ai/85 wires the real CTA). Download / rename / delete
+  /// are owner-gated and stay available regardless.
+  final bool canResume;
 
   @override
   ConsumerState<_ConversationsDialog> createState() =>
@@ -720,6 +731,9 @@ class _ConversationsDialogState extends ConsumerState<_ConversationsDialog> {
       }
       if (!mounted) return;
       setState(() => _items = [..._items.where((x) => x.id != c.id)]);
+      // Refresh the account-menu gate so *Conversations* disappears once the
+      // last thread is gone (adityas/ai/181).
+      ref.invalidate(hasConversationsProvider);
     } on ConversationApiException catch (e) {
       _showActionError('Could not delete. ${e.message}');
     } catch (_) {
@@ -884,7 +898,19 @@ class _ConversationsDialogState extends ConsumerState<_ConversationsDialog> {
               ],
             ),
           ),
-          _action(Icons.play_arrow, 'Resume', t.gold, () => _resume(c)),
+          if (widget.canResume)
+            _action(Icons.play_arrow, 'Resume', t.gold, () => _resume(c))
+          else
+            // Access has lapsed: Resume would dead-end on the backend's turn
+            // gate (403), so offer renewal instead of a play button that fails
+            // on send. PLACEHOLDER — routes to the shared renew modal, whose
+            // real copy + purchase CTA land in adityas/ai/85.
+            _action(
+              Icons.lock_outline,
+              'Renew to resume',
+              t.gold,
+              () => showChatRenewModal(context),
+            ),
           _action(
             Icons.download,
             'Download',
@@ -892,15 +918,15 @@ class _ConversationsDialogState extends ConsumerState<_ConversationsDialog> {
             () => _download(c),
             loading: _downloadingId == c.id,
           ),
-          if (!widget.readOnly) ...[
-            _action(
-              Icons.edit,
-              'Rename',
-              color.withValues(alpha: 0.7),
-              () => _rename(c),
-            ),
-            _action(Icons.delete_outline, 'Delete', t.error, () => _delete(c)),
-          ],
+          // Owner-gated, not entitlement-gated: you can always curate your own
+          // archive, live window or not (adityas/ai/181).
+          _action(
+            Icons.edit,
+            'Rename',
+            color.withValues(alpha: 0.7),
+            () => _rename(c),
+          ),
+          _action(Icons.delete_outline, 'Delete', t.error, () => _delete(c)),
         ],
       ),
     );

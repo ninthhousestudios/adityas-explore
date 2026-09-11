@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'auth.dart';
+import 'backend.dart';
 
 /// The conversation model and its provider.
 ///
@@ -162,3 +163,21 @@ class ConversationNotifier extends Notifier<Conversation> {
     state = const Conversation();
   }
 }
+
+/// Whether the signed-in user has any stored conversations — the gate for the
+/// account-menu *Conversations* item (adityas/ai/181).
+///
+/// Deliberately decoupled from entitlement: a former subscriber (lapsed, or
+/// access expired to `none`) still owns their archive and must be able to reach
+/// it to download / rename / delete. The backend `list` is owner-gated, not
+/// entitlement-gated, so it answers for any signed-in user. An error or the
+/// signed-out state reads as `false` — hide the item rather than promise a menu
+/// we cannot back. autoDispose so each re-subscribe re-checks; the account
+/// button invalidates it after a delete so the item disappears with the last
+/// thread.
+final hasConversationsProvider = FutureProvider.autoDispose<bool>((ref) async {
+  final userId = ref.watch(authProvider.select((user) => user?.id));
+  if (userId == null) return false;
+  final page = await ref.read(conversationServiceProvider).list(limit: 1);
+  return page.conversations.isNotEmpty;
+});

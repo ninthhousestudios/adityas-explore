@@ -85,13 +85,17 @@ final accessDeadlineProvider = Provider<DateTime?>(
 ///
 ///   - [available] — chat is usable now (a live paid window).
 ///   - [lapsed]    — a paid window closed: `access_until` is set but not in the
-///     future. Past conversations stay **read-only** for the retention window
-///     (I22, backend served by ai/89); new turns are refused with a renew prompt.
-///   - [none]      — never entitled, or signed out: no chat history to show. This
-///     is the coming-soon / sign-in-vs-buy surface (adityas/ai/85).
+///     future. Past conversations stay reachable, but **new turns** are refused
+///     with a renew prompt (retention window, backend served by ai/89).
+///     "Read-only" here is turn-level only: download / rename / delete stay
+///     available (owner-gated, adityas/ai/181).
+///   - [none]      — never entitled, or signed out. For the pill/panel this is the
+///     coming-soon / sign-in-vs-buy surface (adityas/ai/85).
 ///
-/// The lapsed-vs-none split is what lets a former subscriber reach their history
-/// read-only instead of being dropped onto the never-entitled placeholder.
+/// This enum gates the pill/panel and the per-row Resume action. It does **not**
+/// gate the Conversations picker's visibility — that is [hasConversationsProvider]
+/// (archive existence), so a former subscriber whose `access_until` was cleared
+/// (→ [none]) still reaches their history to manage it (adityas/ai/181).
 enum ChatAccess { available, lapsed, none }
 
 /// Derives [ChatAccess] from the existing seams — [chatAvailableProvider] (the
