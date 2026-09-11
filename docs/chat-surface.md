@@ -85,10 +85,13 @@ allowlist (the only non-`none` population today) and a live paid window:
 
 - **Available** — real composer. Type, Enter, ramp into conversation.
 - **Lapsed** (adityas/ai/120) — a former subscriber whose window closed. The
-  wired surface stays reachable **read-only**: past conversations open from the
-  picker, the composer stays visible, but a new turn is refused into the *renew
-  prompt* (`TurnAccessLapsed`) — the same surface a mid-session 403 lands on. The
-  backend serves reads during the retention window (adityas/ai/89).
+  wired surface stays reachable: the composer stays visible, but a new turn is
+  refused into the *renew prompt* (`TurnAccessLapsed`) — the same surface a
+  mid-session 403 lands on. The Conversations picker gates **Resume** behind
+  renewal ("Renew to resume") while keeping download / rename / delete
+  (owner-gated, adityas/ai/181); in-app read-only reopening of a past thread is
+  deferred to a future "View" action (adityas/ai/182). The backend serves reads
+  during the retention window (adityas/ai/89).
 - **None** — never entitled / signed out. The pill is a *look-alike button*, not a
   real field. It does not accept focus/typing. **Tapping it opens a modal.** This
   is the deliberate choice over let-them-type-then-reject.
