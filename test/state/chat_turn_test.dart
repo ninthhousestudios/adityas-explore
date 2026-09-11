@@ -225,6 +225,10 @@ ProviderContainer _container(
       // so tests that flip the boolean gate stay unaffected. A time-expiry test
       // supplies an explicit deadline + advanceable clock.
       accessDeadlineProvider.overrideWithValue(deadline),
+      // Treat entitlement as resolved so a gate-off, no-deadline reading is a
+      // confirmed [ChatAccess.none] (not [ChatAccess.pending]) — and the real
+      // entitlement fetch stays out of the graph (adityas/ai/194).
+      entitlementSettledProvider.overrideWithValue(true),
       if (clock != null) clockProvider.overrideWithValue(clock),
     ],
   );

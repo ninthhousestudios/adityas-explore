@@ -31,6 +31,14 @@ class _FakeEntitlementClient implements EntitlementClient {
   }
 }
 
+/// An [EntitlementClient] whose fetch always fails — for the error path, where
+/// the entitlement never resolves to a value (adityas/ai/194).
+class _ThrowingEntitlementClient implements EntitlementClient {
+  @override
+  Future<Entitlement> fetchEntitlement() async =>
+      throw Exception('entitlement fetch failed');
+}
+
 /// authProvider touches `Supabase.instance`, which isn't initialized headless,
 /// so every test overrides it with a fixed user.
 const _stubUser = User(
@@ -218,4 +226,74 @@ void main() {
 
     expect(container.read(chatAccessProvider), ChatAccess.none);
   });
+
+  // ── pending vs confirmed none: the buy CTA must wait for a settled fetch
+  //    (adityas/ai/194) ────────────────────────────────────────────────
+
+  test('chatAccess is pending while a signed-in entitlement is still loading '
+      '(not none — the buy CTA must not show mid-fetch)', () async {
+    final container = _container(
+      user: _stubUser,
+      client: _FakeEntitlementClient(const Entitlement.none()),
+      clock: _FakeClock(DateTime.utc(2026, 8, 1)),
+    );
+    final sub = container.listen(chatAccessProvider, (_, _) {});
+    addTearDown(sub.close);
+
+    // Read BEFORE the fetch settles: entitlement has no value yet.
+    expect(container.read(entitlementSettledProvider), isFalse);
+    expect(container.read(chatAccessProvider), ChatAccess.pending);
+
+    // Once it resolves to a real (empty) entitlement, the verdict is a
+    // confirmed none — now the buy CTA is correct.
+    await container.read(entitlementProvider.future);
+    expect(container.read(entitlementSettledProvider), isTrue);
+    expect(container.read(chatAccessProvider), ChatAccess.none);
+  });
+
+  test('chatAccess is pending when the entitlement fetch errors — never a false '
+      'buy prompt for a possibly-entitled user', () async {
+    final container = _container(
+      user: _stubUser,
+      client: _ThrowingEntitlementClient(),
+      clock: _FakeClock(DateTime.utc(2026, 8, 1)),
+    );
+    final sub = container.listen(chatAccessProvider, (_, _) {});
+    addTearDown(sub.close);
+
+    // Let the first fetch attempt run and reject. We do NOT await
+    // entitlementProvider.future — Riverpod's default build auto-retry keeps it
+    // unresolved (looping loading→error), which is exactly the point: until a
+    // value lands the state stays pending, never a confirmed none.
+    for (var i = 0; i < 4; i++) {
+      await Future<void>.delayed(Duration.zero);
+    }
+
+    expect(container.read(entitlementProvider).hasValue, isFalse);
+    expect(container.read(entitlementSettledProvider), isFalse);
+    expect(container.read(chatAccessProvider), ChatAccess.pending);
+  });
+
+  test(
+    'a signed-out user is settled immediately — none, never pending, with no '
+    'fetch',
+    () async {
+      final client = _FakeEntitlementClient(
+        Entitlement(accessUntil: accessUntil),
+      );
+      final container = _container(
+        user: null,
+        client: client,
+        clock: _FakeClock(DateTime.utc(2026, 8, 1)),
+      );
+      final sub = container.listen(chatAccessProvider, (_, _) {});
+      addTearDown(sub.close);
+
+      // No await: signed-out short-circuits, so it never reads as pending and
+      // never touches the client.
+      expect(container.read(entitlementSettledProvider), isTrue);
+      expect(container.read(chatAccessProvider), ChatAccess.none);
+      expect(client.calls, 0);
+    },
+  );
 }

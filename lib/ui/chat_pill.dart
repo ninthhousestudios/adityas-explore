@@ -55,7 +55,13 @@ class ChatPill extends ConsumerWidget {
     // Reachable to anyone with chat history — a live window OR a lapsed one
     // (read-only history + renew-on-send, adityas/ai/120). Only the never-entitled
     // get the look-alike that opens the coming-soon modal (adityas/ai/85).
-    final enabled = ref.watch(chatAccessProvider) != ChatAccess.none;
+    final access = ref.watch(chatAccessProvider);
+    final enabled =
+        access == ChatAccess.available || access == ChatAccess.lapsed;
+    // Entitlement still resolving (signed in, fetch not settled): show the inert
+    // look-alike but withhold the buy modal — a signed-in entitled user must not
+    // be prompted to buy mid-fetch (adityas/ai/194).
+    final pending = access == ChatAccess.pending;
     // Mirror the panel's gate (chat_panel.dart): a proactive GET that found the
     // T&C version stale, or a mid-session 428 latched into TurnConsentRequired
     // before that refetch lands. `.select` so a live turn's every delta does not
@@ -82,9 +88,12 @@ class ChatPill extends ConsumerWidget {
             )
           : _lookAlike(
               // Consent-gated: ramp to conversation so the panel shows the gate.
+              // Pending: inert — entitlement still resolving, so no modal at all.
               // Otherwise never-entitled: open the coming-soon modal.
               onTap: consentGated
                   ? onConsentGate
+                  : pending
+                  ? null
                   // Signed-out → sign in to purchase; signed-in without access →
                   // buy Solar Prism (adityas/ai/85). The gate splits on auth.
                   : () => showChatComingSoonModal(
@@ -98,7 +107,7 @@ class ChatPill extends ConsumerWidget {
   /// A composer look-alike: the field's chrome without a real input, running
   /// [onTap] on tap. Used for the never-entitled (opens the coming-soon modal)
   /// and the re-consent-gated (ramps to the gate) — neither should be typeable.
-  Widget _lookAlike({required VoidCallback onTap}) {
+  Widget _lookAlike({required VoidCallback? onTap}) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),

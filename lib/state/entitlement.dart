@@ -91,12 +91,38 @@ final accessDeadlineProvider = Provider<DateTime?>(
 ///     available (owner-gated, adityas/ai/181).
 ///   - [none]      — never entitled, or signed out. For the pill/panel this is the
 ///     coming-soon / sign-in-vs-buy surface (adityas/ai/85).
+///   - [pending]   — signed in, but the entitlement fetch hasn't resolved yet
+///     (loading, or errored with no prior value). Distinct from [none] on
+///     purpose: [none] drives an active "buy Solar Prism" prompt, and showing
+///     that to a signed-in user whose entitlement is merely still loading would
+///     tell an *entitled* user to buy (adityas/ai/194). The pill/panel treat
+///     [pending] as a quiet, non-committal state — no buy CTA — until it settles.
 ///
 /// This enum gates the pill/panel and the per-row Resume action. It does **not**
 /// gate the Conversations picker's visibility — that is [hasConversationsProvider]
 /// (archive existence), so a former subscriber whose `access_until` was cleared
 /// (→ [none]) still reaches their history to manage it (adityas/ai/181).
-enum ChatAccess { available, lapsed, none }
+enum ChatAccess { available, lapsed, none, pending }
+
+/// Whether the current user's entitlement has *resolved* — so a not-available,
+/// no-deadline reading from [chatAccessProvider] is a confirmed "not entitled"
+/// ([ChatAccess.none]) rather than a fetch still in flight ([ChatAccess.pending],
+/// adityas/ai/194).
+///
+/// Signed-out is always settled: [entitlementProvider] returns [Entitlement.none]
+/// with no fetch. Signed-in is settled once the fetch has a value — `hasValue`
+/// stays true across a refresh (Riverpod keeps the prior value through
+/// `ref.invalidate`), so the tab-visibility refetch (main.dart) never re-opens a
+/// pending window for an already-resolved user.
+///
+/// A dedicated seam — rather than reading [entitlementProvider] inline in
+/// [chatAccessProvider] — so the state tests that override [chatAvailableProvider]
+/// / [accessDeadlineProvider] keep the entitlement fetch (and its network) out of
+/// the graph with a single `overrideWithValue(true)`.
+final entitlementSettledProvider = Provider<bool>((ref) {
+  if (ref.watch(authProvider) == null) return true;
+  return ref.watch(entitlementProvider).hasValue;
+});
 
 /// Derives [ChatAccess] from the existing seams — [chatAvailableProvider] (the
 /// live-window check) plus [accessDeadlineProvider] (the `access_until`
@@ -109,7 +135,12 @@ enum ChatAccess { available, lapsed, none }
 /// it reads as [ChatAccess.lapsed]; a null deadline reads as [ChatAccess.none].
 final chatAccessProvider = Provider<ChatAccess>((ref) {
   if (ref.watch(chatAvailableProvider)) return ChatAccess.available;
-  return ref.watch(accessDeadlineProvider) != null
-      ? ChatAccess.lapsed
-      : ChatAccess.none;
+  if (ref.watch(accessDeadlineProvider) != null) return ChatAccess.lapsed;
+  // Not available and no deadline: either a *confirmed* not-entitled response, or
+  // the entitlement fetch hasn't resolved yet. Withhold the [none] verdict — which
+  // drives the buy/sign-in gate (adityas/ai/85) — until it settles, so a signed-in
+  // entitled user is never shown "buy Solar Prism" mid-fetch (adityas/ai/194).
+  return ref.watch(entitlementSettledProvider)
+      ? ChatAccess.none
+      : ChatAccess.pending;
 });

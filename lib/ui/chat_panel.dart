@@ -230,7 +230,13 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
     // Wired surface (history + composer) for a live or lapsed window; the
     // placeholder only for the never-entitled (adityas/ai/120). A lapsed user's
     // composer stays visible — new turns are refused into the renew prompt.
-    final enabled = ref.watch(chatAccessProvider) != ChatAccess.none;
+    final access = ref.watch(chatAccessProvider);
+    final enabled =
+        access == ChatAccess.available || access == ChatAccess.lapsed;
+    // Entitlement still resolving (signed in, fetch not settled): a quiet loading
+    // placeholder, never the buy/sign-in gate — a signed-in entitled user must not
+    // be shown "buy Solar Prism" mid-fetch (adityas/ai/194).
+    final pending = access == ChatAccess.pending;
     // For the never-entitled placeholder (ChatAccess.none): signed-out → sign in
     // to purchase; signed-in without access → buy Solar Prism (adityas/ai/85).
     final gate = ref.watch(authProvider) == null
@@ -271,7 +277,13 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
           Expanded(
             child: enabled
                 ? _conversation(color, dimColor, fontSize)
-                : _placeholder(color, dimColor, fontSize, gate),
+                : _placeholder(
+                    color,
+                    dimColor,
+                    fontSize,
+                    gate,
+                    pending: pending,
+                  ),
           ),
           const SizedBox(height: 8),
           // Quiet near-ceiling notice sits just above the composer so it reads as
@@ -280,7 +292,10 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
           // owns the below-thread slot when raised.
           if (enabled && !consentGated)
             _nearCeilingNotice(color, dimColor, fontSize),
-          if (!enabled)
+          if (pending)
+            // Entitlement unresolved: no verdict yet, so no gate CTA either.
+            const SizedBox.shrink()
+          else if (!enabled)
             _gateCta(gate, fontSize)
           else if (consentGated)
             _consentGate(color, dimColor, fontSize)
@@ -948,8 +963,9 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
     Color color,
     Color dimColor,
     double fontSize,
-    ChatGate gate,
-  ) {
+    ChatGate gate, {
+    required bool pending,
+  }) {
     return Column(
       children: [
         Expanded(
@@ -972,14 +988,27 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
           ),
         ),
         const SizedBox(height: 8),
-        // Same copy, one source — mirrors the explore-pill coming-soon modal so
-        // the two gated routes never drift (docs/chat-surface.md § 3).
-        ChatComingSoonMessage(
-          gate: gate,
-          color: color,
-          dimColor: dimColor,
-          fontSize: fontSize,
-        ),
+        // Entitlement still resolving (adityas/ai/194): a quiet loader instead of
+        // the buy/sign-in copy, so a signed-in entitled user isn't told to buy
+        // before the fetch settles.
+        if (pending)
+          Padding(
+            padding: const EdgeInsets.all(8),
+            child: SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2, color: dimColor),
+            ),
+          )
+        else
+          // Same copy, one source — mirrors the explore-pill coming-soon modal so
+          // the two gated routes never drift (docs/chat-surface.md § 3).
+          ChatComingSoonMessage(
+            gate: gate,
+            color: color,
+            dimColor: dimColor,
+            fontSize: fontSize,
+          ),
       ],
     );
   }
