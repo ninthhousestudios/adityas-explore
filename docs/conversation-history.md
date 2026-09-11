@@ -173,14 +173,23 @@ the conversation as a side effect of changing the subject.
 
 ## Lapse presentation in the picker
 
-Within the 6-month read-only window (client UX owned by adityas/ai/18):
+Within the retention window a former subscriber keeps full access to their own
+archive — the client mirrors the backend's two-gate model (adityas/ai/181,
+superseding the earlier I22 "read + Download only" contract):
 
-- The Conversations modal still lists everything.
-- "Resume" still opens the transcript, but the composer is disabled with the
-  renew/gated presentation (`chatAvailable` false) — read + Download only, no new
-  turns.
-- Keep this in sync with ai/18's lapsed-read-only state and the gated-composer
-  copy source in `chat-surface.md`.
+- The Conversations modal still lists everything (owner-gated `list`, not
+  entitlement-gated). Its account-menu entry is gated on archive *existence*
+  (`hasConversationsProvider`), not entitlement, so it survives `access_until`
+  being cleared to `none`.
+- **Resume** is the one entitlement-gated action: it reopens the thread to send
+  new turns, which the backend refuses on lapse (403). The picker shows a
+  "Renew to resume" placeholder in its place (real CTA lands in adityas/ai/85).
+  In-app read-only reopening of a past thread is deferred to a future "View"
+  action (adityas/ai/182).
+- **Download / Rename / Delete** stay available whether access is live or
+  lapsed — curating your own data is owner-gated, not entitlement-gated.
+- Keep this in sync with the two-gate contract in `chat-surface.md` and the
+  `ChatAccess` docstring in `lib/state/entitlement.dart`.
 
 ---
 

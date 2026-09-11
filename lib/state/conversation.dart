@@ -170,11 +170,14 @@ class ConversationNotifier extends Notifier<Conversation> {
 /// Deliberately decoupled from entitlement: a former subscriber (lapsed, or
 /// access expired to `none`) still owns their archive and must be able to reach
 /// it to download / rename / delete. The backend `list` is owner-gated, not
-/// entitlement-gated, so it answers for any signed-in user. An error or the
-/// signed-out state reads as `false` — hide the item rather than promise a menu
-/// we cannot back. autoDispose so each re-subscribe re-checks; the account
-/// button invalidates it after a delete so the item disappears with the last
-/// thread.
+/// entitlement-gated, so it answers for any signed-in user. Signed-out reads as
+/// `false` (item hidden). An **error** is not a confirmed-empty archive: the
+/// consumer shows the item on error so the picker's own Retry stays reachable —
+/// treating "couldn't check" as "no history" would silently strand a former
+/// subscriber, the exact lockout this provider exists to prevent (the picker
+/// holds the only Retry). autoDispose so each re-subscribe re-checks; the
+/// account button re-checks on menu-open and invalidates after a delete so the
+/// item disappears with the last thread.
 final hasConversationsProvider = FutureProvider.autoDispose<bool>((ref) async {
   final userId = ref.watch(authProvider.select((user) => user?.id));
   if (userId == null) return false;

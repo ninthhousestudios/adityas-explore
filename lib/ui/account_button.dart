@@ -50,13 +50,33 @@ class _AccountButtonState extends ConsumerState<AccountButton> {
       // being cleared — the ai/120 entitlement proxy hid the item exactly then
       // (adityas/ai/181, superseding that proxy). The archive naturally ages
       // out with the retention-window crypto-shred.
+      final hasArchive = ref.watch(hasConversationsProvider);
       final showConversations =
           ref.watch(chatAccessProvider) == ChatAccess.available ||
-          (ref.watch(hasConversationsProvider).value ?? false);
+          hasArchive.when(
+            data: (has) => has,
+            // Couldn't check (offline / backend blip): don't read the unknown
+            // as a confirmed-empty archive — that would silently strand a
+            // former subscriber, since the picker holds the only Retry. Show
+            // the item so its own load/error/Retry surface stays reachable
+            // (adityas/ai/181).
+            error: (_, _) => true,
+            // Mid-refresh: keep the last known answer rather than flicker to
+            // hidden.
+            loading: () => hasArchive.value ?? false,
+          );
       return PopupMenuButton<String>(
         icon: const Icon(Icons.person),
         tooltip: 'Account',
         position: PopupMenuPosition.under,
+        onOpened: () {
+          // If the last archive check errored, retry it on menu-open so a
+          // recovered backend un-hides Conversations (and re-hides it for a
+          // genuinely empty archive) without an app reload (adityas/ai/181).
+          if (ref.read(hasConversationsProvider).hasError) {
+            ref.invalidate(hasConversationsProvider);
+          }
+        },
         onSelected: (value) {
           if (value == 'account') navigateToUrl('/account/');
           if (value == 'save_chart') widget.onSaveChartToServer?.call();
@@ -168,11 +188,12 @@ class _AccountButtonState extends ConsumerState<AccountButton> {
     // entitlement-gated action — the backend refuses turns without a live
     // window. Managing your own archive (download / rename / delete) is
     // owner-gated, so it stays available whether access is live or lapsed
-    // (adityas/ai/181). Offer Resume only while access is live.
-    final canResume = ref.read(chatAccessProvider) == ChatAccess.available;
+    // (adityas/ai/181). The dialog watches entitlement itself so a renew/lapse
+    // (or a still-loading window that resolves) while it is open flips Resume
+    // live, rather than freezing whatever state held at open.
     showDialog<void>(
       context: context,
-      builder: (context) => _ConversationsDialog(canResume: canResume),
+      builder: (context) => const _ConversationsDialog(),
     );
   }
 }
@@ -564,15 +585,7 @@ class _MyChartsDialog extends StatelessWidget {
 /// docs/chat-state-architecture.md). Rows expose Resume, Download, Delete, and
 /// Rename — resume is deliberately one option among several, not a one-tap.
 class _ConversationsDialog extends ConsumerStatefulWidget {
-  const _ConversationsDialog({required this.canResume});
-
-  /// Whether the live chat window is open. Resume reopens the thread in the
-  /// chat panel to send new turns — an entitlement-gated action the backend
-  /// refuses on lapse (403), so a lapsed user gets a "Renew to resume"
-  /// placeholder instead of a play button that would dead-end on send
-  /// (adityas/ai/181 → ai/85 wires the real CTA). Download / rename / delete
-  /// are owner-gated and stay available regardless.
-  final bool canResume;
+  const _ConversationsDialog();
 
   @override
   ConsumerState<_ConversationsDialog> createState() =>
@@ -756,6 +769,12 @@ class _ConversationsDialogState extends ConsumerState<_ConversationsDialog> {
     final t = context.tokens;
     final color = t.ink;
     final actionError = _actionError;
+    // Watched (not snapshotted at open): Resume is the one entitlement-gated
+    // action — the backend refuses turns without a live window. Managing your
+    // own archive (download / rename / delete) is owner-gated, so it stays
+    // available regardless. Watching means a renew/lapse — or a window still
+    // loading at open — flips every row live instead of freezing (adityas/ai/181).
+    final canResume = ref.watch(chatAccessProvider) == ChatAccess.available;
 
     return Center(
       child: Container(
@@ -806,7 +825,7 @@ class _ConversationsDialogState extends ConsumerState<_ConversationsDialog> {
                     textAlign: TextAlign.center,
                   ),
                 ),
-              Flexible(child: _body(color, t)),
+              Flexible(child: _body(color, t, canResume)),
             ],
           ),
         ),
@@ -814,7 +833,7 @@ class _ConversationsDialogState extends ConsumerState<_ConversationsDialog> {
     );
   }
 
-  Widget _body(Color color, ExploreTokens t) {
+  Widget _body(Color color, ExploreTokens t, bool canResume) {
     if (_loading) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 32),
@@ -864,11 +883,16 @@ class _ConversationsDialogState extends ConsumerState<_ConversationsDialog> {
       itemCount: _items.length,
       separatorBuilder: (_, _) =>
           Divider(color: color.withValues(alpha: 0.15), height: 1),
-      itemBuilder: (context, index) => _row(_items[index], color, t),
+      itemBuilder: (context, index) => _row(_items[index], color, t, canResume),
     );
   }
 
-  Widget _row(ConversationSummary c, Color color, ExploreTokens t) {
+  Widget _row(
+    ConversationSummary c,
+    Color color,
+    ExploreTokens t,
+    bool canResume,
+  ) {
     final subtitle = c.turnCount >= 20
         ? '${relativeTimeLabel(c.updatedAt)} · Long conversation'
         : relativeTimeLabel(c.updatedAt);
@@ -898,7 +922,7 @@ class _ConversationsDialogState extends ConsumerState<_ConversationsDialog> {
               ],
             ),
           ),
-          if (widget.canResume)
+          if (canResume)
             _action(Icons.play_arrow, 'Resume', t.gold, () => _resume(c))
           else
             // Access has lapsed: Resume would dead-end on the backend's turn
