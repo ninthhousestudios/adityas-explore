@@ -34,6 +34,9 @@ import 'state/active_chart.dart';
 import 'state/saved_charts.dart';
 import 'state/auth.dart';
 import 'state/backend.dart';
+import 'state/entitlement.dart';
+import 'state/tab_visibility.dart'
+    if (dart.library.js_interop) 'state/tab_visibility_web.dart';
 import 'state/turn_transport.dart';
 
 const _sentryDsn =
@@ -122,10 +125,31 @@ class _ExploreAppState extends ConsumerState<ExploreApp> {
   static const _zoomMax = 1.8;
   static const _zoomStep = 0.1;
 
+  /// Removes the tab-visibility listener (a no-op on native). Registered in
+  /// [initState] so a purchase/renewal completed in another tab refreshes the
+  /// entitlement gate on return (adityas/ai/85).
+  late final void Function() _disposeTabVisible;
+
   @override
   void initState() {
     super.initState();
+    _disposeTabVisible = onTabVisible(_onTabVisible);
     _boot();
+  }
+
+  @override
+  void dispose() {
+    _disposeTabVisible();
+    super.dispose();
+  }
+
+  /// The tab regained focus: re-check entitlement so a Solar Prism purchase or
+  /// renewal made in another tab resolves the chat gate without a manual reload
+  /// (adityas/ai/85). Skipped until boot completes — [entitlementProvider] reads
+  /// through `Supabase.instance`, which is not valid before `_boot` finishes.
+  void _onTabVisible() {
+    if (!_booted) return;
+    ref.invalidate(entitlementProvider);
   }
 
   void _showSnackBar(String message) {

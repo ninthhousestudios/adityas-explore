@@ -101,33 +101,39 @@ allowlist (the only non-`none` population today) and a live paid window:
 Non-entitled users get the modal the moment they click the pill — they never type
 into a dead end.
 
-### One "coming soon" modal now — split at launch
+### The `none` gate — split into sign-in vs. buy (adityas/ai/85)
 
-Purchase is not live, so **collapse logged-out and logged-in-without-entitlement
-into one modal now**: a brief "Solar Prism · Contemplate AI Chat" coming-soon
-card with a short description. Showing "sign in to unlock" today would be a lie —
-signing in unlocks nothing until purchase ships.
+The `none` surface is a **centered modal** (focused interruption, dismiss to
+return — not a draggable transient popup) headed "Solar Prism", with a
+"Contemplative AI Chat" tagline and a short description. It forks on auth
+(`authProvider`) into the two real states:
 
-- **Style**: a **centered modal** (focused interruption, dismiss to return) — not
-  a draggable transient popup.
-- **Single source of copy.** The settings → Mode → Chat back-door still drops any
-  user into conversation mode, where a non-entitled user sees the panel's
-  coming-soon placeholder. That placeholder and the pill modal must render the
-  **same copy from one source**. Two routes, one message.
+- **Logged out** → *"Sign in to your account to purchase Solar Prism."* CTA
+  **Sign in** opens the in-app sign-in dialog (`showSignInDialog`,
+  `ui/sign_in_dialog.dart`) — the user stays in Explore, and on sign-in the
+  entitlement refetch re-renders this surface into the buy state below.
+- **Logged in, no access** → *"Unlock Solar Prism to begin."* CTA **Get Solar
+  Prism** opens the shop page (`solarPrismShopUrl`, `/shop/solar-prism`) in a new
+  tab. Explore never runs checkout itself (no client-side business logic); the
+  shop page owns sign-in, pricing, and Stripe.
+
+Both states, plus the copy/CTA mapping, live in one source (`ChatGate` +
+`ChatComingSoon` in `ui/chat_coming_soon.dart`). The settings → Mode → Chat
+back-door drops a non-entitled user into the panel placeholder, which renders the
+same `ChatComingSoonMessage` + `_gateCta` — two routes, one message. This is the
+client face of the `chatAvailable`/`chatAccess` gating in adityas/ai/18; keep the
+two in sync so entitlement truth and its presentation don't drift.
 
 The modal and the placeholder are the **`none`** surface only. A **`lapsed`**
 user does *not* see them — they get their read-only history + renew prompt
-(adityas/ai/120), a distinct branch.
+(adityas/ai/120), a distinct branch. The renew prompt (in-thread bubble and the
+explore-mode/`Renew to resume` modal) carries a **Renew Solar Prism** CTA to the
+same shop page.
 
-**At launch** (see the pre-launch task, gates adityas/ai/74) the single `none`
-modal splits into the two real states:
-
-- **Logged out** → invitation to sign in / create an account.
-- **Logged in, no entitlement** → prompt to buy the Solar Prism.
-
-This is the client face of the `chatAvailable`/`chatAccess` gating in
-adityas/ai/18 — keep the two in sync so entitlement truth and its presentation
-don't drift.
+**Post-purchase refresh.** A buy/renew CTA opens the shop in a new tab, so on
+return the app refetches entitlement on the tab-visibility signal
+(`onTabVisible` → `ref.invalidate(entitlementProvider)`, `main.dart`) — the gate
+resolves to live chat without a manual reload.
 
 ## 4. Transient popups vs. an expanded chat
 

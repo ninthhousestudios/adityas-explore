@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../state/auth.dart';
 import '../state/chat_turn.dart';
 import '../state/consent.dart';
 import '../state/entitlement.dart';
@@ -84,7 +85,12 @@ class ChatPill extends ConsumerWidget {
               // Otherwise never-entitled: open the coming-soon modal.
               onTap: consentGated
                   ? onConsentGate
-                  : () => showChatComingSoonModal(context),
+                  // Signed-out → sign in to purchase; signed-in without access →
+                  // buy Solar Prism (adityas/ai/85). The gate splits on auth.
+                  : () => showChatComingSoonModal(
+                      context,
+                      signedIn: ref.read(authProvider) != null,
+                    ),
             ),
     );
   }

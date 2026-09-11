@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../navigate.dart' if (dart.library.js_interop) '../navigate_web.dart';
+import '../state/auth.dart';
 import '../state/chat_turn.dart';
 import '../state/consent.dart';
 import '../state/conversation.dart';
@@ -230,6 +231,11 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
     // placeholder only for the never-entitled (adityas/ai/120). A lapsed user's
     // composer stays visible — new turns are refused into the renew prompt.
     final enabled = ref.watch(chatAccessProvider) != ChatAccess.none;
+    // For the never-entitled placeholder (ChatAccess.none): signed-out → sign in
+    // to purchase; signed-in without access → buy Solar Prism (adityas/ai/85).
+    final gate = ref.watch(authProvider) == null
+        ? ChatGate.signIn
+        : ChatGate.purchase;
     // Block new turns behind the re-consent gate (adityas/ai/98) when the
     // proactive GET /v1/ai/consent reports a stale version, OR a mid-session 428
     // latched the turn into [TurnConsentRequired] before that refetch lands —
@@ -265,7 +271,7 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
           Expanded(
             child: enabled
                 ? _conversation(color, dimColor, fontSize)
-                : _placeholder(color, dimColor, fontSize),
+                : _placeholder(color, dimColor, fontSize, gate),
           ),
           const SizedBox(height: 8),
           // Quiet near-ceiling notice sits just above the composer so it reads as
@@ -275,7 +281,7 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
           if (enabled && !consentGated)
             _nearCeilingNotice(color, dimColor, fontSize),
           if (!enabled)
-            _lockedComposer(dimColor, fontSize)
+            _gateCta(gate, fontSize)
           else if (consentGated)
             _consentGate(color, dimColor, fontSize)
           else
@@ -317,9 +323,7 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
               ),
               const SizedBox(height: 4),
               Text(
-                enabled
-                    ? 'Solar Prism'
-                    : 'Stub — the real conversation UI lands later.',
+                enabled ? 'Solar Prism' : 'Contemplative AI Chat',
                 style: TextStyle(
                   color: dimColor,
                   fontSize: fontSize * 0.85,
@@ -675,11 +679,9 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
 
   /// The renew prompt shown when access lapsed mid-session ([TurnAccessLapsed],
   /// adityas/ai/99). A calm, non-error notice: past turns stay readable, new
-  /// turns wait until the window is renewed.
-  ///
-  /// PLACEHOLDER copy + no live renew CTA yet — purchase/renewal is not wired.
-  /// adityas/ai/85 replaces [chatRenewPromptCopy] with the real launch copy and
-  /// adds the purchase link right before go-live.
+  /// turns wait until the window is renewed. The "Renew Solar Prism" action opens
+  /// the shop page in a new tab (adityas/ai/85); on return, the tab-visibility
+  /// refetch (main.dart) resolves the renewed window without a reload.
   Widget _renewBubble(Color color, Color dimColor, double fontSize) {
     return Align(
       alignment: Alignment.centerLeft,
@@ -692,9 +694,32 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: context.tokens.gold.withValues(alpha: 0.4)),
         ),
-        child: Text(
-          chatRenewPromptCopy,
-          style: TextStyle(color: color, fontSize: fontSize, height: 1.4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              chatRenewPromptCopy,
+              style: TextStyle(color: color, fontSize: fontSize, height: 1.4),
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () => openUrlNewTab(solarPrismShopUrl),
+              style: TextButton.styleFrom(
+                foregroundColor: context.tokens.gold,
+                padding: EdgeInsets.zero,
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: Text(
+                chatRenewCtaLabel,
+                style: TextStyle(
+                  fontSize: fontSize,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -919,7 +944,12 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
 
   // ── Placeholder (not allowlisted) ────────────────────────────────
 
-  Widget _placeholder(Color color, Color dimColor, double fontSize) {
+  Widget _placeholder(
+    Color color,
+    Color dimColor,
+    double fontSize,
+    ChatGate gate,
+  ) {
     return Column(
       children: [
         Expanded(
@@ -945,6 +975,7 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
         // Same copy, one source — mirrors the explore-pill coming-soon modal so
         // the two gated routes never drift (docs/chat-surface.md § 3).
         ChatComingSoonMessage(
+          gate: gate,
           color: color,
           dimColor: dimColor,
           fontSize: fontSize,
@@ -977,24 +1008,22 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
     );
   }
 
-  Widget _lockedComposer(Color dimColor, double fontSize) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: dimColor.withValues(alpha: 0.5)),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              'Hold something up to the Prism…',
-              style: TextStyle(color: dimColor, fontSize: fontSize),
-            ),
-          ),
-          Icon(Icons.send, size: fontSize * 1.2, color: dimColor),
-        ],
+  /// The never-entitled gate action, in the composer slot in place of a dead
+  /// look-alike field (adityas/ai/85): "Sign in" for a signed-out user (opens the
+  /// in-app sign-in dialog), "Get Solar Prism" for a signed-in user without access
+  /// (opens the shop page). Mirrors the pill modal's CTA so the two routes match.
+  Widget _gateCta(ChatGate gate, double fontSize) {
+    final tokens = context.tokens;
+    return SizedBox(
+      width: double.infinity,
+      child: FilledButton(
+        onPressed: () => runChatGateCta(context, gate),
+        style: FilledButton.styleFrom(
+          backgroundColor: tokens.gold,
+          foregroundColor: tokens.onGold,
+          padding: const EdgeInsets.symmetric(vertical: 12),
+        ),
+        child: Text(ChatComingSoon.ctaFor(gate)),
       ),
     );
   }
