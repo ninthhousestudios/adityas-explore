@@ -12,8 +12,16 @@ final entitlementClientProvider = Provider<EntitlementClient>(
   (ref) => ref.watch(chartServiceProvider),
 );
 
+/// An [Entitlement] paired with the auth id it was resolved for (`null` for the
+/// signed-out `none`). Binding the two in one *published* value is the identity
+/// guard (adityas/ai/196): the id travels inside the value, so a value retained
+/// across an auth change always carries the id of the build that produced it —
+/// there is no separate field a discarded build could corrupt. See
+/// [currentEntitlementProvider] for why that matters.
+typedef ResolvedEntitlement = ({String? userId, Entitlement entitlement});
+
 /// The signed-in user's [Entitlement] (`access_until`), fetched async from the
-/// backend DB.
+/// backend DB, tagged with the [ResolvedEntitlement.userId] it belongs to.
 ///
 /// Auth-keyed: it watches [authProvider], so a sign-out rebuilds to
 /// [Entitlement.none] (never leaving the previous user's entitlement resident)
@@ -25,38 +33,26 @@ final entitlementClientProvider = Provider<EntitlementClient>(
 /// Invalidate it (`ref.invalidate(entitlementProvider)`) on a purchase/webhook
 /// signal to pull a fresh `access_until`.
 final entitlementProvider =
-    AsyncNotifierProvider<EntitlementNotifier, Entitlement>(
+    AsyncNotifierProvider<EntitlementNotifier, ResolvedEntitlement>(
       EntitlementNotifier.new,
       isAutoDispose: true,
     );
 
-class EntitlementNotifier extends AsyncNotifier<Entitlement> {
-  /// The user id [state]'s current value was resolved for, or null when that
-  /// value is the signed-out `none`.
-  ///
-  /// Read by [currentEntitlementProvider] to reject a value retained from a
-  /// *previous* identity across an auth change (adityas/ai/195): Riverpod keeps
-  /// the prior value as an AsyncLoading-with-previous during the new identity's
-  /// fetch — trying to clear it from inside [build] does not stick, since the
-  /// framework re-derives loading from the last *data* state — so this field is
-  /// how the derived seams tell "mine" from "the last user's". The notifier
-  /// instance (and this field) persist across dependency rebuilds and
-  /// `ref.invalidate`, resetting only on a full dispose, so a same-user refresh
-  /// keeps a matching id and never re-opens a pending window (adityas/ai/194).
-  String? resolvedFor;
-
+class EntitlementNotifier extends AsyncNotifier<ResolvedEntitlement> {
   @override
-  Future<Entitlement> build() async {
+  Future<ResolvedEntitlement> build() async {
     final user = ref.watch(authProvider);
     if (user == null) {
-      resolvedFor = null;
-      return const Entitlement.none();
+      return (userId: null, entitlement: const Entitlement.none());
     }
     final entitlement = await ref
         .watch(entitlementClientProvider)
         .fetchEntitlement();
-    resolvedFor = user.id;
-    return entitlement;
+    // Tag the result with the id it was fetched for. If this build was
+    // superseded by an auth change mid-fetch, Riverpod discards this returned
+    // value — it is never published — so the tag can never drift from the
+    // entitlement it was resolved with (adityas/ai/196).
+    return (userId: user.id, entitlement: entitlement);
   }
 }
 
@@ -64,13 +60,20 @@ class EntitlementNotifier extends AsyncNotifier<Entitlement> {
 /// *current* identity — `null` while a fetch for a freshly signed-in or switched
 /// user is still in flight.
 ///
-/// The identity guard (adityas/ai/195): on an auth change Riverpod retains the
-/// previous identity's value as an AsyncLoading-with-previous, so a naive
-/// `entitlementProvider.value` read would leak the signed-out `none` (a false
-/// buy prompt) or user A's live window to user B. Gating on
-/// [EntitlementNotifier.resolvedFor] rejects that retained value until this
-/// user's own fetch lands. Signed-out resolves to [Entitlement.none] directly,
-/// never reading a retained value — so a sign-out reads as `none` immediately.
+/// The identity guard (adityas/ai/195, hardened in adityas/ai/196): on an auth
+/// change Riverpod retains the previous identity's value as an
+/// AsyncLoading-with-previous, so a naive `entitlementProvider.value` read would
+/// leak the signed-out `none` (a false buy prompt) or user A's live window to
+/// user B. The published [ResolvedEntitlement] carries the id it was resolved
+/// for, so a retained value whose id doesn't match the current user is rejected
+/// until this user's own fetch lands. Because the id travels *inside* the
+/// published value — not a side field — a build superseded by the auth change
+/// (whose async body still runs but whose result Riverpod never publishes) can
+/// never corrupt the guard (the ai/195 `resolvedFor` field could). A same-user
+/// refresh keeps a matching id, so the tab-visibility invalidate never re-opens
+/// a pending window (adityas/ai/194). Signed-out resolves to [Entitlement.none]
+/// directly, never reading a retained value — so a sign-out reads as `none`
+/// immediately.
 ///
 /// The single seam every derived provider reads, so the guard lives in one place
 /// rather than being duplicated across [chatAvailableProvider],
@@ -78,11 +81,9 @@ class EntitlementNotifier extends AsyncNotifier<Entitlement> {
 final currentEntitlementProvider = Provider<Entitlement?>((ref) {
   final user = ref.watch(authProvider);
   if (user == null) return const Entitlement.none();
-  final async = ref.watch(entitlementProvider);
-  if (!async.hasValue) return null;
-  return ref.read(entitlementProvider.notifier).resolvedFor == user.id
-      ? async.value
-      : null;
+  final resolved = ref.watch(entitlementProvider).value;
+  if (resolved == null) return null;
+  return resolved.userId == user.id ? resolved.entitlement : null;
 });
 
 /// Whether the chat feature is available to the current user right now.
