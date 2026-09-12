@@ -249,3 +249,23 @@ Future<void> _showChatAccessModal(
 const chatRenewPromptCopy =
     'Your access has ended, so new messages are paused. Your past conversation '
     'stays here to read. Renew to continue the conversation.';
+
+/// The renew surface shown *in the conversation panel* to a signed-in former
+/// subscriber whose window is gone ([ChatAccess.none]) but who still has archived
+/// conversations (adityas/ai/183) — in place of the never-entitled buy stub.
+/// Distinct from [chatRenewPromptCopy]: that in-thread bubble sits above the live
+/// conversation ("stays here to read"), but this surface replaces the thread
+/// entirely, so it drops that clause and its companion [chatRenewPanelHistoryNote]
+/// points to where the history still lives. Paired with the same
+/// [chatRenewCtaLabel] shop CTA.
+const chatRenewPanelCopy =
+    'Your access has ended, so new messages are paused. '
+    'Renew to continue the conversation.';
+
+/// The pointer under [chatRenewPanelCopy]: a former subscriber's past
+/// conversations stay readable from the account menu even with no live window —
+/// the picker gates them to "Renew to resume" (adityas/ai/181, ai/183). Its own
+/// dimmer line so it reads as a quiet aside, not part of the renew ask.
+const chatRenewPanelHistoryNote =
+    'Your past conversations are still readable from the '
+    'account menu (top-right) → Conversations.';

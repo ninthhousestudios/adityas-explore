@@ -92,9 +92,12 @@ allowlist (the only non-`none` population today) and a live paid window:
   (owner-gated, adityas/ai/181); in-app read-only reopening of a past thread is
   deferred to a future "View" action (adityas/ai/182). The backend serves reads
   during the retention window (adityas/ai/89).
-- **None** — never entitled / signed out. The pill is a *look-alike button*, not a
-  real field. It does not accept focus/typing. **Tapping it opens a modal.** This
-  is the deliberate choice over let-them-type-then-reject.
+- **None** — never entitled / signed out, *or* a former subscriber whose window
+  was cleared. The pill is a *look-alike button*, not a real field. It does not
+  accept focus/typing. **Tapping it opens a modal** — the coming-soon/buy modal,
+  or the renew modal for a former subscriber who still has history (the fork on
+  archive existence, adityas/ai/183, below). This is the deliberate choice over
+  let-them-type-then-reject.
 
 ### Focus-to-trigger, not submit-to-reject
 
@@ -119,8 +122,10 @@ return — not a draggable transient popup) headed "Solar Prism", with a
 
 Both states, plus the copy/CTA mapping, live in one source (`ChatGate` +
 `ChatComingSoon` in `ui/chat_coming_soon.dart`). The settings → Mode → Chat
-back-door drops a non-entitled user into the panel placeholder, which renders the
-same `ChatComingSoonMessage` + `_gateCta` — two routes, one message. This is the
+back-door drops a non-entitled user *with no history* into the panel placeholder,
+which renders the same `ChatComingSoonMessage` + `_gateCta` — two routes, one
+message (a former subscriber *with* history gets the renew surface below). This is
+the
 client face of the `chatAvailable`/`chatAccess` gating in adityas/ai/18; keep the
 two in sync so entitlement truth and its presentation don't drift.
 
@@ -129,6 +134,35 @@ user does *not* see them — they get their read-only history + renew prompt
 (adityas/ai/120), a distinct branch. The renew prompt (in-thread bubble and the
 explore-mode/`Renew to resume` modal) carries a **Renew Solar Prism** CTA to the
 same shop page.
+
+### Former subscriber with history → renew, not buy (adityas/ai/183)
+
+`none` conflates two populations: a **never-entitled** user (correct buy-stub
+audience) and a **former subscriber whose `access_until` was cleared/deleted**
+(refund, chargeback, admin revoke). Natural expiry leaves `access_until`
+non-null-in-the-past → `lapsed`; only a *cleared* entitlement collapses to
+`none`. So the `none` surface forks again on **archive existence** —
+`hasConversationsProvider` (`lib/state/conversation.dart`), the same signal that
+gates the account-menu *Conversations* item (adityas/ai/181):
+
+- **`none` + has archived conversations** → the **renew surface**: the renew ask
+  (`chatRenewPanelCopy`) plus a pointer to where the history still lives
+  (`chatRenewPanelHistoryNote` → account menu → *Conversations*), and a **Renew
+  Solar Prism** CTA. In the panel this is `_renewSurface` / `_renewCta`
+  (`ui/chat_panel.dart`); on the explore pill the look-alike opens
+  `showChatRenewModal` instead of the coming-soon modal.
+- **`none` + no history** → the never-entitled buy/sign-in stub described above.
+- While the archive check is unresolved, both surfaces stay in the *pending*
+  state (panel: quiet loader; pill: inert look-alike) — the buy stub never
+  flashes before the fork settles.
+
+This also cures a **flash-then-revert**: a mid-session 403 latches
+`TurnAccessLapsed` (renew bubble) *and* invalidates entitlement; when the refetch
+returns a cleared `access_until`, access flips `lapsed → none`, which used to swap
+the conversation for the buy stub mid-read. Routing `none`-with-history to the
+renew surface resolves that invalidate into a renew prompt instead. (Signed-out
+users have no history — `hasConversationsProvider` short-circuits to `false` — so
+they stay on the sign-in gate.)
 
 **Post-purchase refresh.** A buy/renew CTA opens the shop in a new tab, so on
 return the app refetches entitlement on the tab-visibility signal

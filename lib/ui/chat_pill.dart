@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../state/auth.dart';
 import '../state/chat_turn.dart';
 import '../state/consent.dart';
+import '../state/conversation.dart';
 import '../state/entitlement.dart';
 import 'chat_coming_soon.dart';
 import 'chat_composer.dart';
@@ -20,8 +21,10 @@ import 'chat_composer.dart';
 ///   composer) can be shown. Gate on the tap, not on send: were this a live
 ///   composer, a whole typed paragraph would vanish the instant Send ramped away
 ///   to the gate (adityas/ai/98).
-/// - **Not entitled** — a look-alike button (no focus, no typing) that opens the
-///   centered coming-soon modal on tap.
+/// - **Not entitled** — a look-alike button (no focus, no typing) that opens a
+///   centered modal on tap: the coming-soon/buy modal for a never-entitled user,
+///   or the renew modal for a former subscriber who still has archived
+///   conversations (adityas/ai/183).
 ///
 /// Across all three the rule is one and the same: focus-to-trigger, not
 /// submit-to-reject — the user never types into a dead end.
@@ -53,15 +56,29 @@ class ChatPill extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // Reachable to anyone with chat history — a live window OR a lapsed one
-    // (read-only history + renew-on-send, adityas/ai/120). Only the never-entitled
-    // get the look-alike that opens the coming-soon modal (adityas/ai/85).
+    // (read-only history + renew-on-send, adityas/ai/120). A never-entitled user
+    // gets the look-alike → coming-soon/buy modal (adityas/ai/85); a former
+    // subscriber whose window is gone gets the renew modal instead (below).
     final access = ref.watch(chatAccessProvider);
     final enabled =
         access == ChatAccess.available || access == ChatAccess.lapsed;
-    // Entitlement still resolving (signed in, fetch not settled): show the inert
-    // look-alike but withhold the buy modal — a signed-in entitled user must not
-    // be prompted to buy mid-fetch (adityas/ai/194).
-    final pending = access == ChatAccess.pending;
+    // A signed-in former subscriber whose window is gone (→ none) but who still
+    // has archived conversations opens the *renew* modal, not the buy modal —
+    // keyed on archive existence, mirroring the panel (adityas/ai/183) and the
+    // picker's "Renew to resume" (ai/181). Watched only for none, so entitled /
+    // lapsed users never trigger the list() fetch (the account menu already keeps
+    // it warm for signed-in users). Signed-out has no history → still the buy/
+    // sign-in modal.
+    final history = access == ChatAccess.none
+        ? ref.watch(hasConversationsProvider)
+        : null;
+    final renew = history?.value ?? false;
+    // Entitlement still resolving, or the archive check for a none user hasn't
+    // settled: an inert look-alike, no modal — a signed-in entitled user must not
+    // be prompted to buy mid-fetch (adityas/ai/194) and the buy modal must not
+    // open before the renew/buy fork settles (adityas/ai/183).
+    final pending =
+        access == ChatAccess.pending || (history?.isLoading ?? false);
     // Mirror the panel's gate (chat_panel.dart): a proactive GET that found the
     // T&C version stale, or a mid-session 428 latched into TurnConsentRequired
     // before that refetch lands. `.select` so a live turn's every delta does not
@@ -94,6 +111,9 @@ class ChatPill extends ConsumerWidget {
                   ? onConsentGate
                   : pending
                   ? null
+                  // Former subscriber with history → renew modal (adityas/ai/183).
+                  : renew
+                  ? () => showChatRenewModal(context)
                   // Signed-out → sign in to purchase; signed-in without access →
                   // buy Solar Prism (adityas/ai/85). The gate splits on auth.
                   : () => showChatComingSoonModal(

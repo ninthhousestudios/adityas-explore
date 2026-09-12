@@ -15,6 +15,7 @@ import 'package:explore/state/delta_throttle.dart';
 import 'package:explore/state/entitlement.dart';
 import 'package:explore/state/turn_transport.dart';
 import 'package:explore/state/usage.dart';
+import 'package:explore/ui/chat_coming_soon.dart';
 import 'package:explore/ui/chat_panel.dart';
 
 /// Panel-level tests for the two in-flight behaviours the state-machine tests
@@ -132,6 +133,22 @@ Future<void> _pumpPanel(
 /// The current label on the panel's single persistent live region.
 String _liveLabel(WidgetTester tester) =>
     tester.widget<StreamingLiveRegion>(find.byType(StreamingLiveRegion)).label;
+
+/// A signed-in user with no live window ([ChatAccess.none]); [history] resolves
+/// hasConversationsProvider (whether the user has archived conversations). Used
+/// for the gate-routing tests (adityas/ai/183): a none user *with* history lands
+/// on the renew surface, one *without* on the never-entitled buy stub.
+ProviderContainer _noneContainer({required Future<bool> history}) {
+  final container = ProviderContainer(
+    overrides: [
+      authProvider.overrideWith(_StubAuth.new),
+      chatAccessProvider.overrideWithValue(ChatAccess.none),
+      hasConversationsProvider.overrideWith((ref) => history),
+    ],
+  );
+  addTearDown(container.dispose);
+  return container;
+}
 
 void main() {
   testWidgets('a burst of deltas immediately followed by done announces the '
@@ -336,4 +353,58 @@ void main() {
       'my question',
     );
   });
+
+  testWidgets(
+    'a signed-in former subscriber with archived history lands on the renew '
+    'surface, not the never-entitled buy stub (adityas/ai/183)',
+    (tester) async {
+      final container = _noneContainer(history: Future.value(true));
+      await _pumpPanel(tester, container);
+      await tester.pump(); // resolve the hasConversationsProvider future
+
+      // The renew ask + pointer to where the history still lives, and the shop
+      // CTA — reusing the launch renew copy/CTA (adityas/ai/85).
+      expect(find.text(chatRenewPanelCopy), findsOneWidget);
+      expect(find.text(chatRenewPanelHistoryNote), findsOneWidget);
+      expect(find.text(chatRenewCtaLabel), findsOneWidget);
+      // Never the never-entitled buy stub.
+      expect(find.text(ChatComingSoon.ctaFor(ChatGate.purchase)), findsNothing);
+      expect(find.text(ChatComingSoon.purchaseBody), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'a signed-in user with no archived history gets the never-entitled buy '
+    'stub, not the renew surface (adityas/ai/183)',
+    (tester) async {
+      final container = _noneContainer(history: Future.value(false));
+      await _pumpPanel(tester, container);
+      await tester.pump();
+
+      expect(
+        find.text(ChatComingSoon.ctaFor(ChatGate.purchase)),
+        findsOneWidget,
+      );
+      expect(find.text(ChatComingSoon.purchaseBody), findsOneWidget);
+      // No renew surface for a genuinely never-entitled user.
+      expect(find.text(chatRenewCtaLabel), findsNothing);
+      expect(find.text(chatRenewPanelCopy), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'while the archive check is unresolved a none user sees a quiet loader — no '
+    'flash of the buy stub before it settles (adityas/ai/183)',
+    (tester) async {
+      // A future that never completes: the archive check stays loading.
+      final container = _noneContainer(history: Completer<bool>().future);
+      await _pumpPanel(tester, container);
+      await tester.pump();
+
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      // Neither gate resolves while the archive check is in flight.
+      expect(find.text(ChatComingSoon.ctaFor(ChatGate.purchase)), findsNothing);
+      expect(find.text(chatRenewCtaLabel), findsNothing);
+    },
+  );
 }

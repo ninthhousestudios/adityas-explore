@@ -233,10 +233,24 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
     final access = ref.watch(chatAccessProvider);
     final enabled =
         access == ChatAccess.available || access == ChatAccess.lapsed;
-    // Entitlement still resolving (signed in, fetch not settled): a quiet loading
-    // placeholder, never the buy/sign-in gate — a signed-in entitled user must not
-    // be shown "buy Solar Prism" mid-fetch (adityas/ai/194).
-    final pending = access == ChatAccess.pending;
+    // A signed-in former subscriber whose window is gone (→ none) but who still
+    // has archived conversations gets the *renew* surface — the renew CTA + a
+    // pointer to their history — not the never-entitled buy stub (adityas/ai/183).
+    // Archive existence, not entitlement rows, is the signal (the same split
+    // ai/181 made for the Conversations picker); signed-out users have no history
+    // (hasConversationsProvider short-circuits to false) so they stay on the
+    // sign-in gate. Watched only for none, so entitled/lapsed users never trigger
+    // the list() fetch.
+    final history = access == ChatAccess.none
+        ? ref.watch(hasConversationsProvider)
+        : null;
+    final renew = history?.value ?? false;
+    // Entitlement still resolving, or the archive check for a none user hasn't
+    // settled: a quiet loading placeholder, never a gate — so a signed-in entitled
+    // user is not shown "buy Solar Prism" mid-fetch (adityas/ai/194), and the buy
+    // stub never flashes before it flips to the renew surface (adityas/ai/183).
+    final pending =
+        access == ChatAccess.pending || (history?.isLoading ?? false);
     // For the never-entitled placeholder (ChatAccess.none): signed-out → sign in
     // to purchase; signed-in without access → buy Solar Prism (adityas/ai/85).
     final gate = ref.watch(authProvider) == null
@@ -277,6 +291,8 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
           Expanded(
             child: enabled
                 ? _conversation(color, dimColor, fontSize)
+                : renew
+                ? _renewSurface(color, dimColor, fontSize)
                 : _placeholder(
                     color,
                     dimColor,
@@ -295,6 +311,10 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
           if (pending)
             // Entitlement unresolved: no verdict yet, so no gate CTA either.
             const SizedBox.shrink()
+          else if (renew)
+            // Former subscriber with history: renew CTA in the composer slot in
+            // place of the never-entitled buy gate (adityas/ai/183).
+            _renewCta(fontSize)
           else if (!enabled)
             _gateCta(gate, fontSize)
           else if (consentGated)
@@ -1053,6 +1073,58 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
           padding: const EdgeInsets.symmetric(vertical: 12),
         ),
         child: Text(ChatComingSoon.ctaFor(gate)),
+      ),
+    );
+  }
+
+  /// The renew surface for a signed-in former subscriber whose window is gone
+  /// (ChatAccess.none) but who still has archived conversations (adityas/ai/183),
+  /// shown in place of the never-entitled buy stub. The renew ask plus a pointer
+  /// to where their history still lives (account menu → Conversations); the shop
+  /// CTA sits in the composer slot (_renewCta), mirroring _gateCta's placement.
+  Widget _renewSurface(Color color, Color dimColor, double fontSize) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              chatRenewPanelCopy,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: color, fontSize: fontSize, height: 1.4),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              chatRenewPanelHistoryNote,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: dimColor,
+                fontSize: fontSize * 0.85,
+                height: 1.4,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The renew action for the former-subscriber renew surface (adityas/ai/183):
+  /// opens the Solar Prism shop page in a new tab, mirroring the in-thread renew
+  /// bubble's CTA (adityas/ai/85). Sits in the composer slot like _gateCta.
+  Widget _renewCta(double fontSize) {
+    final tokens = context.tokens;
+    return SizedBox(
+      width: double.infinity,
+      child: FilledButton(
+        onPressed: () => openUrlNewTab(solarPrismShopUrl),
+        style: FilledButton.styleFrom(
+          backgroundColor: tokens.gold,
+          foregroundColor: tokens.onGold,
+          padding: const EdgeInsets.symmetric(vertical: 12),
+        ),
+        child: const Text(chatRenewCtaLabel),
       ),
     );
   }
