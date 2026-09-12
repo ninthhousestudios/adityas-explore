@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -39,6 +41,25 @@ class _ThrowingEntitlementClient implements EntitlementClient {
       throw Exception('entitlement fetch failed');
 }
 
+/// An [EntitlementClient] whose fetches hang until the test resolves them by
+/// hand — so a transition test can observe the in-flight window (adityas/ai/195)
+/// where an identity change must read as pending, not the previous identity's
+/// value.
+class _ControllableClient implements EntitlementClient {
+  final _pending = <Completer<Entitlement>>[];
+  int calls = 0;
+
+  @override
+  Future<Entitlement> fetchEntitlement() {
+    calls++;
+    final c = Completer<Entitlement>();
+    _pending.add(c);
+    return c.future;
+  }
+
+  void completeLast(Entitlement e) => _pending.last.complete(e);
+}
+
 /// authProvider touches `Supabase.instance`, which isn't initialized headless,
 /// so every test overrides it with a fixed user.
 const _stubUser = User(
@@ -57,6 +78,27 @@ class _StubAuth extends AuthNotifier {
   User? build() => _user;
 }
 
+/// Like [_StubAuth] but the test can flip the signed-in user at runtime, to
+/// drive the null→user / user A→user B / user→null transitions (adityas/ai/195).
+class _MutableAuth extends AuthNotifier {
+  final User? _initial;
+  _MutableAuth(this._initial);
+
+  @override
+  User? build() => _initial;
+
+  void setUser(User? user) => state = user;
+}
+
+/// A signed-in user with an arbitrary id, for the user-switch transition.
+User _userWithId(String id) => User(
+  id: id,
+  appMetadata: const {},
+  userMetadata: const {},
+  aud: 'authenticated',
+  createdAt: '2026-01-01T00:00:00Z',
+);
+
 ProviderContainer _container({
   required User? user,
   required EntitlementClient client,
@@ -71,6 +113,32 @@ ProviderContainer _container({
   );
   addTearDown(container.dispose);
   return container;
+}
+
+/// Container whose auth can be flipped at runtime (via the [_MutableAuth]
+/// notifier) for the identity-transition tests (adityas/ai/195).
+ProviderContainer _mutableContainer({
+  required User? user,
+  required EntitlementClient client,
+  required Clock clock,
+}) {
+  final container = ProviderContainer(
+    overrides: [
+      authProvider.overrideWith(() => _MutableAuth(user)),
+      entitlementClientProvider.overrideWithValue(client),
+      clockProvider.overrideWithValue(clock),
+    ],
+  );
+  addTearDown(container.dispose);
+  return container;
+}
+
+/// Flush the microtask queue a few times so provider rebuilds triggered by an
+/// auth flip run before we assert.
+Future<void> _pump() async {
+  for (var i = 0; i < 4; i++) {
+    await Future<void>.delayed(Duration.zero);
+  }
 }
 
 void main() {
@@ -296,4 +364,136 @@ void main() {
       expect(client.calls, 0);
     },
   );
+
+  // ── identity transitions: a value resolved for one identity must never be
+  //    read as another's settled entitlement (adityas/ai/195) ──────────────
+
+  test('null→user: a signed-out resident `none` is dropped on sign-in — pending '
+      'mid-fetch, not a false confirmed none (buy CTA)', () async {
+    final client = _ControllableClient();
+    final container = _mutableContainer(
+      user: null,
+      client: client,
+      clock: _FakeClock(DateTime.utc(2026, 8, 1)),
+    );
+    // Keep entitlement resident while signed out, exactly as the live pill does
+    // (via accessDeadlineProvider) — so it holds a resolved `none` whose
+    // hasValue would otherwise leak across the sign-in rebuild.
+    final entSub = container.listen(entitlementProvider, (_, _) {});
+    addTearDown(entSub.close);
+    await container.read(entitlementProvider.future);
+    expect(container.read(entitlementProvider).hasValue, isTrue);
+    expect(container.read(entitlementProvider).value?.accessUntil, isNull);
+    expect(client.calls, 0); // signed-out short-circuit, no fetch
+
+    // Sign in — the dangerous transition. The retained `none` must not be read
+    // as the new user's settled entitlement.
+    (container.read(authProvider.notifier) as _MutableAuth).setUser(_stubUser);
+    await _pump();
+
+    // Riverpod retains the signed-out `none` as an AsyncLoading-with-previous
+    // across the rebuild (hasValue stays true) — the identity guard is what
+    // rejects it: currentEntitlementProvider reads null until this user's own
+    // fetch lands, so settled is false and the surface is pending, not a false
+    // confirmed none.
+    expect(container.read(entitlementProvider).hasValue, isTrue);
+    expect(container.read(currentEntitlementProvider), isNull);
+    expect(container.read(entitlementSettledProvider), isFalse);
+    expect(container.read(chatAccessProvider), ChatAccess.pending);
+
+    // The new user's fetch resolves to a real (empty) entitlement → the
+    // confirmed none (buy CTA) is now correct.
+    client.completeLast(const Entitlement.none());
+    await container.read(entitlementProvider.future);
+    expect(container.read(chatAccessProvider), ChatAccess.none);
+  });
+
+  test(
+    'user A→user B: A\'s live window does not leak to B while B\'s fetch is in '
+    'flight',
+    () async {
+      final userA = _userWithId('user-a');
+      final userB = _userWithId('user-b');
+      final client = _ControllableClient();
+      final container = _mutableContainer(
+        user: userA,
+        client: client,
+        clock: _FakeClock(DateTime.utc(2026, 8, 1)), // before expiry
+      );
+      final sub = container.listen(chatAccessProvider, (_, _) {});
+      addTearDown(sub.close);
+
+      // A is inside a live paid window.
+      await _pump();
+      client.completeLast(Entitlement(accessUntil: accessUntil));
+      await container.read(entitlementProvider.future);
+      expect(container.read(chatAccessProvider), ChatAccess.available);
+
+      // Switch to B. A's accessUntil must not be read as B's.
+      (container.read(authProvider.notifier) as _MutableAuth).setUser(userB);
+      await _pump();
+      expect(container.read(chatAccessProvider), isNot(ChatAccess.available));
+      expect(container.read(chatAccessProvider), ChatAccess.pending);
+
+      // B resolves to no entitlement.
+      client.completeLast(const Entitlement.none());
+      await container.read(entitlementProvider.future);
+      expect(container.read(chatAccessProvider), ChatAccess.none);
+    },
+  );
+
+  test(
+    'user→null: sign-out reads none immediately, never the retained live window',
+    () async {
+      final client = _ControllableClient();
+      final container = _mutableContainer(
+        user: _stubUser,
+        client: client,
+        clock: _FakeClock(DateTime.utc(2026, 8, 1)),
+      );
+      final sub = container.listen(chatAccessProvider, (_, _) {});
+      addTearDown(sub.close);
+
+      await _pump();
+      client.completeLast(Entitlement(accessUntil: accessUntil));
+      await container.read(entitlementProvider.future);
+      expect(container.read(chatAccessProvider), ChatAccess.available);
+
+      // Sign out. Read synchronously — before any rebuild pump — to catch the
+      // transient where entitlement still holds the previous user's value.
+      (container.read(authProvider.notifier) as _MutableAuth).setUser(null);
+      expect(container.read(chatAccessProvider), ChatAccess.none);
+    },
+  );
+
+  test('same-user refresh keeps the resolved value — no pending flash on the '
+      'tab-visibility invalidate (adityas/ai/194 preserved)', () async {
+    final client = _ControllableClient();
+    final container = _mutableContainer(
+      user: _stubUser,
+      client: client,
+      clock: _FakeClock(DateTime.utc(2026, 8, 1)),
+    );
+    final sub = container.listen(chatAccessProvider, (_, _) {});
+    addTearDown(sub.close);
+
+    await _pump();
+    client.completeLast(Entitlement(accessUntil: accessUntil));
+    await container.read(entitlementProvider.future);
+    expect(container.read(chatAccessProvider), ChatAccess.available);
+    expect(container.read(entitlementSettledProvider), isTrue);
+
+    // Same-user refresh: the prior value must survive the rebuild (identity
+    // unchanged), so the user is never bounced back to pending.
+    container.invalidate(entitlementProvider);
+    await _pump();
+    expect(container.read(entitlementProvider).hasValue, isTrue);
+    expect(container.read(entitlementSettledProvider), isTrue);
+    expect(container.read(chatAccessProvider), ChatAccess.available);
+
+    // The refetch lands; still available.
+    client.completeLast(Entitlement(accessUntil: accessUntil));
+    await container.read(entitlementProvider.future);
+    expect(container.read(chatAccessProvider), ChatAccess.available);
+  });
 }

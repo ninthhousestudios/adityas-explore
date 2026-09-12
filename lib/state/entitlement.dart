@@ -31,13 +31,59 @@ final entitlementProvider =
     );
 
 class EntitlementNotifier extends AsyncNotifier<Entitlement> {
+  /// The user id [state]'s current value was resolved for, or null when that
+  /// value is the signed-out `none`.
+  ///
+  /// Read by [currentEntitlementProvider] to reject a value retained from a
+  /// *previous* identity across an auth change (adityas/ai/195): Riverpod keeps
+  /// the prior value as an AsyncLoading-with-previous during the new identity's
+  /// fetch — trying to clear it from inside [build] does not stick, since the
+  /// framework re-derives loading from the last *data* state — so this field is
+  /// how the derived seams tell "mine" from "the last user's". The notifier
+  /// instance (and this field) persist across dependency rebuilds and
+  /// `ref.invalidate`, resetting only on a full dispose, so a same-user refresh
+  /// keeps a matching id and never re-opens a pending window (adityas/ai/194).
+  String? resolvedFor;
+
   @override
   Future<Entitlement> build() async {
     final user = ref.watch(authProvider);
-    if (user == null) return const Entitlement.none();
-    return ref.watch(entitlementClientProvider).fetchEntitlement();
+    if (user == null) {
+      resolvedFor = null;
+      return const Entitlement.none();
+    }
+    final entitlement = await ref
+        .watch(entitlementClientProvider)
+        .fetchEntitlement();
+    resolvedFor = user.id;
+    return entitlement;
   }
 }
+
+/// The current user's [Entitlement] value, but only once it belongs to the
+/// *current* identity — `null` while a fetch for a freshly signed-in or switched
+/// user is still in flight.
+///
+/// The identity guard (adityas/ai/195): on an auth change Riverpod retains the
+/// previous identity's value as an AsyncLoading-with-previous, so a naive
+/// `entitlementProvider.value` read would leak the signed-out `none` (a false
+/// buy prompt) or user A's live window to user B. Gating on
+/// [EntitlementNotifier.resolvedFor] rejects that retained value until this
+/// user's own fetch lands. Signed-out resolves to [Entitlement.none] directly,
+/// never reading a retained value — so a sign-out reads as `none` immediately.
+///
+/// The single seam every derived provider reads, so the guard lives in one place
+/// rather than being duplicated across [chatAvailableProvider],
+/// [accessDeadlineProvider], and [entitlementSettledProvider].
+final currentEntitlementProvider = Provider<Entitlement?>((ref) {
+  final user = ref.watch(authProvider);
+  if (user == null) return const Entitlement.none();
+  final async = ref.watch(entitlementProvider);
+  if (!async.hasValue) return null;
+  return ref.read(entitlementProvider.notifier).resolvedFor == user.id
+      ? async.value
+      : null;
+});
 
 /// Whether the chat feature is available to the current user right now.
 ///
@@ -57,10 +103,10 @@ class EntitlementNotifier extends AsyncNotifier<Entitlement> {
 /// endpoint. Availability here is not proof the backend will serve a turn (per
 /// adityas security: no business logic on the client).
 final chatAvailableProvider = Provider<bool>((ref) {
-  final user = ref.watch(authProvider);
-  if (user == null) return false;
-
-  final accessUntil = ref.watch(entitlementProvider).value?.accessUntil;
+  // Read through the identity-guarded seam: a value retained from a previous
+  // identity (or the signed-out none) reads as null here, so a switched-to user
+  // never inherits the prior user's live window mid-fetch (adityas/ai/195).
+  final accessUntil = ref.watch(currentEntitlementProvider)?.accessUntil;
   if (accessUntil == null) return false;
 
   return accessUntil.isAfter(ref.watch(clockProvider).now());
@@ -76,7 +122,10 @@ final chatAvailableProvider = Provider<bool>((ref) {
 /// timer at exactly the boundary rather than waiting for an unrelated recompute.
 /// Tests override it with a fixed deadline (no need to wire the fetch graph).
 final accessDeadlineProvider = Provider<DateTime?>(
-  (ref) => ref.watch(entitlementProvider).value?.accessUntil,
+  // Identity-guarded (adityas/ai/195): null while a newly signed-in / switched
+  // user's fetch is in flight, so the lapsed check never reads a prior user's
+  // access_until.
+  (ref) => ref.watch(currentEntitlementProvider)?.accessUntil,
 );
 
 /// The chat surface's three access states, richer than the [chatAvailableProvider]
@@ -109,20 +158,21 @@ enum ChatAccess { available, lapsed, none, pending }
 /// ([ChatAccess.none]) rather than a fetch still in flight ([ChatAccess.pending],
 /// adityas/ai/194).
 ///
-/// Signed-out is always settled: [entitlementProvider] returns [Entitlement.none]
-/// with no fetch. Signed-in is settled once the fetch has a value — `hasValue`
-/// stays true across a refresh (Riverpod keeps the prior value through
-/// `ref.invalidate`), so the tab-visibility refetch (main.dart) never re-opens a
-/// pending window for an already-resolved user.
+/// Signed-out is always settled ([currentEntitlementProvider] resolves to
+/// [Entitlement.none] with no fetch). Signed-in is settled once the fetch has a
+/// value *for this identity* — the guarded seam keeps a value retained from a
+/// previous identity from counting (a freshly signed-in / switched user reads as
+/// pending until their own fetch lands, adityas/ai/195), while a same-user
+/// refresh keeps its matching value so the tab-visibility invalidate never
+/// re-opens a pending window (adityas/ai/194).
 ///
 /// A dedicated seam — rather than reading [entitlementProvider] inline in
 /// [chatAccessProvider] — so the state tests that override [chatAvailableProvider]
 /// / [accessDeadlineProvider] keep the entitlement fetch (and its network) out of
 /// the graph with a single `overrideWithValue(true)`.
-final entitlementSettledProvider = Provider<bool>((ref) {
-  if (ref.watch(authProvider) == null) return true;
-  return ref.watch(entitlementProvider).hasValue;
-});
+final entitlementSettledProvider = Provider<bool>(
+  (ref) => ref.watch(currentEntitlementProvider) != null,
+);
 
 /// Derives [ChatAccess] from the existing seams — [chatAvailableProvider] (the
 /// live-window check) plus [accessDeadlineProvider] (the `access_until`
@@ -134,6 +184,10 @@ final entitlementSettledProvider = Provider<bool>((ref) {
 /// (an available future window would have made [chatAvailableProvider] true), so
 /// it reads as [ChatAccess.lapsed]; a null deadline reads as [ChatAccess.none].
 final chatAccessProvider = Provider<ChatAccess>((ref) {
+  // Signed out is always the sign-in-to-buy surface (adityas/ai/195). The
+  // guarded seams already resolve signed-out to none, but short-circuiting here
+  // states the invariant directly and keeps it independent of that derivation.
+  if (ref.watch(authProvider) == null) return ChatAccess.none;
   if (ref.watch(chatAvailableProvider)) return ChatAccess.available;
   if (ref.watch(accessDeadlineProvider) != null) return ChatAccess.lapsed;
   // Not available and no deadline: either a *confirmed* not-entitled response, or
