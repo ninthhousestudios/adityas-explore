@@ -178,9 +178,28 @@ class ConversationNotifier extends Notifier<Conversation> {
 /// holds the only Retry). autoDispose so each re-subscribe re-checks; the
 /// account button re-checks on menu-open and invalidates after a delete so the
 /// item disappears with the last thread.
-final hasConversationsProvider = FutureProvider.autoDispose<bool>((ref) async {
+///
+/// The answer is tagged with the auth id it was resolved for (`null` signed
+/// out) — see [ResolvedArchive]. That lets a consumer reject a value retained
+/// across an auth change instead of routing the new user by the prior user's
+/// archive (adityas/ai/198 finding A).
+final hasConversationsProvider = FutureProvider.autoDispose<ResolvedArchive>((
+  ref,
+) async {
   final userId = ref.watch(authProvider.select((user) => user?.id));
-  if (userId == null) return false;
+  if (userId == null) return (userId: null, has: false);
   final page = await ref.read(conversationServiceProvider).list(limit: 1);
-  return page.conversations.isNotEmpty;
+  return (userId: userId, has: page.conversations.isNotEmpty);
 });
+
+/// A [hasConversationsProvider] answer paired with the auth id it was resolved
+/// for (`null` for signed-out). Binding the id *into* the published value is the
+/// identity guard (mirrors the entitlement seam's ResolvedEntitlement,
+/// adityas/ai/196): a value
+/// retained across an auth change as an AsyncLoading-with-previous carries the
+/// id of the build that produced it, so a consumer can tell a prior identity's
+/// archive answer from this user's and refuse to route by it (adityas/ai/198
+/// finding A). Because the id travels inside the value — not a side field — a
+/// build superseded mid-fetch (whose result Riverpod never publishes) can never
+/// drift the tag from the answer it was resolved with.
+typedef ResolvedArchive = ({String? userId, bool has});

@@ -55,7 +55,7 @@ class _AccountButtonState extends ConsumerState<AccountButton> {
       final showConversations =
           ref.watch(chatAccessProvider) == ChatAccess.available ||
           hasArchive.when(
-            data: (has) => has,
+            data: (archive) => archive.has,
             // Couldn't check (offline / backend blip): don't read the unknown
             // as a confirmed-empty archive — that would silently strand a
             // former subscriber, since the picker holds the only Retry. Show
@@ -64,7 +64,7 @@ class _AccountButtonState extends ConsumerState<AccountButton> {
             error: (_, _) => true,
             // Mid-refresh: keep the last known answer rather than flicker to
             // hidden.
-            loading: () => hasArchive.value ?? false,
+            loading: () => hasArchive.value?.has ?? false,
           );
       return PopupMenuButton<String>(
         icon: const Icon(Icons.person),

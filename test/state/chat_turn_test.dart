@@ -45,6 +45,12 @@ class _FakeTransport implements TurnTransport {
   Stream<TurnEvent> start(TurnRequest request) {
     starts++;
     lastRequest = request;
+    // The real transport mints a session-new conversation lazily on the first
+    // turn (SseTurnTransport._ensureConversation) and reuses it thereafter.
+    // Mirror that so [ChatTurnNotifier._reflectConversationMint] sees an id
+    // (adityas/ai/198 finding B). An adopted/resumed id (set via
+    // [adoptConversation]) is not clobbered.
+    conversationId ??= 'minted-$starts';
     final controller = StreamController<TurnEvent>();
     _controllers.add(controller);
     return controller.stream;
@@ -232,7 +238,9 @@ ProviderContainer _container(
       entitlementSettledProvider.overrideWithValue(true),
       if (clock != null) clockProvider.overrideWithValue(clock),
       if (archiveCheck != null)
-        hasConversationsProvider.overrideWith((ref) => archiveCheck()),
+        hasConversationsProvider.overrideWith(
+          (ref) async => (userId: _stubUser.id, has: await archiveCheck()),
+        ),
     ],
   );
   addTearDown(container.dispose);
@@ -289,24 +297,36 @@ void main() {
     expect(convo.messages.last.parentId, convo.messages.first.id);
   });
 
-  test('the first completed turn refreshes the archive signal so a stale '
-      'pre-mint `false` cannot survive to a later lapse (adityas/42)', () async {
+  /// Wire a container whose archive check counts each run, kept warm as the
+  /// always-mounted AccountButton keeps it in-app so an invalidate re-runs it.
+  ({
+    ProviderContainer container,
+    _FakeTransport transport,
+    int Function() checks,
+  })
+  archiveCounting() {
     var archiveChecks = 0;
     final transport = _FakeTransport();
-    final container =
-        _container(
-            transport,
-            // The archive reads empty (a stale pre-mint cache); count each check.
-            archiveCheck: () async {
-              archiveChecks++;
-              return false;
-            },
-          )
-          // Keep the autoDispose archive provider alive (as the always-mounted
-          // AccountButton does in-app) so an invalidate re-runs it, not no-ops.
-          ..listen(hasConversationsProvider, (_, _) {});
+    final container = _container(
+      transport,
+      // The archive reads empty (a stale pre-mint cache); count each check.
+      archiveCheck: () async {
+        archiveChecks++;
+        return false;
+      },
+    )..listen(hasConversationsProvider, (_, _) {});
+    return (
+      container: container,
+      transport: transport,
+      checks: () => archiveChecks,
+    );
+  }
+
+  test('a completed first turn refreshes the archive signal so a stale '
+      'pre-mint `false` cannot survive to a later lapse (adityas/42)', () async {
+    final (:container, :transport, :checks) = archiveCounting();
     await _pump();
-    expect(archiveChecks, 1); // initial check
+    expect(checks(), 1); // initial check
 
     // One full turn to completion mints the conversation server-side.
     container.read(chatTurnProvider.notifier).send('hello');
@@ -315,10 +335,81 @@ void main() {
       ..emit(const DoneEvent('e2'));
     await _pump();
 
-    // _finish refreshed the archive signal: the stale `false` is re-fetched, so a
-    // later New Chat (clearing the transcript) + a 403 reads the fresh archive and
-    // lands on the renew surface, not the never-entitled buy stub (adityas/42).
-    expect(archiveChecks, 2);
+    // Accepting the turn refreshed the archive signal: the stale `false` is
+    // re-fetched, so a later New Chat (clearing the transcript) + a 403 reads the
+    // fresh archive and lands on renew, not the never-entitled buy stub.
+    expect(checks(), 2);
+  });
+
+  test('a cancelled first turn still refreshes the archive signal — the '
+      'conversation was minted even though it never completed (adityas/ai/198 '
+      'finding B)', () async {
+    final (:container, :transport, :checks) = archiveCounting();
+    final notifier = container.read(chatTurnProvider.notifier)..send('hi');
+    transport.emit(const DeltaEvent('partial', 'e1'));
+    await _pump();
+    expect(checks(), 2); // accepted turn already reflected the mint
+
+    // Cancel, then the server finalizes the stop (error → usage → done).
+    await notifier.cancel();
+    transport
+      ..emit(const ErrorEvent('generation was cancelled', 'e2'))
+      ..emit(const UsageEvent(TurnUsage(inputTokens: 1, outputTokens: 1), 'e3'))
+      ..emit(const DoneEvent('e4'));
+    await _pump();
+
+    // Guarded per conversation: the trailing events don't re-check.
+    expect(checks(), 2);
+  });
+
+  test('a first turn that completes with no deltas still refreshes the archive '
+      'signal (adityas/ai/198 finding B)', () async {
+    final (:container, :transport, :checks) = archiveCounting();
+    container.read(chatTurnProvider.notifier).send('hi');
+    // done arrives with no preceding delta — an empty conversation, but minted.
+    transport.emit(const DoneEvent('e1'));
+    await _pump();
+
+    expect(container.read(chatTurnProvider), isA<TurnDone>());
+    expect(checks(), 2);
+  });
+
+  test(
+    'a stream error that terminates a first turn still refreshes the archive '
+    'signal — the conversation was minted before the turn failed '
+    '(adityas/ai/198 finding B)',
+    () async {
+      final (:container, :transport, :checks) = archiveCounting();
+      container.read(chatTurnProvider.notifier).send('hi');
+      // A 403 on the turn route: minted conversation, then a terminal gate. No
+      // event ever arrived, so the mint is reflected from _onStreamError.
+      transport.dropStream(
+        const TurnTransportException('access lapsed', statusCode: 403),
+      );
+      await _pump();
+
+      expect(container.read(chatTurnProvider), isA<TurnAccessLapsed>());
+      expect(checks(), 2);
+    },
+  );
+
+  test('a multi-turn conversation refreshes the archive signal once, not per '
+      'turn (adityas/ai/198 finding B)', () async {
+    final (:container, :transport, :checks) = archiveCounting();
+    final notifier = container.read(chatTurnProvider.notifier)..send('one');
+    transport
+      ..emit(const DeltaEvent('a', 'e1'))
+      ..emit(const DoneEvent('e2'));
+    await _pump();
+    expect(checks(), 2);
+
+    // A second turn appends to the same (already-reflected) conversation.
+    notifier.send('two');
+    transport
+      ..emit(const DeltaEvent('b', 'e3'))
+      ..emit(const DoneEvent('e4'));
+    await _pump();
+    expect(checks(), 2);
   });
 
   test('cancel: server-side stop, still billed (non-refunding)', () async {

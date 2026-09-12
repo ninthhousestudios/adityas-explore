@@ -141,9 +141,15 @@ String _liveLabel(WidgetTester tester) =>
 /// lands on the renew surface, one with a confirmed-empty archive on the buy stub.
 /// [historyError] throws lazily inside the provider so the errored future is never
 /// dangling (which flutter_test would flag as an unhandled async error).
+/// [historyUserId] tags the archive answer with the id it was resolved for
+/// (defaults to the signed-in stub) — set it to a *different* id to simulate a
+/// value retained across an auth change (adityas/ai/198 finding A).
 ProviderContainer _noneContainer({
   Future<bool>? history,
   Exception? historyError,
+  // Defaults to the signed-in stub's id (a literal — const default params can't
+  // read _stubUser.id); keep in sync with [_stubUser].
+  String? historyUserId = 'test-user',
 }) {
   final container = ProviderContainer(
     // No retry: an errored archive check would otherwise schedule a backoff
@@ -154,7 +160,7 @@ ProviderContainer _noneContainer({
       chatAccessProvider.overrideWithValue(ChatAccess.none),
       hasConversationsProvider.overrideWith((ref) async {
         if (historyError != null) throw historyError;
-        return history!;
+        return (userId: historyUserId, has: await history!);
       }),
     ],
   );
@@ -454,6 +460,45 @@ void main() {
       expect(find.text(chatRenewCtaLabel), findsOneWidget);
       expect(find.text(ChatComingSoon.ctaFor(ChatGate.purchase)), findsNothing);
       expect(find.text(ChatComingSoon.purchaseBody), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'an archive answer resolved for a DIFFERENT identity never decides this '
+    "user's fork — a retained `true` from a prior user does not flash renew "
+    '(adityas/ai/198 finding A)',
+    (tester) async {
+      // A settled `true` archive answer, but tagged with another user's id — the
+      // shape of a value retained across a user switch before this user's own
+      // lookup lands. It must read as pending (quiet loader), not renew.
+      final container = _noneContainer(
+        history: Future.value(true),
+        historyUserId: 'other-user',
+      );
+      await _pumpPanel(tester, container);
+      await tester.pump();
+
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.text(chatRenewCtaLabel), findsNothing);
+      expect(find.text(ChatComingSoon.ctaFor(ChatGate.purchase)), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'an archive answer resolved for a DIFFERENT identity never decides this '
+    "user's fork — a retained `false` from a prior user does not flash the buy "
+    'stub (adityas/ai/198 finding A)',
+    (tester) async {
+      final container = _noneContainer(
+        history: Future.value(false),
+        historyUserId: 'other-user',
+      );
+      await _pumpPanel(tester, container);
+      await tester.pump();
+
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.text(ChatComingSoon.ctaFor(ChatGate.purchase)), findsNothing);
+      expect(find.text(chatRenewCtaLabel), findsNothing);
     },
   );
 }

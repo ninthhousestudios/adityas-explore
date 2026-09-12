@@ -275,6 +275,17 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
   // future does not touch a torn-down `ref` if it resolves after dispose.
   bool _disposed = false;
 
+  // The server conversation id whose creation has already been reflected into
+  // [hasConversationsProvider] (see [_reflectConversationMint]). A session-new
+  // conversation is minted the moment the server accepts its first turn — before
+  // it streams, and regardless of whether that turn then streams, is cancelled,
+  // errors, or completes with no deltas — so the archive signal must refresh on
+  // *any* accepted turn, not only a non-empty completion (adityas/ai/198 finding
+  // B; ai/197/adityas-42 covered only the completion path). Guarded by id so a
+  // multi-turn thread refreshes once. A resumed thread is already in the archive,
+  // so [resumeConversation] pre-seeds its id here to suppress a wasted refetch.
+  String? _archiveRefreshedFor;
+
   @override
   ChatTurn build() {
     // read, not watch: a rebuild would drop an in-flight turn, and these
@@ -536,6 +547,10 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
   }) {
     _stopActiveForRotation();
     _transport.adoptConversation(id);
+    // A resumed thread is, by definition, already in the archive — the user
+    // reached it through the picker. Pre-seed it as already-reflected so its
+    // turns don't fire a redundant archive refetch (adityas/ai/198 finding B).
+    _archiveRefreshedFor = id;
     ref
         .read(conversationProvider.notifier)
         .loadTranscript(id, messages, compactedThrough: compactedThrough);
@@ -580,6 +595,11 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     // Any event proves the server accepted the turn — the optimistic user append
     // is real, so drop the pre-accept rollback tracking (adityas/ai/129).
     _pendingUserId = null;
+    // An accepted turn means the server has minted this conversation (even a
+    // trailing done with no deltas got here as an event) — reflect that into the
+    // archive signal so a later New Chat + lapse never reverts to the buy stub
+    // (adityas/ai/198 finding B).
+    _reflectConversationMint();
     _cursor = event.eventId; // advance on every event, even ignored ones
     switch (event) {
       case DeltaEvent(:final text):
@@ -656,6 +676,13 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
   /// `cancelOnError` already tore this subscription down; resume on a fresh one.
   void _onStreamError(Object error, StackTrace stackTrace) {
     _sub = null;
+    // The turn may have minted its conversation before the stream broke (the
+    // conversation POST precedes the turn POST — a mid-session 403 on the turn
+    // route still leaves an empty conversation behind). Reflect it so that
+    // conversation can't survive as a stale pre-mint `false`. A no-op when
+    // nothing was minted (id still null), and guarded per id (adityas/ai/198
+    // finding B).
+    _reflectConversationMint();
     // A deliberate server gate is terminal, NOT a transient drop — do not spend
     // the reconnect budget retrying it (a retry only re-hits the same gate).
     // 403 = access lapsed → the renew prompt (adityas/ai/99). 402 = usage ceiling
@@ -722,6 +749,10 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
   /// precedes done, so it typically never arrived — the turn is unbilled from
   /// the client's view and the ledger tolerates the gap.
   void _onStreamDone() {
+    // A stream that closed after minting its conversation (e.g. cancelled during
+    // connecting, or a broken stream) still leaves that conversation behind —
+    // reflect it. No-op when nothing was minted, guarded per id (ai/198).
+    _reflectConversationMint();
     if (_cancelling) {
       // The stopped turn's stream closed — settlement is over (usage arrived on
       // it, or never). Release the latch; the TurnCancelled state stands, but
@@ -770,24 +801,37 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     // ledger can tell the two apart (see TurnDone).
     state = TurnDone(text: _buffer.toString(), usage: _usage);
     if (_buffer.isNotEmpty) {
-      // The first reply of a session-new conversation mints its archive row
-      // server-side; refresh the archive signal so the chat none-fork (ai/183)
-      // and the account menu (ai/181) stop reading a stale pre-mint `false` —
-      // otherwise a later New Chat clears the in-session transcript and a 403
-      // reverts a first-conversation user to the buy stub (adityas/42 finding 1).
-      final firstReply = !ref
-          .read(conversationProvider)
-          .messages
-          .any((m) => m.role == MessageRole.assistant);
+      // The archive signal was already refreshed when this turn was accepted
+      // (see [_reflectConversationMint], adityas/ai/198) — including the empty
+      // reply and cancelled/errored paths that never reach here — so committing
+      // the reply is all that's left.
       ref
           .read(conversationProvider.notifier)
           .appendAssistant(_buffer.toString());
-      if (firstReply) ref.invalidate(hasConversationsProvider);
     }
     // A settled turn is the only time the window spend moves — refetch the
     // headroom so the near-ceiling notice reflects it without a wall-clock poll
     // (adityas/ai/100). autoDispose means this no-ops when nothing watches usage.
     ref.invalidate(usageProvider);
+  }
+
+  /// Refresh [hasConversationsProvider] once the server has minted the active
+  /// session-new conversation, so a stale pre-mint `false` archive cache cannot
+  /// survive to a later New Chat + [ChatAccess.none] and strand a
+  /// first-conversation user on the buy stub (adityas/ai/198 finding B).
+  ///
+  /// The mint happens when the server accepts a conversation's first turn — the
+  /// conversation POST precedes the turn stream — so this fires from *any*
+  /// accepted turn ([_onEvent]) and from a stream error that may have minted
+  /// before failing ([_onStreamError]), not only a non-empty completion (the sole
+  /// path ai/197/adityas-42 covered). Guarded by the transport's conversation id:
+  /// a no-op until an id exists, once per id, and pre-seeded by
+  /// [resumeConversation] so an already-archived resumed thread never refetches.
+  void _reflectConversationMint() {
+    final id = _transport.conversationId;
+    if (id == null || id == _archiveRefreshedFor) return;
+    _archiveRefreshedFor = id;
+    ref.invalidate(hasConversationsProvider);
   }
 
   /// Close out a turn the user stopped: keep [TurnCancelled] with whatever usage

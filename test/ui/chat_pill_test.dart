@@ -31,10 +31,16 @@ class _StubAuth extends AuthNotifier {
 /// A signed-in `none` user; [history] resolves hasConversationsProvider, or
 /// [historyError] makes the archive check fail. [historyError] throws lazily
 /// inside the provider so the errored future is never dangling (which
-/// flutter_test would flag as an unhandled async error).
+/// flutter_test would flag as an unhandled async error). [historyUserId] tags
+/// the archive answer with the id it was resolved for (defaults to the signed-in
+/// stub) — set it to a *different* id to simulate a value retained across an auth
+/// change (adityas/ai/198 finding A).
 ProviderContainer _noneContainer({
   Future<bool>? history,
   Exception? historyError,
+  // Defaults to the signed-in stub's id (a literal — const default params can't
+  // read _stubUser.id); keep in sync with [_stubUser].
+  String? historyUserId = 'test-user',
 }) {
   final container = ProviderContainer(
     // No retry: an errored archive check would otherwise schedule a backoff
@@ -45,7 +51,7 @@ ProviderContainer _noneContainer({
       chatAccessProvider.overrideWithValue(ChatAccess.none),
       hasConversationsProvider.overrideWith((ref) async {
         if (historyError != null) throw historyError;
-        return history!;
+        return (userId: historyUserId, has: await history!);
       }),
     ],
   );
@@ -158,6 +164,28 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Renew your access'), findsOneWidget);
+      expect(find.text(ChatComingSoon.ctaFor(ChatGate.purchase)), findsNothing);
+    },
+  );
+
+  testWidgets(
+    "an archive answer resolved for a DIFFERENT identity leaves the pill inert — "
+    'a retained value from a prior user opens neither modal (adityas/ai/198 '
+    'finding A)',
+    (tester) async {
+      // A settled archive answer tagged with another user's id — the shape of a
+      // value retained across a user switch. It must not decide this user's fork.
+      final container = _noneContainer(
+        history: Future.value(true),
+        historyUserId: 'other-user',
+      );
+      await _pumpPill(tester, container);
+      await tester.pump();
+
+      await tester.tap(find.byType(InkWell), warnIfMissed: false);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Renew your access'), findsNothing);
       expect(find.text(ChatComingSoon.ctaFor(ChatGate.purchase)), findsNothing);
     },
   );

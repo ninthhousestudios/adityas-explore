@@ -245,23 +245,28 @@ ChatAccessFork chatAccessFork(WidgetRef ref, ChatAccess access) {
     conversationProvider.select((c) => c.messages.isNotEmpty),
   );
   if (hasSessionHistory) return (renew: true, pending: false);
+
+  final currentUserId = ref.watch(authProvider.select((u) => u?.id));
   final archive = ref.watch(hasConversationsProvider);
-  final renew = archive.when(
-    // A reload/refresh that retains a prior value or error answers from it rather
-    // than dropping back to `loading` — so a recheck-after-error (AsyncLoading
-    // carrying the error) still reads as history, not a buy-stub flash.
-    skipLoadingOnReload: true,
-    skipLoadingOnRefresh: true,
-    data: (has) => has,
-    loading: () => false,
-    // Couldn't check: not a confirmed-empty archive — favor renew over
-    // stranding a former subscriber on the buy stub (ai/181, account_button.dart).
-    error: (_, _) => true,
-  );
-  // Pending only on a *genuine* first load — nothing known yet. A reload that
-  // retains a prior value or error is not pending (we answer from what we have),
-  // so the inert/loader state never sticks once any result has landed.
-  final pending =
-      archive.isLoading && !archive.hasValue && archive.error == null;
-  return (renew: renew, pending: pending);
+
+  // An error — settled, or carried through a reload as AsyncLoading-with-error —
+  // is NOT a confirmed-empty archive: favor renew over stranding a former
+  // subscriber on the buy stub during a backend blip (ai/181, account_button.dart).
+  if (archive.hasError) return (renew: true, pending: false);
+
+  // A value answers the fork only when it was resolved for THIS identity. On an
+  // auth change Riverpod retains the previous identity's answer as an
+  // AsyncLoading-with-previous; that retained value carries the prior user's id
+  // (adityas/ai/196), so user B is never routed by user A's archive — it reads as
+  // still-pending until B's own lookup lands (adityas/ai/198 finding A). A
+  // same-user refresh keeps a matching id, so it still answers from the retained
+  // value rather than flashing a loader (adityas/ai/194).
+  final resolved = archive.value;
+  if (resolved != null && resolved.userId == currentUserId) {
+    return (renew: resolved.has, pending: false);
+  }
+  // A genuine first load (nothing known yet) or a retained cross-identity value:
+  // the verdict is unsettled for this user, so the caller shows a quiet loader /
+  // inert state, never a gate that might flash before the fork settles (ai/183).
+  return (renew: false, pending: true);
 }

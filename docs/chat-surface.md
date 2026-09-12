@@ -156,7 +156,13 @@ it answers from two independent signals, either sufficient:
   thread. A lookup **error is not a confirmed-empty archive** (that provider's
   contract, ai/181): it reads as history too, matching the account menu
   (`account_button.dart`) rather than stranding a former subscriber on the buy
-  stub during a backend blip (adityas/42).
+  stub during a backend blip (adityas/42). The answer is **tagged with the auth
+  id it was resolved for** (`ResolvedArchive`): on a user switch Riverpod retains
+  the prior identity's answer as an `AsyncLoading`-with-previous, and the fork
+  reads a value only when its id matches the current user — so user B is never
+  routed by user A's archive; a mismatch reads as still-pending until B's own
+  lookup lands (adityas/ai/198 finding A, mirroring the entitlement seam's
+  identity guard, ai/196).
 
 The fork then routes:
 
@@ -174,12 +180,19 @@ The fork then routes:
   retains a prior value or error is not pending (it answers from what it has).
 
 The archive signal can go stale while warm: `hasConversationsProvider` is
-`autoDispose` but the always-mounted account button keeps it subscribed, and
-nothing invalidated it when a conversation was minted — so it could cache `false`
-for a user before their first conversation. The first *completed* turn now
-refreshes it (`ChatTurnNotifier._finish` → `ref.invalidate(hasConversationsProvider)`,
-`lib/state/chat_turn.dart`), so a later New Chat + 403 reads the fresh archive,
-not the stale `false` (adityas/42).
+`autoDispose` but the always-mounted account button keeps it subscribed, so it
+can cache `false` for a user before their first conversation. The server mints a
+session-new conversation the moment it **accepts that conversation's first turn**
+— the conversation POST precedes the turn stream — so `ChatTurnNotifier`
+refreshes the archive signal from *any* accepted turn, guarded once per
+conversation id (`_reflectConversationMint`, `lib/state/chat_turn.dart`, called
+from `_onEvent`/`_onStreamError`/`_onStreamDone`). This covers the paths a
+non-empty-completion-only refresh missed — a first turn that is **cancelled,
+errors, or completes with no deltas** still mints an archive row, so refreshing
+only on completion would let a later New Chat + 403 read the stale `false` and
+revert to the buy stub (adityas/ai/198 finding B, completing adityas/42/ai/197,
+which refreshed only on `_finish`). A resumed thread is already in the archive,
+so `resumeConversation` pre-seeds its id to suppress a redundant refetch.
 
 This also cures a **flash-then-revert**: a mid-session 403 latches
 `TurnAccessLapsed` (renew bubble) *and* invalidates entitlement; when the refetch
