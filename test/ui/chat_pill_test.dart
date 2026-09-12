@@ -28,13 +28,25 @@ class _StubAuth extends AuthNotifier {
   User? build() => _stubUser;
 }
 
-/// A signed-in `none` user; [history] resolves hasConversationsProvider.
-ProviderContainer _noneContainer({required Future<bool> history}) {
+/// A signed-in `none` user; [history] resolves hasConversationsProvider, or
+/// [historyError] makes the archive check fail. [historyError] throws lazily
+/// inside the provider so the errored future is never dangling (which
+/// flutter_test would flag as an unhandled async error).
+ProviderContainer _noneContainer({
+  Future<bool>? history,
+  Exception? historyError,
+}) {
   final container = ProviderContainer(
+    // No retry: an errored archive check would otherwise schedule a backoff
+    // retry timer that never settles under fake-async and leaks past dispose.
+    retry: (_, _) => null,
     overrides: [
       authProvider.overrideWith(_StubAuth.new),
       chatAccessProvider.overrideWithValue(ChatAccess.none),
-      hasConversationsProvider.overrideWith((ref) => history),
+      hasConversationsProvider.overrideWith((ref) async {
+        if (historyError != null) throw historyError;
+        return history!;
+      }),
     ],
   );
   addTearDown(container.dispose);
@@ -110,6 +122,42 @@ void main() {
 
       // No modal of either kind opened.
       expect(find.text('Renew your access'), findsNothing);
+      expect(find.text(ChatComingSoon.ctaFor(ChatGate.purchase)), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'a failed archive check opens the renew modal, not the buy modal — a lookup '
+    'error is not a confirmed-empty archive (adityas/42)',
+    (tester) async {
+      final container = _noneContainer(
+        historyError: Exception('archive check blip'),
+      );
+      await _pumpPill(tester, container);
+      await tester.pump(); // flush the archive check's microtask → error
+
+      await tester.tap(find.byType(InkWell));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Renew your access'), findsOneWidget);
+      expect(find.text(ChatComingSoon.ctaFor(ChatGate.purchase)), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'a non-empty in-session transcript opens the renew modal even when the '
+    'archive check reads empty — a first-conversation user keeps renew after a '
+    'mid-session 403 (adityas/42)',
+    (tester) async {
+      final container = _noneContainer(history: Future.value(false));
+      container.read(conversationProvider.notifier).appendUser('hello');
+      await _pumpPill(tester, container);
+      await tester.pump();
+
+      await tester.tap(find.byType(InkWell));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Renew your access'), findsOneWidget);
       expect(find.text(ChatComingSoon.ctaFor(ChatGate.purchase)), findsNothing);
     },
   );

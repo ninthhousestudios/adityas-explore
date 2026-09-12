@@ -205,6 +205,7 @@ ProviderContainer _container(
   Clock? clock,
   UsageClient? usageClient,
   ConsentClient? consentClient,
+  Future<bool> Function()? archiveCheck,
 }) {
   final container = ProviderContainer(
     overrides: [
@@ -230,6 +231,8 @@ ProviderContainer _container(
       // entitlement fetch stays out of the graph (adityas/ai/194).
       entitlementSettledProvider.overrideWithValue(true),
       if (clock != null) clockProvider.overrideWithValue(clock),
+      if (archiveCheck != null)
+        hasConversationsProvider.overrideWith((ref) => archiveCheck()),
     ],
   );
   addTearDown(container.dispose);
@@ -284,6 +287,38 @@ void main() {
     expect(convo.messages.last.text, 'Hello');
     // Tree: the assistant reply threads beneath the user message.
     expect(convo.messages.last.parentId, convo.messages.first.id);
+  });
+
+  test('the first completed turn refreshes the archive signal so a stale '
+      'pre-mint `false` cannot survive to a later lapse (adityas/42)', () async {
+    var archiveChecks = 0;
+    final transport = _FakeTransport();
+    final container =
+        _container(
+            transport,
+            // The archive reads empty (a stale pre-mint cache); count each check.
+            archiveCheck: () async {
+              archiveChecks++;
+              return false;
+            },
+          )
+          // Keep the autoDispose archive provider alive (as the always-mounted
+          // AccountButton does in-app) so an invalidate re-runs it, not no-ops.
+          ..listen(hasConversationsProvider, (_, _) {});
+    await _pump();
+    expect(archiveChecks, 1); // initial check
+
+    // One full turn to completion mints the conversation server-side.
+    container.read(chatTurnProvider.notifier).send('hello');
+    transport
+      ..emit(const DeltaEvent('hi', 'e1'))
+      ..emit(const DoneEvent('e2'));
+    await _pump();
+
+    // _finish refreshed the archive signal: the stale `false` is re-fetched, so a
+    // later New Chat (clearing the transcript) + a 403 reads the fresh archive and
+    // lands on the renew surface, not the never-entitled buy stub (adityas/42).
+    expect(archiveChecks, 2);
   });
 
   test('cancel: server-side stop, still billed (non-refunding)', () async {

@@ -135,15 +135,27 @@ String _liveLabel(WidgetTester tester) =>
     tester.widget<StreamingLiveRegion>(find.byType(StreamingLiveRegion)).label;
 
 /// A signed-in user with no live window ([ChatAccess.none]); [history] resolves
-/// hasConversationsProvider (whether the user has archived conversations). Used
-/// for the gate-routing tests (adityas/ai/183): a none user *with* history lands
-/// on the renew surface, one *without* on the never-entitled buy stub.
-ProviderContainer _noneContainer({required Future<bool> history}) {
+/// hasConversationsProvider (whether the user has archived conversations), or
+/// [historyError] makes the archive check fail. Used for the gate-routing tests
+/// (adityas/ai/183, adityas/42): a none user *with* history (or a failed check)
+/// lands on the renew surface, one with a confirmed-empty archive on the buy stub.
+/// [historyError] throws lazily inside the provider so the errored future is never
+/// dangling (which flutter_test would flag as an unhandled async error).
+ProviderContainer _noneContainer({
+  Future<bool>? history,
+  Exception? historyError,
+}) {
   final container = ProviderContainer(
+    // No retry: an errored archive check would otherwise schedule a backoff
+    // retry timer that never settles under fake-async and leaks past dispose.
+    retry: (_, _) => null,
     overrides: [
       authProvider.overrideWith(_StubAuth.new),
       chatAccessProvider.overrideWithValue(ChatAccess.none),
-      hasConversationsProvider.overrideWith((ref) => history),
+      hasConversationsProvider.overrideWith((ref) async {
+        if (historyError != null) throw historyError;
+        return history!;
+      }),
     ],
   );
   addTearDown(container.dispose);
@@ -405,6 +417,43 @@ void main() {
       // Neither gate resolves while the archive check is in flight.
       expect(find.text(ChatComingSoon.ctaFor(ChatGate.purchase)), findsNothing);
       expect(find.text(chatRenewCtaLabel), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'a failed archive check lands a none user on the renew surface, not the buy '
+    'stub — a lookup error is not a confirmed-empty archive (adityas/42)',
+    (tester) async {
+      final container = _noneContainer(
+        historyError: Exception('archive check blip'),
+      );
+      await _pumpPanel(tester, container);
+      await tester.pumpAndSettle(); // resolve the archive future to an error
+
+      expect(find.text(chatRenewPanelCopy), findsOneWidget);
+      expect(find.text(chatRenewCtaLabel), findsOneWidget);
+      // Never the buy stub — a backend blip must not strand a former subscriber.
+      expect(find.text(ChatComingSoon.ctaFor(ChatGate.purchase)), findsNothing);
+      expect(find.text(ChatComingSoon.purchaseBody), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'a non-empty in-session transcript keeps a none user on the renew surface '
+    'even when the archive check reads empty — a mid-session 403 after minting '
+    'the first conversation never reverts to the buy stub (adityas/42)',
+    (tester) async {
+      // The archive still reads `false` (stale pre-mint cache), but the user has
+      // a live transcript from the conversation they just had.
+      final container = _noneContainer(history: Future.value(false));
+      container.read(conversationProvider.notifier).appendUser('hello');
+      await _pumpPanel(tester, container);
+      await tester.pump();
+
+      expect(find.text(chatRenewPanelCopy), findsOneWidget);
+      expect(find.text(chatRenewCtaLabel), findsOneWidget);
+      expect(find.text(ChatComingSoon.ctaFor(ChatGate.purchase)), findsNothing);
+      expect(find.text(ChatComingSoon.purchaseBody), findsNothing);
     },
   );
 }

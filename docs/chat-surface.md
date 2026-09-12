@@ -141,20 +141,45 @@ same shop page.
 audience) and a **former subscriber whose `access_until` was cleared/deleted**
 (refund, chargeback, admin revoke). Natural expiry leaves `access_until`
 non-null-in-the-past → `lapsed`; only a *cleared* entitlement collapses to
-`none`. So the `none` surface forks again on **archive existence** —
-`hasConversationsProvider` (`lib/state/conversation.dart`), the same signal that
-gates the account-menu *Conversations* item (adityas/ai/181):
+`none`. So the `none` surface forks again on whether the user **owns chat
+history**. Both chat surfaces read this from one shared helper, `chatAccessFork`
+(`lib/state/entitlement.dart`), so the panel and pill cannot drift (adityas/42);
+it answers from two independent signals, either sufficient:
 
-- **`none` + has archived conversations** → the **renew surface**: the renew ask
+- an **in-session transcript** (`conversationProvider`) — the strongest signal,
+  and the one that defends the *visible* thread when a mid-session 403 clears
+  access. It holds even if the archive check cached `false` before this
+  conversation was minted (adityas/42).
+- **archived conversations** (`hasConversationsProvider`,
+  `lib/state/conversation.dart`) — the same signal that gates the account-menu
+  *Conversations* item (adityas/ai/181), for a fresh open with no in-session
+  thread. A lookup **error is not a confirmed-empty archive** (that provider's
+  contract, ai/181): it reads as history too, matching the account menu
+  (`account_button.dart`) rather than stranding a former subscriber on the buy
+  stub during a backend blip (adityas/42).
+
+The fork then routes:
+
+- **`none` + owns history** → the **renew surface**: the renew ask
   (`chatRenewPanelCopy`) plus a pointer to where the history still lives
   (`chatRenewPanelHistoryNote` → account menu → *Conversations*), and a **Renew
   Solar Prism** CTA. In the panel this is `_renewSurface` / `_renewCta`
   (`ui/chat_panel.dart`); on the explore pill the look-alike opens
   `showChatRenewModal` instead of the coming-soon modal.
-- **`none` + no history** → the never-entitled buy/sign-in stub described above.
-- While the archive check is unresolved, both surfaces stay in the *pending*
-  state (panel: quiet loader; pill: inert look-alike) — the buy stub never
-  flashes before the fork settles.
+- **`none` + confirmed no history** → the never-entitled buy/sign-in stub
+  described above.
+- While the archive check is on its *first* load (nothing known yet), both
+  surfaces stay in the *pending* state (panel: quiet loader; pill: inert
+  look-alike) — the buy stub never flashes before the fork settles. A reload that
+  retains a prior value or error is not pending (it answers from what it has).
+
+The archive signal can go stale while warm: `hasConversationsProvider` is
+`autoDispose` but the always-mounted account button keeps it subscribed, and
+nothing invalidated it when a conversation was minted — so it could cache `false`
+for a user before their first conversation. The first *completed* turn now
+refreshes it (`ChatTurnNotifier._finish` → `ref.invalidate(hasConversationsProvider)`,
+`lib/state/chat_turn.dart`), so a later New Chat + 403 reads the fresh archive,
+not the stale `false` (adityas/42).
 
 This also cures a **flash-then-revert**: a mid-session 403 latches
 `TurnAccessLapsed` (renew bubble) *and* invalidates entitlement; when the refetch

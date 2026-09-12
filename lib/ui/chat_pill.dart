@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../state/auth.dart';
 import '../state/chat_turn.dart';
 import '../state/consent.dart';
-import '../state/conversation.dart';
 import '../state/entitlement.dart';
 import 'chat_coming_soon.dart';
 import 'chat_composer.dart';
@@ -62,23 +61,17 @@ class ChatPill extends ConsumerWidget {
     final access = ref.watch(chatAccessProvider);
     final enabled =
         access == ChatAccess.available || access == ChatAccess.lapsed;
-    // A signed-in former subscriber whose window is gone (→ none) but who still
-    // has archived conversations opens the *renew* modal, not the buy modal —
-    // keyed on archive existence, mirroring the panel (adityas/ai/183) and the
-    // picker's "Renew to resume" (ai/181). Watched only for none, so entitled /
-    // lapsed users never trigger the list() fetch (the account menu already keeps
-    // it warm for signed-in users). Signed-out has no history → still the buy/
-    // sign-in modal.
-    final history = access == ChatAccess.none
-        ? ref.watch(hasConversationsProvider)
-        : null;
-    final renew = history?.value ?? false;
-    // Entitlement still resolving, or the archive check for a none user hasn't
-    // settled: an inert look-alike, no modal — a signed-in entitled user must not
-    // be prompted to buy mid-fetch (adityas/ai/194) and the buy modal must not
-    // open before the renew/buy fork settles (adityas/ai/183).
-    final pending =
-        access == ChatAccess.pending || (history?.isLoading ?? false);
+    // A signed-in former subscriber whose window is gone (→ none) but who owns
+    // chat history opens the *renew* modal, not the buy modal — mirroring the
+    // panel (adityas/ai/183) and the picker's "Renew to resume" (ai/181). History
+    // is an in-session transcript OR archived conversations, and an archive-check
+    // error reads as history; [chatAccessFork] holds the shared derivation so the
+    // pill and panel cannot drift (adityas/42). [pending] (unresolved entitlement,
+    // adityas/ai/194, or an in-flight archive check) keeps the look-alike inert so
+    // no modal opens before the fork settles.
+    final fork = chatAccessFork(ref, access);
+    final renew = fork.renew;
+    final pending = fork.pending;
     // Mirror the panel's gate (chat_panel.dart): a proactive GET that found the
     // T&C version stale, or a mid-session 428 latched into TurnConsentRequired
     // before that refetch lands. `.select` so a live turn's every delta does not

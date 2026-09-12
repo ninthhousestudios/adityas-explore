@@ -770,9 +770,19 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     // ledger can tell the two apart (see TurnDone).
     state = TurnDone(text: _buffer.toString(), usage: _usage);
     if (_buffer.isNotEmpty) {
+      // The first reply of a session-new conversation mints its archive row
+      // server-side; refresh the archive signal so the chat none-fork (ai/183)
+      // and the account menu (ai/181) stop reading a stale pre-mint `false` —
+      // otherwise a later New Chat clears the in-session transcript and a 403
+      // reverts a first-conversation user to the buy stub (adityas/42 finding 1).
+      final firstReply = !ref
+          .read(conversationProvider)
+          .messages
+          .any((m) => m.role == MessageRole.assistant);
       ref
           .read(conversationProvider.notifier)
           .appendAssistant(_buffer.toString());
+      if (firstReply) ref.invalidate(hasConversationsProvider);
     }
     // A settled turn is the only time the window spend moves — refetch the
     // headroom so the near-ceiling notice reflects it without a wall-clock poll

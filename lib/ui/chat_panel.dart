@@ -233,24 +233,16 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
     final access = ref.watch(chatAccessProvider);
     final enabled =
         access == ChatAccess.available || access == ChatAccess.lapsed;
-    // A signed-in former subscriber whose window is gone (→ none) but who still
-    // has archived conversations gets the *renew* surface — the renew CTA + a
-    // pointer to their history — not the never-entitled buy stub (adityas/ai/183).
-    // Archive existence, not entitlement rows, is the signal (the same split
-    // ai/181 made for the Conversations picker); signed-out users have no history
-    // (hasConversationsProvider short-circuits to false) so they stay on the
-    // sign-in gate. Watched only for none, so entitled/lapsed users never trigger
-    // the list() fetch.
-    final history = access == ChatAccess.none
-        ? ref.watch(hasConversationsProvider)
-        : null;
-    final renew = history?.value ?? false;
-    // Entitlement still resolving, or the archive check for a none user hasn't
-    // settled: a quiet loading placeholder, never a gate — so a signed-in entitled
-    // user is not shown "buy Solar Prism" mid-fetch (adityas/ai/194), and the buy
-    // stub never flashes before it flips to the renew surface (adityas/ai/183).
-    final pending =
-        access == ChatAccess.pending || (history?.isLoading ?? false);
+    // A signed-in former subscriber whose window is gone (→ none) but who owns
+    // chat history gets the *renew* surface — the renew CTA + a pointer to their
+    // history — not the never-entitled buy stub (adityas/ai/183). History is an
+    // in-session transcript OR archived conversations, and an archive-check error
+    // reads as history; see [chatAccessFork] for the full derivation (adityas/42).
+    // [pending] covers both an unresolved entitlement (adityas/ai/194) and an
+    // in-flight archive check, so the buy stub never flashes before the fork settles.
+    final fork = chatAccessFork(ref, access);
+    final renew = fork.renew;
+    final pending = fork.pending;
     // For the never-entitled placeholder (ChatAccess.none): signed-out → sign in
     // to purchase; signed-in without access → buy Solar Prism (adityas/ai/85).
     final gate = ref.watch(authProvider) == null

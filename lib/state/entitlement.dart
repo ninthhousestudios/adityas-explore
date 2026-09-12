@@ -4,6 +4,7 @@ import '../api/chart_service.dart';
 import 'auth.dart';
 import 'backend.dart';
 import 'clock.dart';
+import 'conversation.dart';
 
 /// The entitlement transport, behind the [EntitlementClient] interface so
 /// headless tests inject a scripted fake. Production reads it from the shared
@@ -209,3 +210,58 @@ final chatAccessProvider = Provider<ChatAccess>((ref) {
       ? ChatAccess.none
       : ChatAccess.pending;
 });
+
+/// The buy-vs-renew fork for the chat surfaces (panel + pill). Shared so both
+/// agree on one decision (adityas/ai/183, adityas/42) — before this was duplicated
+/// and the two copies drifted on the error/stale-cache edges.
+///
+/// A signed-in former subscriber whose window is gone ([ChatAccess.none]) but who
+/// owns chat history gets [renew] (the renew surface / modal), not the
+/// never-entitled buy stub. "Owns history" is two independent signals, either
+/// sufficient:
+///   - a non-empty in-session transcript ([conversationProvider]) — the strongest
+///     signal, and the one that defends the *visible* thread when a mid-session
+///     403 clears access: it holds even if the archive check cached `false` before
+///     this conversation was minted (adityas/42 finding 1).
+///   - archived conversations ([hasConversationsProvider]) — for a fresh open with
+///     no in-session thread. A lookup *error* is NOT a confirmed-empty archive
+///     (that provider's documented contract, ai/181), so it reads as history too,
+///     matching the account menu (account_button.dart) rather than stranding a
+///     former subscriber on the buy stub during a backend blip (adityas/42 finding 2).
+///
+/// [pending] is true while the verdict is unsettled — entitlement still resolving
+/// ([ChatAccess.pending], adityas/ai/194) or the archive check still loading with
+/// no transcript to answer from — so the caller shows a quiet loader / inert state,
+/// never a gate that might flash before the fork settles (adityas/ai/183).
+typedef ChatAccessFork = ({bool renew, bool pending});
+
+ChatAccessFork chatAccessFork(WidgetRef ref, ChatAccess access) {
+  if (access != ChatAccess.none) {
+    return (renew: false, pending: access == ChatAccess.pending);
+  }
+  // A live thread answers the fork outright — don't even trigger the archive
+  // fetch, and never flash a loader over a transcript the user can see.
+  final hasSessionHistory = ref.watch(
+    conversationProvider.select((c) => c.messages.isNotEmpty),
+  );
+  if (hasSessionHistory) return (renew: true, pending: false);
+  final archive = ref.watch(hasConversationsProvider);
+  final renew = archive.when(
+    // A reload/refresh that retains a prior value or error answers from it rather
+    // than dropping back to `loading` — so a recheck-after-error (AsyncLoading
+    // carrying the error) still reads as history, not a buy-stub flash.
+    skipLoadingOnReload: true,
+    skipLoadingOnRefresh: true,
+    data: (has) => has,
+    loading: () => false,
+    // Couldn't check: not a confirmed-empty archive — favor renew over
+    // stranding a former subscriber on the buy stub (ai/181, account_button.dart).
+    error: (_, _) => true,
+  );
+  // Pending only on a *genuine* first load — nothing known yet. A reload that
+  // retains a prior value or error is not pending (we answer from what we have),
+  // so the inert/loader state never sticks once any result has landed.
+  final pending =
+      archive.isLoading && !archive.hasValue && archive.error == null;
+  return (renew: renew, pending: pending);
+}
