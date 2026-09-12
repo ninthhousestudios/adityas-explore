@@ -52,20 +52,26 @@ class _AccountButtonState extends ConsumerState<AccountButton> {
       // (adityas/ai/181, superseding that proxy). The archive naturally ages
       // out with the retention-window crypto-shred.
       final hasArchive = ref.watch(hasConversationsProvider);
+      // Trust an archive answer only when it was resolved for THIS user. On a
+      // user switch Riverpod retains the prior identity's answer as an
+      // AsyncLoading-with-previous, so reading it raw would show user B the
+      // *Conversations* item off user A's archive for a frame (adityas/ai/198
+      // finding A, matching chatAccessFork). A mismatch — or a genuine first
+      // load — reads as not-yet-known: the item stays hidden until this user's
+      // own lookup lands.
+      final archive = hasArchive.value;
       final showConversations =
           ref.watch(chatAccessProvider) == ChatAccess.available ||
-          hasArchive.when(
-            data: (archive) => archive.has,
-            // Couldn't check (offline / backend blip): don't read the unknown
-            // as a confirmed-empty archive — that would silently strand a
-            // former subscriber, since the picker holds the only Retry. Show
-            // the item so its own load/error/Retry surface stays reachable
-            // (adityas/ai/181).
-            error: (_, _) => true,
-            // Mid-refresh: keep the last known answer rather than flicker to
-            // hidden.
-            loading: () => hasArchive.value?.has ?? false,
-          );
+          // Couldn't check (offline / backend blip): don't read the unknown as a
+          // confirmed-empty archive — that would silently strand a former
+          // subscriber, since the picker holds the only Retry. Show the item so
+          // its own load/error/Retry surface stays reachable (adityas/ai/181).
+          // (An error is carried through a reload too, so this also covers the
+          // mid-refresh-after-error case.)
+          hasArchive.hasError ||
+          // Otherwise show only on a confirmed non-empty archive resolved for
+          // THIS identity — a mismatch or a genuine first load stays hidden.
+          (archive != null && archive.userId == user.id && archive.has);
       return PopupMenuButton<String>(
         icon: const Icon(Icons.person),
         tooltip: 'Account',
