@@ -513,60 +513,65 @@ void main() {
   });
 
   // ── superseded builds: a fetch abandoned by an auth change completes late and
-  //    must not retag the retained value as the current identity (adityas/ai/196,
-  //    the hole the ai/195 resolvedFor side channel left open) ────────────────
+  //    mutates the ai/195 `resolvedFor` side channel. The corruption must not be
+  //    readable on the NEXT recompute (adityas/ai/196). Ordering is load-bearing:
+  //    completing a superseded fetch publishes NO state, so it invalidates
+  //    nothing — a test that completes it *after* the exposing transition just
+  //    reads a cached value and passes even against the broken field. Each test
+  //    lands the corruption BEFORE a transition that forces the recompute, so it
+  //    genuinely fails against ai/195 and passes with identity carried in the
+  //    value (verified by running both against 957318d).
 
-  test(
-    'a superseded fetch completing late does not fabricate a confirmed none: '
-    'sign-in → sign-out → same-user sign-in stays pending (adityas/ai/196)',
-    () async {
-      final client = _ControllableClient();
-      final container = _mutableContainer(
-        user: null,
-        client: client,
-        clock: _FakeClock(DateTime.utc(2026, 8, 1)),
-      );
-      // Keep entitlement resident across the transitions (the value the guard must
-      // not misread survives only while something watches it).
-      final entSub = container.listen(entitlementProvider, (_, _) {});
-      addTearDown(entSub.close);
+  test('a superseded fetch that completes while signed out cannot fabricate a '
+      'confirmed none on the next same-user sign-in (adityas/ai/196)', () async {
+    final client = _ControllableClient();
+    final container = _mutableContainer(
+      user: null,
+      client: client,
+      clock: _FakeClock(DateTime.utc(2026, 8, 1)),
+    );
+    final accessSub = container.listen(chatAccessProvider, (_, _) {});
+    final entSub = container.listen(entitlementProvider, (_, _) {});
+    addTearDown(accessSub.close);
+    addTearDown(entSub.close);
 
-      // Sign in — fetch #0 starts, pending.
-      _setUser(container, _stubUser);
-      await _pump();
-      expect(client.calls, 1);
-      expect(container.read(chatAccessProvider), ChatAccess.pending);
+    // Sign in — fetch #0 starts (captures this user id), pending.
+    _setUser(container, _stubUser);
+    await _pump();
+    expect(client.calls, 1);
+    expect(container.read(chatAccessProvider), ChatAccess.pending);
 
-      // Sign out before #0 lands: build re-runs to the signed-out none, and #0 is
-      // now abandoned — Riverpod will never publish its result.
-      _setUser(container, null);
-      await _pump();
-      expect(container.read(chatAccessProvider), ChatAccess.none);
+    // Sign out before #0 lands: the signed-out none publishes; #0 is abandoned.
+    _setUser(container, null);
+    await _pump();
+    expect(container.read(chatAccessProvider), ChatAccess.none);
 
-      // Sign in as the SAME user again — fetch #1 starts, pending.
-      _setUser(container, _stubUser);
-      await _pump();
-      expect(client.calls, 2);
-      expect(container.read(chatAccessProvider), ChatAccess.pending);
+    // The abandoned #0 completes NOW, while signed out. Under the ai/195 side
+    // channel its continuation runs `resolvedFor = user.id` (the captured
+    // _stubUser) — corrupting the field while the published value is the
+    // signed-out none. Nothing publishes, so nothing recomputes yet.
+    client.completeAt(0, const Entitlement.none());
+    await _pump();
 
-      // The abandoned fetch #0 finally completes. Under the ai/195 resolvedFor side
-      // channel its continuation set resolvedFor = this user, retagging the
-      // retained value and flipping the surface to a false confirmed none (buy
-      // CTA). With identity carried in the published value, the discarded build
-      // publishes nothing, so the surface stays pending until #1 lands.
-      client.completeAt(0, const Entitlement.none());
-      await _pump();
-      expect(container.read(chatAccessProvider), ChatAccess.pending);
+    // Sign in as the SAME user — fetch #1 starts. This transition republishes
+    // (loading-with-previous) and forces the recompute that READS the tag.
+    //   ai/195: resolvedFor now == this user → the retained signed-out none
+    //           counts as settled → false confirmed none (buy CTA).  [FAILS here]
+    //   ai/196: the retained published value carries userId=null → rejected →
+    //           pending.
+    _setUser(container, _stubUser);
+    await _pump();
+    expect(client.calls, 2);
+    expect(container.read(chatAccessProvider), ChatAccess.pending);
 
-      // #1 lands → a correct confirmed none.
-      client.completeAt(1, const Entitlement.none());
-      await container.read(entitlementProvider.future);
-      expect(container.read(chatAccessProvider), ChatAccess.none);
-    },
-  );
+    // #1 lands → a correct confirmed none.
+    client.completeAt(1, const Entitlement.none());
+    await container.read(entitlementProvider.future);
+    expect(container.read(chatAccessProvider), ChatAccess.none);
+  });
 
-  test('a superseded fetch completing late does not leak one identity\'s window '
-      'to another: A → B → A → B stays pending for B (adityas/ai/196)', () async {
+  test('a superseded fetch that completes for the incoming user cannot leak the '
+      'prior user\'s live window on the next switch (adityas/ai/196)', () async {
     final userA = _userWithId('user-a');
     final userB = _userWithId('user-b');
     final client = _ControllableClient();
@@ -575,50 +580,46 @@ void main() {
       client: client,
       clock: _FakeClock(DateTime.utc(2026, 8, 1)), // before expiry
     );
-    // chatAccess keeps the graph resident; listen to entitlement too so the
-    // retained value survives every hop.
     final accessSub = container.listen(chatAccessProvider, (_, _) {});
     final entSub = container.listen(entitlementProvider, (_, _) {});
     addTearDown(accessSub.close);
     addTearDown(entSub.close);
 
-    // A resolves inside a live paid window (fetch #0). This is the value that
-    // stays published (retained) through the pending hops below.
+    // A resolves inside a live paid window (fetch #0) — the value that stays
+    // published (retained) through the pending hops below.
     await _pump();
     client.completeAt(0, Entitlement(accessUntil: accessUntil));
     await container.read(entitlementProvider.future);
     expect(container.read(chatAccessProvider), ChatAccess.available);
 
-    // A → B (#1) → A (#2) → B (#3), each before the prior fetch lands. B is now
-    // current; #1 (B's first, superseded), #2 (A's, superseded) and #3 (B's
-    // current) are all pending. The retained *published* value is still A's live
-    // window from #0.
+    // A → B (#1 pending) → A (#2 pending; #1 now superseded). Back on A, still
+    // A's own live window; nothing new published, so retained value is #0's.
     _setUser(container, userB);
     await _pump();
     _setUser(container, userA);
     await _pump();
+    expect(client.calls, 3);
+    expect(container.read(chatAccessProvider), ChatAccess.available);
+
+    // Complete B's *superseded* fetch (#1) NOW, while A is current. Under ai/195
+    // its continuation runs `resolvedFor = user.id` for B — corrupting the field.
+    // A is current (resolvedFor B ≠ A), so no visible effect yet.
+    client.completeAt(1, const Entitlement.none());
+    await _pump();
+
+    // Switch to B — fetch #3 starts. This transition forces the recompute that
+    // READS the tag.
+    //   ai/195: resolvedFor == B == current user → hands back the retained value,
+    //           which is A's LIVE window → B sees a paid session that isn't
+    //           theirs (available).  [FAILS here]
+    //   ai/196: the retained value carries userId=A ≠ B → rejected → pending.
     _setUser(container, userB);
     await _pump();
     expect(client.calls, 4);
-    expect(container.read(chatAccessProvider), ChatAccess.pending);
-
-    // Complete B's *superseded* first fetch (#1). Under the side channel this set
-    // resolvedFor = B, and since B is the current user the guard would then hand
-    // back the retained value — A's live window — showing B a paid session that
-    // isn't theirs. With identity in the value, #1 is discarded and the retained
-    // value still reads as A's (userId user-a ≠ user-b) → rejected.
-    client.completeAt(1, const Entitlement.none());
-    await _pump();
     expect(container.read(chatAccessProvider), isNot(ChatAccess.available));
     expect(container.read(chatAccessProvider), ChatAccess.pending);
 
-    // A's superseded refetch (#2) landing is likewise inert for B.
-    client.completeAt(2, Entitlement(accessUntil: accessUntil));
-    await _pump();
-    expect(container.read(chatAccessProvider), ChatAccess.pending);
-
-    // B's own current fetch (#3) lands as no entitlement → confirmed none, with
-    // no trace of A's window.
+    // B's own fetch (#3) lands as no entitlement → confirmed none, no trace of A.
     client.completeAt(3, const Entitlement.none());
     await container.read(entitlementProvider.future);
     expect(container.read(chatAccessProvider), ChatAccess.none);

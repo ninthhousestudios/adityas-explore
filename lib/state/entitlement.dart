@@ -75,6 +75,16 @@ class EntitlementNotifier extends AsyncNotifier<ResolvedEntitlement> {
 /// directly, never reading a retained value — so a sign-out reads as `none`
 /// immediately.
 ///
+/// Scope of the guard: it isolates *distinct* identities (B never reads A's
+/// value) and makes a genuinely new identity pending until its own fetch lands.
+/// It does **not** force pending on a user returning to their own still-resident
+/// value (e.g. A→B→A before B resolves reads A's retained window): that is the
+/// same "keep last-known while re-fetching" behavior as a refresh (adityas/ai/194)
+/// and is deliberately *not* re-gated on an auth-transition generation — the UX
+/// gate is not the security boundary (the backend re-checks every turn), the
+/// value shown is the user's own, and any real change self-heals when the fetch
+/// lands.
+///
 /// The single seam every derived provider reads, so the guard lives in one place
 /// rather than being duplicated across [chatAvailableProvider],
 /// [accessDeadlineProvider], and [entitlementSettledProvider].
