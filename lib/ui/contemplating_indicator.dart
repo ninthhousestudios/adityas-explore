@@ -28,7 +28,7 @@ class ContemplatingIndicator extends StatefulWidget {
 
 class _ContemplatingIndicatorState extends State<ContemplatingIndicator>
     with SingleTickerProviderStateMixin {
-  static const _period = Duration(milliseconds: 1800);
+  static const _period = Duration(milliseconds: 2000);
 
   late final AnimationController _ctrl = AnimationController(
     vsync: this,
@@ -114,7 +114,7 @@ class _ContemplatingIndicatorState extends State<ContemplatingIndicator>
 /// from the rim and fades as it travels. Rays are staggered around the circle
 /// so the emission ripples, and the whole crown rotates slowly.
 class _SunPainter extends CustomPainter {
-  static const _rayCount = 8;
+  static const _rayCount = 12;
 
   final double t;
   final Color color;
