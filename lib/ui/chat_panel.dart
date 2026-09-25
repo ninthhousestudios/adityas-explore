@@ -15,6 +15,7 @@ import '../state/entitlement.dart';
 import '../state/usage.dart';
 import 'chat_coming_soon.dart';
 import 'chat_composer.dart';
+import 'contemplating_indicator.dart';
 import 'message_markdown.dart';
 import 'tokens.dart';
 
@@ -528,6 +529,7 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
         dimColor,
         fontSize,
         status: 'Contemplating…',
+        animated: true,
       ),
       TurnStreaming(:final text) => _agentBubble(
         color,
@@ -535,6 +537,7 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
         fontSize,
         text: text,
         status: text.isEmpty ? 'Contemplating…' : null,
+        animated: true,
       ),
       TurnReconnecting(:final text) => _agentBubble(
         color,
@@ -626,13 +629,15 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
 
   /// The in-flight assistant bubble: streamed [text] renders plain (markdown is
   /// parsed only once the turn completes and the message lands in the list), with
-  /// an optional dim/italic [status] note beneath.
+  /// an optional dim/italic [status] note beneath. An [animated] status renders
+  /// as the [ContemplatingIndicator] (sun + rippling dots) instead of plain text.
   Widget _agentBubble(
     Color color,
     Color dimColor,
     double fontSize, {
     String text = '',
     String? status,
+    bool animated = false,
   }) {
     final hasText = text.isNotEmpty;
     return Align(
@@ -663,14 +668,21 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
               if (status != null)
                 Padding(
                   padding: EdgeInsets.only(top: hasText ? 4 : 0),
-                  child: Text(
-                    status,
-                    style: TextStyle(
-                      color: dimColor,
-                      fontSize: fontSize * 0.85,
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
+                  child: animated
+                      ? ContemplatingIndicator(
+                          label: status,
+                          textColor: dimColor,
+                          sunColor: context.tokens.gold,
+                          fontSize: fontSize * 0.85,
+                        )
+                      : Text(
+                          status,
+                          style: TextStyle(
+                            color: dimColor,
+                            fontSize: fontSize * 0.85,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
                 ),
             ],
           ),
