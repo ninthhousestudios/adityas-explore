@@ -330,6 +330,9 @@ class _ConversationsDialogState extends ConsumerState<_ConversationsDialog> {
   // Id of the conversation whose PDF export is in flight; its Download button
   // shows a spinner and is disabled to swallow re-taps (adityas/ai/106).
   String? _downloadingId;
+  // Id of the conversation whose transcript fetch (Resume) is in flight; its
+  // Resume button spins until the chat opens, and re-taps are swallowed.
+  String? _resumingId;
   List<ConversationSummary> _items = const [];
 
   ConversationService get _service => ref.read(conversationServiceProvider);
@@ -370,6 +373,11 @@ class _ConversationsDialogState extends ConsumerState<_ConversationsDialog> {
   }
 
   Future<void> _resume(ConversationSummary c) async {
+    if (_resumingId != null) return;
+    setState(() {
+      _resumingId = c.id;
+      _actionError = null;
+    });
     try {
       final history = await _service.fetch(c.id);
       final messages = history.messages
@@ -394,6 +402,8 @@ class _ConversationsDialogState extends ConsumerState<_ConversationsDialog> {
       _showActionError('Could not open that conversation. ${e.message}');
     } catch (_) {
       _showActionError('Could not open that conversation.');
+    } finally {
+      if (mounted) setState(() => _resumingId = null);
     }
   }
 
@@ -654,7 +664,13 @@ class _ConversationsDialogState extends ConsumerState<_ConversationsDialog> {
             ),
           ),
           if (canResume)
-            _action(Icons.play_arrow, 'Resume', t.gold, () => _resume(c))
+            _action(
+              Icons.play_arrow,
+              'Resume',
+              t.gold,
+              () => _resume(c),
+              loading: _resumingId == c.id,
+            )
           else
             // Access has lapsed: Resume would dead-end on the backend's turn
             // gate (403), so offer renewal instead of a play button that fails
