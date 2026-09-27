@@ -159,11 +159,13 @@ idle → connecting → streaming ⇄ reconnecting
                        │  ├→ error         (terminal-with-retry; carries last cursor)
                        │  ├→ access-lapsed  (window closed: clock crossed access_until, or a 403; renew prompt, no retry)
                        │  ├→ ceiling        (usage window spent: a 402; at-ceiling notice, no retry)
+                       │  ├→ busy           (503 after wire retries, or 429; calm notice, resend allowed)
                        │  └→ done
 ```
 
 A sealed class hierarchy (`idle` / `connecting` / `streaming` / `reconnecting` /
-`done` / `error` / `cancelled` / `access-lapsed` / `ceiling`), exhaustively matched.
+`done` / `error` / `cancelled` / `access-lapsed` / `ceiling` / `busy`), exhaustively
+matched.
 
 - **`access-lapsed` is a deliberate gate, not an error** (adityas/ai/99).
   Two paths converge on it: the injected clock crossing `access_until` mid-turn,
@@ -191,6 +193,19 @@ A sealed class hierarchy (`idle` / `connecting` / `streaming` / `reconnecting` /
   (`usageProvider` + `usageNearCeilingPctProvider`), refetched after each turn
   settles.
 
+- **`busy` is a load refusal, not an error** (adityas/ai/215). A **503** on
+  `POST .../turns` is the server-wide concurrent-generation ceiling: the wire
+  (`SseTurnTransport`) re-POSTs it after 1s/2s/4s (jittered ±25%) before giving
+  up, and a Stop during a backoff abandons the turn. A **429** is the per-user
+  stream cap or the per-user write rate limit — one status for both, so one
+  notice covers both; never retried. Either lands on `busy` with a
+  `BusyReason`, rendered as a calm notice. Nothing is latched: the next send
+  just tries again. More generally, any status-carrying rejection is a refused
+  opening POST, not a dropped stream, so it never enters the reconnect path —
+  there is no turn id to resume.
+- **Queued behind the provider gate.** A `waiting` SSE event (backend I14: the
+  org-wide provider token bucket is empty) sets `streaming.queued`; the panel
+  shows a queued status in place of *Contemplating…* until the next event.
 - **Delta buffer + `Last-Event-ID` cursor live in the Notifier**, not the widget.
   `reconnecting` replays from the cursor. The buffer is the streaming text
   accumulated so far; the cursor is the resume point.

@@ -114,6 +114,15 @@ class UsageEvent extends TurnEvent {
   const UsageEvent(this.usage, super.eventId);
 }
 
+/// The turn is queued behind the org-wide provider rate gate (backend I14,
+/// US-28): the server accepted it but is holding the vendor call until the
+/// provider token bucket refills. Content-free by contract (I19) — the wire's
+/// `{provider}` label is deliberately dropped. Not terminal: the next event
+/// (normally the first delta) means generation has begun.
+class WaitingEvent extends TurnEvent {
+  const WaitingEvent(super.eventId);
+}
+
 /// Clean terminal signal: the generation completed.
 class DoneEvent extends TurnEvent {
   const DoneEvent(super.eventId);
@@ -144,8 +153,10 @@ class UnknownEvent extends TurnEvent {
 /// (null for a pre-flight failure), so the notifier can branch a deliberate
 /// server *gate* apart from a transient transport drop: **403** = access lapsed
 /// (adityas/ai/99 → renew prompt, no retry), **402** = usage ceiling (ai/100),
-/// **428** = consent stale (ai/98). Any other status, or null, is a generic
-/// terminal error handled after the reconnect budget.
+/// **428** = consent stale (ai/98), **503** = server at capacity (the wire
+/// already retried it — adityas/ai/215), **429** = too many turns/requests at
+/// once for this user (ai/215). Any other status is a generic terminal error;
+/// null (a pre-flight failure) is handled after the reconnect budget.
 class TurnTransportException implements Exception {
   final String message;
   final int? statusCode;

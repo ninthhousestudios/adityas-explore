@@ -5,6 +5,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+
+import 'package:explore/ai/sse_turn_transport.dart';
 import 'package:explore/api/chart_service.dart';
 import 'package:explore/state/auth.dart';
 import 'package:explore/state/chat_turn.dart';
@@ -1301,25 +1305,6 @@ void main() {
     expect(convo.messages.last.text, 'partial');
   });
 
-  test('a non-gate status is transient → reconnects', () async {
-    final transport = _FakeTransport();
-    final container = _container(transport);
-
-    container.read(chatTurnProvider.notifier).send('hi');
-    transport.emit(const DeltaEvent('one', 'e1'));
-    await _pump();
-
-    // A 500 (or any non-403/402/428) is treated as a transient drop, not a
-    // deliberate gate — it still spends the reconnect budget.
-    transport.dropStream(
-      const TurnTransportException('server error', statusCode: 500),
-    );
-    await _pump();
-
-    expect(container.read(chatTurnProvider), isA<TurnReconnecting>());
-    expect(transport.resumes, 1);
-  });
-
   test('send is refused (never-entitled) with a generic error', () {
     final transport = _FakeTransport();
     // No deadline → chatAccess is `none` (never entitled / signed out).
@@ -1535,5 +1520,178 @@ void main() {
     expect(transport.conversationId, isNull);
     expect(container.read(conversationProvider).messages, isEmpty);
     expect(container.read(chatTurnProvider), isA<TurnIdle>());
+  });
+
+  group('provider queueing and load refusals (adityas/ai/215)', () {
+    test(
+      'waiting → delta: queued until the first delta, then streaming',
+      () async {
+        final transport = _FakeTransport();
+        final container = _container(transport);
+
+        container.read(chatTurnProvider.notifier).send('hello');
+        transport.emit(const WaitingEvent('w1'));
+        await _pump();
+        final queued = container.read(chatTurnProvider);
+        expect(queued, isA<TurnStreaming>());
+        expect((queued as TurnStreaming).queued, isTrue);
+        expect(queued.text, isEmpty);
+
+        transport.emit(const DeltaEvent('Hi', 'e1'));
+        await _pump();
+        final streaming = container.read(chatTurnProvider) as TurnStreaming;
+        expect(streaming.queued, isFalse);
+        expect(streaming.text, 'Hi');
+      },
+    );
+
+    test('waiting → done settles cleanly', () async {
+      final transport = _FakeTransport();
+      final container = _container(transport);
+
+      container.read(chatTurnProvider.notifier).send('hello');
+      transport
+        ..emit(const WaitingEvent('w1'))
+        ..emit(const DoneEvent('e1'));
+      await _pump();
+      expect(container.read(chatTurnProvider), isA<TurnDone>());
+    });
+
+    test('waiting → error ends in TurnError', () async {
+      final transport = _FakeTransport();
+      final container = _container(transport);
+
+      container.read(chatTurnProvider.notifier).send('hello');
+      transport.emit(const WaitingEvent('w1'));
+      await _pump();
+      transport.emit(const ErrorEvent('turn timed out', 'e1'));
+      await _pump();
+      final error = container.read(chatTurnProvider);
+      expect(error, isA<TurnError>());
+      expect((error as TurnError).message, 'turn timed out');
+    });
+
+    test('waiting → cancel leaves the queued state', () async {
+      final transport = _FakeTransport();
+      final container = _container(transport);
+      final notifier = container.read(chatTurnProvider.notifier)..send('hello');
+      transport.emit(const WaitingEvent('w1'));
+      await _pump();
+
+      await notifier.cancel();
+      expect(container.read(chatTurnProvider), isA<TurnCancelled>());
+      expect(transport.cancels, 1);
+    });
+
+    for (final (status, reason) in [
+      (503, BusyReason.atCapacity),
+      (429, BusyReason.tooManyAtOnce),
+    ]) {
+      test(
+        '$status on the turn POST → TurnBusy(${reason.name}), no reconnect',
+        () async {
+          final transport = _FakeTransport();
+          final container = _container(transport);
+
+          container.read(chatTurnProvider.notifier).send('hello');
+          transport.dropStream(
+            TurnTransportException('busy', statusCode: status),
+          );
+          await _pump();
+
+          final busy = container.read(chatTurnProvider);
+          expect(busy, isA<TurnBusy>());
+          expect((busy as TurnBusy).reason, reason);
+          expect(transport.resumes, 0);
+        },
+      );
+    }
+
+    test('busy is not latched: the next send opens a fresh turn', () async {
+      final transport = _FakeTransport();
+      final container = _container(transport);
+      final notifier = container.read(chatTurnProvider.notifier)..send('one');
+      transport.dropStream(
+        const TurnTransportException('busy', statusCode: 503),
+      );
+      await _pump();
+      expect(container.read(chatTurnProvider), isA<TurnBusy>());
+
+      expect(notifier.send('two'), isTrue);
+      expect(transport.starts, 2);
+      expect(container.read(chatTurnProvider), isA<TurnConnecting>());
+    });
+
+    test('any other REST rejection fails at once with its own message, not '
+        'after spending the reconnect budget on resume()', () async {
+      final transport = _FakeTransport();
+      final container = _container(transport);
+
+      container.read(chatTurnProvider.notifier).send('hello');
+      transport.dropStream(
+        const TurnTransportException('Request failed (500)', statusCode: 500),
+      );
+      await _pump();
+
+      final error = container.read(chatTurnProvider);
+      expect(error, isA<TurnError>());
+      expect((error as TurnError).message, 'Request failed (500)');
+      expect(transport.resumes, 0);
+    });
+
+    group('through the real SSE wire', () {
+      /// The real transport over a mock whose turn POST answers [turnStatuses]
+      /// in order, then 202 with a one-delta stream.
+      SseTurnTransport wire(List<int> turnStatuses) {
+        var turnPosts = 0;
+        return SseTurnTransport(
+          tokenProvider: ({forceRefresh = false}) async => 'jwt',
+          baseUrl: 'https://api.test',
+          httpClient: MockClient((request) async {
+            if (request.url.path.endsWith('/conversations')) {
+              return http.Response('{"conversation_id":"c1"}', 201);
+            }
+            final i = turnPosts++;
+            if (i < turnStatuses.length) {
+              return http.Response('{"error":"x"}', turnStatuses[i]);
+            }
+            return http.Response('{"turn_id":"t1"}', 202);
+          }),
+          byteSource: (uri, headers) => Stream.value(
+            'event: delta\nid: 0\ndata: {"text":"Hi"}\n\n'
+                    'event: done\nid: 1\ndata: {}\n\n'
+                .codeUnits,
+          ),
+          delay: (_) async {},
+        );
+      }
+
+      test('503 → retry → success streams the reply', () async {
+        final container = _container(wire([503, 503]));
+        container.read(chatTurnProvider.notifier).send('hello');
+        await _pump(60);
+        final done = container.read(chatTurnProvider);
+        expect(done, isA<TurnDone>());
+        expect((done as TurnDone).text, 'Hi');
+      });
+
+      test('503 → retries exhausted → at-capacity notice', () async {
+        final container = _container(wire(List.filled(10, 503)));
+        container.read(chatTurnProvider.notifier).send('hello');
+        await _pump(60);
+        final busy = container.read(chatTurnProvider);
+        expect(busy, isA<TurnBusy>());
+        expect((busy as TurnBusy).reason, BusyReason.atCapacity);
+      });
+
+      test('429 → too-many-at-once notice', () async {
+        final container = _container(wire([429]));
+        container.read(chatTurnProvider.notifier).send('hello');
+        await _pump(60);
+        final busy = container.read(chatTurnProvider);
+        expect(busy, isA<TurnBusy>());
+        expect((busy as TurnBusy).reason, BusyReason.tooManyAtOnce);
+      });
+    });
   });
 }

@@ -851,4 +851,159 @@ void main() {
       expect(cancelPosts, 0);
     });
   });
+
+  group('SseTurnTransport 503 capacity retry (adityas/ai/215)', () {
+    test('decodes a waiting frame, dropping the provider label', () {
+      expect(
+        decodeTurnFrame(
+          const SseFrame('waiting', '{"provider":"anthropic"}', '4'),
+        ),
+        isA<WaitingEvent>().having((e) => e.eventId, 'eventId', '4'),
+      );
+    });
+
+    /// A mock whose turn POST answers each status in [turnStatuses] in order
+    /// (then 202), counting the turn POSTs.
+    ({MockClient mock, int Function() turnPosts}) scripted(
+      List<int> turnStatuses,
+    ) {
+      var turnPosts = 0;
+      final mock = MockClient((request) async {
+        if (request.url.path.endsWith('/conversations')) {
+          return http.Response(jsonEncode({'conversation_id': 'c1'}), 201);
+        }
+        final i = turnPosts++;
+        if (i < turnStatuses.length) {
+          return http.Response(
+            jsonEncode({'error': 'service not configured'}),
+            turnStatuses[i],
+          );
+        }
+        return http.Response(jsonEncode({'turn_id': 't1'}), 202);
+      });
+      return (mock: mock, turnPosts: () => turnPosts);
+    }
+
+    test('503 → backoff → re-POST → the turn streams', () async {
+      final (:mock, :turnPosts) = scripted([503, 503]);
+      final delays = <Duration>[];
+      final transport = SseTurnTransport(
+        tokenProvider: ({forceRefresh = false}) async => 'jwt',
+        baseUrl: 'https://api.test',
+        httpClient: mock,
+        byteSource: _FakeByteSource(_happyStream).call,
+        delay: (d) async => delays.add(d),
+      );
+
+      final events = await transport
+          .start(const TurnRequest(text: 'hi'))
+          .toList();
+
+      expect(turnPosts(), 3);
+      expect(delays, hasLength(2));
+      // Jittered within ±25% of the first two backoff steps.
+      for (var i = 0; i < delays.length; i++) {
+        final base = capacityRetryBackoff[i].inMicroseconds;
+        expect(delays[i].inMicroseconds, greaterThanOrEqualTo(base * 0.75));
+        expect(delays[i].inMicroseconds, lessThan(base * 1.25));
+      }
+      expect(events.last, isA<DoneEvent>());
+    });
+
+    test(
+      '503 past the retry budget surfaces as a status-carrying 503',
+      () async {
+        final (:mock, :turnPosts) = scripted(List.filled(10, 503));
+        final transport = SseTurnTransport(
+          tokenProvider: ({forceRefresh = false}) async => 'jwt',
+          baseUrl: 'https://api.test',
+          httpClient: mock,
+          byteSource: _FakeByteSource(_happyStream).call,
+          delay: (_) async {},
+        );
+
+        await expectLater(
+          transport.start(const TurnRequest(text: 'hi')).toList(),
+          throwsA(
+            isA<TurnTransportException>().having(
+              (e) => e.statusCode,
+              'statusCode',
+              503,
+            ),
+          ),
+        );
+        expect(turnPosts(), 1 + capacityRetryBackoff.length);
+      },
+    );
+
+    test('429 is not retried', () async {
+      final (:mock, :turnPosts) = scripted([429]);
+      final transport = SseTurnTransport(
+        tokenProvider: ({forceRefresh = false}) async => 'jwt',
+        baseUrl: 'https://api.test',
+        httpClient: mock,
+        byteSource: _FakeByteSource(_happyStream).call,
+        delay: (_) async => fail('429 must not back off'),
+      );
+
+      await expectLater(
+        transport.start(const TurnRequest(text: 'hi')).toList(),
+        throwsA(
+          isA<TurnTransportException>().having(
+            (e) => e.statusCode,
+            'statusCode',
+            429,
+          ),
+        ),
+      );
+      expect(turnPosts(), 1);
+    });
+
+    test('Stop during a backoff abandons the turn without re-POSTing, and the '
+        'stop resolves as in effect', () async {
+      final (:mock, :turnPosts) = scripted(List.filled(10, 503));
+      final backoff = Completer<void>();
+      final transport = SseTurnTransport(
+        tokenProvider: ({forceRefresh = false}) async => 'jwt',
+        baseUrl: 'https://api.test',
+        httpClient: mock,
+        byteSource: _FakeByteSource(_happyStream).call,
+        delay: (_) => backoff.future,
+      );
+
+      final done = transport.start(const TurnRequest(text: 'hi')).toList();
+      await _pumpUntil(() => turnPosts() == 1);
+      final stopped = transport.cancel();
+      backoff.complete();
+
+      expect(await done, isEmpty);
+      expect(await stopped, isTrue);
+      expect(turnPosts(), 1);
+    });
+
+    test('a Stop latched while the POST is refused resolves rather than '
+        'stranding', () async {
+      final gate = Completer<http.Response>();
+      final mock = MockClient((request) async {
+        if (request.url.path.endsWith('/conversations')) {
+          return http.Response(jsonEncode({'conversation_id': 'c1'}), 201);
+        }
+        return gate.future;
+      });
+      final transport = SseTurnTransport(
+        tokenProvider: ({forceRefresh = false}) async => 'jwt',
+        baseUrl: 'https://api.test',
+        httpClient: mock,
+        byteSource: _FakeByteSource(_happyStream).call,
+      );
+
+      final done = transport.start(const TurnRequest(text: 'hi')).toList();
+      await _pumpUntil(() => false); // let start() reach the pending turn POST
+      final stopped = transport.cancel();
+      gate.complete(http.Response(jsonEncode({'error': 'slow down'}), 429));
+
+      await expectLater(done, throwsA(isA<TurnTransportException>()));
+      expect(await stopped, isTrue);
+    });
+  });
 }

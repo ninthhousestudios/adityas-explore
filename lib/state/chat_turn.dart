@@ -25,6 +25,7 @@ import 'usage.dart';
 ///                        │  ├→ access-lapsed   (window closed: clock or 403; renew prompt, no retry)
 ///                        │  ├→ ceiling         (usage spent: 402; at-ceiling notice, no retry)
 ///                        │  ├→ consent-required (T&C stale: 428; re-consent gate, no retry)
+///                        │  ├→ busy            (503 after wire retries / 429; calm notice, resend)
 ///                        │  └→ done
 /// ```
 ///
@@ -49,11 +50,20 @@ class TurnConnecting extends ChatTurn {
 
 /// Tokens are arriving. [text] is the accumulated delta buffer; [cursor] is the
 /// `Last-Event-ID` resume point.
+///
+/// [queued] is true while the server holds the turn behind the provider rate
+/// gate (a [WaitingEvent], adityas/ai/215) — accepted, but generation has not
+/// started. It clears on the next event, normally the first delta.
 class TurnStreaming extends ChatTurn {
   final String text;
   final String? cursor;
+  final bool queued;
 
-  const TurnStreaming({required this.text, required this.cursor});
+  const TurnStreaming({
+    required this.text,
+    required this.cursor,
+    this.queued = false,
+  });
 }
 
 /// The stream dropped; re-attaching from [cursor]. [text] so far is preserved
@@ -169,6 +179,31 @@ class TurnConsentRequired extends ChatTurn {
   const TurnConsentRequired({required this.text, required this.usage});
 }
 
+/// Why the server turned a message away for load, not policy ([TurnBusy]).
+enum BusyReason {
+  /// 503 — the server-wide concurrent-generation ceiling is hit, and the wire's
+  /// automatic re-POSTs ([TurnTransport.start]) did not get through. Transient.
+  atCapacity,
+
+  /// 429 — this user has too many turns in flight (the per-user stream cap, e.g.
+  /// several open tabs) or sent too many requests too fast. The backend uses one
+  /// status for both, so the notice covers both.
+  tooManyAtOnce,
+}
+
+/// The server refused the turn for load (adityas/ai/215).
+///
+/// Terminal and distinct from [TurnError]: nothing is broken, so the UI shows a
+/// calm notice rather than the red error bubble, and — unlike the 402/403/428
+/// gates — nothing is latched: the next [ChatTurnNotifier.send] simply tries
+/// again. Pre-accept (the turn POST was refused), so no text streamed, nothing
+/// was billed and there is no resume [cursor].
+class TurnBusy extends ChatTurn {
+  final BusyReason reason;
+
+  const TurnBusy(this.reason);
+}
+
 /// The chat turn.
 ///
 /// **keepAlive `NotifierProvider` owning an imperative subscription — NOT a
@@ -196,6 +231,10 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
 
   StreamSubscription<TurnEvent>? _sub;
   int _reconnects = 0;
+
+  // The turn is held behind the provider rate gate: the last event was a
+  // [WaitingEvent] (adityas/ai/215). Published as [TurnStreaming.queued].
+  bool _queued = false;
 
   // A cancelled turn keeps its subscription open to receive the server's
   // trailing usage/done (non-refunding settlement). `_cancelling` is the latch
@@ -522,7 +561,11 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     _cancelling = false;
     state = _buffer.isEmpty
         ? const TurnConnecting()
-        : TurnStreaming(text: _buffer.toString(), cursor: _cursor);
+        : TurnStreaming(
+            text: _buffer.toString(),
+            cursor: _cursor,
+            queued: _queued,
+          );
   }
 
   /// Rotate to a fresh conversation without changing the chart (New Chat, and
@@ -601,6 +644,9 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     // (adityas/ai/198 finding B).
     _reflectConversationMint();
     _cursor = event.eventId; // advance on every event, even ignored ones
+    // The server emits nothing else while a turn waits at the provider gate, so
+    // any other event means generation began (adityas/ai/215).
+    _queued = event is WaitingEvent;
     switch (event) {
       case DeltaEvent(:final text):
         _buffer.write(text);
@@ -662,6 +708,9 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
         // No state-layer effect: the being opened on tool_start. The cursor was
         // already advanced, so a resume skips past it.
         break;
+      case WaitingEvent():
+        // Surfaced through [_queued] on the published streaming state.
+        break;
       case CitationEvent():
       case UnknownEvent():
         // v1 has no citation UI, and an unrecognized event is ignored for
@@ -722,6 +771,22 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
       return;
     }
     if (_isTerminal(state)) return;
+    // Any other status-carrying rejection is a REST refusal of the opening
+    // POSTs, not a dropped stream (the stream GET fails with a different
+    // error): no turn exists to resume, so reconnecting would only spend the
+    // budget on `resume()` failures and surface *that* message instead
+    // (observed, adityas/ai/215).
+    if (error is TurnTransportException && error.statusCode != null) {
+      switch (error.statusCode) {
+        case 503:
+          _busy(BusyReason.atCapacity);
+        case 429:
+          _busy(BusyReason.tooManyAtOnce);
+        default:
+          _fail(error.message);
+      }
+      return;
+    }
     if (_reconnects >= _maxReconnects) {
       _fail('Stream failed after $_maxReconnects reconnect attempts: $error');
       return;
@@ -773,7 +838,11 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
       // stream.
       if (_isTerminal(state) || _cancelling) return;
       _reconnects = 0; // a delivered event means the stream is healthy again
-      state = TurnStreaming(text: _buffer.toString(), cursor: _cursor);
+      state = TurnStreaming(
+        text: _buffer.toString(),
+        cursor: _cursor,
+        queued: _queued,
+      );
     });
   }
 
@@ -852,6 +921,16 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     _throttle.cancel();
     _cancelExpiryTimer();
     state = TurnError(message: message, cursor: _cursor, usage: _usage);
+  }
+
+  /// Terminal load refusal → the calm busy notice ([TurnBusy], adityas/ai/215).
+  /// Pre-accept, so there is no partial to commit and no server turn to stop.
+  /// The optimistic user message stays in history, exactly as for [_fail].
+  void _busy(BusyReason reason) {
+    _closeSub();
+    _throttle.cancel();
+    _cancelExpiryTimer();
+    state = TurnBusy(reason);
   }
 
   /// The injected [Clock] crossed `access_until` mid-turn — the entitlement
@@ -1025,6 +1104,7 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     _cursor = null;
     _usage = null;
     _reconnects = 0;
+    _queued = false;
     _cancelling = false;
     _cancelPending = false;
     _streamEndedWhileCancelling = false;
@@ -1054,7 +1134,8 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     TurnError() ||
     TurnAccessLapsed() ||
     TurnCeiling() ||
-    TurnConsentRequired() => false,
+    TurnConsentRequired() ||
+    TurnBusy() => false,
   };
 
   bool _isTerminal(ChatTurn turn) => switch (turn) {
@@ -1063,7 +1144,8 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     TurnError() ||
     TurnAccessLapsed() ||
     TurnCeiling() ||
-    TurnConsentRequired() => true,
+    TurnConsentRequired() ||
+    TurnBusy() => true,
     TurnIdle() ||
     TurnConnecting() ||
     TurnStreaming() ||

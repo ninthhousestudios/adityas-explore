@@ -59,6 +59,8 @@ class _FakeTransport implements TurnTransport {
   void resetConversation() => conversationId = null;
 
   void emit(TurnEvent event) => _current.add(event);
+
+  void drop(Object error) => _current.addError(error);
 }
 
 class _FakeUsage implements UsageClient {
@@ -501,4 +503,47 @@ void main() {
       expect(find.text(chatRenewCtaLabel), findsNothing);
     },
   );
+
+  group('provider queueing and load refusals (adityas/ai/215)', () {
+    testWidgets(
+      'a waiting turn shows the queued status until the first delta',
+      (tester) async {
+        final transport = _FakeTransport();
+        final container = _container(transport);
+        await _pumpPanel(tester, container);
+
+        container.read(chatTurnProvider.notifier).send('hi');
+        transport.emit(const WaitingEvent('w1'));
+        await tester.pump();
+        expect(find.textContaining('waiting its turn'), findsOneWidget);
+
+        transport.emit(const DeltaEvent('Hello', 'e1'));
+        await tester.pump();
+        expect(find.textContaining('waiting its turn'), findsNothing);
+        expect(find.text('Hello'), findsOneWidget);
+      },
+    );
+
+    for (final (status, copy) in [
+      (503, "We're at capacity right now"),
+      (429, 'Too many messages at once'),
+    ]) {
+      testWidgets('$status shows the calm notice, not the error text', (
+        tester,
+      ) async {
+        final transport = _FakeTransport();
+        final container = _container(transport);
+        await _pumpPanel(tester, container);
+
+        container.read(chatTurnProvider.notifier).send('hi');
+        transport.drop(
+          TurnTransportException('service not configured', statusCode: status),
+        );
+        await tester.pump();
+
+        expect(find.textContaining(copy), findsOneWidget);
+        expect(find.textContaining('service not configured'), findsNothing);
+      });
+    }
+  });
 }

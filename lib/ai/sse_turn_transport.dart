@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:http/http.dart' as http;
 
@@ -28,6 +29,25 @@ class _ConversationSuperseded implements Exception {
   const _ConversationSuperseded();
 }
 
+/// Internal sentinel: a Stop latched while the turn POST was backing off from a
+/// 503 (adityas/ai/215). No turn exists server-side, so there is nothing to
+/// cancel — [start] resolves the latched stop as in effect and ends the stream
+/// silently, which settles the notifier's cancelling turn.
+class _StoppedBeforeAccept implements Exception {
+  const _StoppedBeforeAccept();
+}
+
+/// Backoff before each automatic re-POST of a turn the server refused with 503
+/// (global concurrent-generation ceiling, adityas/ai/215). Bounded: after the
+/// last one the 503 surfaces to the notifier as the at-capacity notice. Each
+/// delay is jittered ([_jittered]) so a crowd of clients refused in the same
+/// instant does not re-arrive in lockstep.
+const List<Duration> capacityRetryBackoff = [
+  Duration(seconds: 1),
+  Duration(seconds: 2),
+  Duration(seconds: 4),
+];
+
 /// The real [TurnTransport]: the durable `/v1/ai` chat wire (adityas/ai/11).
 ///
 /// Drives the canonical three-call contract:
@@ -53,15 +73,21 @@ class SseTurnTransport implements TurnTransport {
     String? baseUrl,
     http.Client? httpClient,
     SseByteSource? byteSource,
+    Future<void> Function(Duration)? delay,
   }) : _token = tokenProvider,
        _baseUrl = baseUrl ?? apiBaseUrl,
        _http = httpClient ?? http.Client(),
-       _byteSource = byteSource ?? openSseByteStream;
+       _byteSource = byteSource ?? openSseByteStream,
+       _delay = delay ?? Future<void>.delayed;
 
   final Future<String?> Function({bool forceRefresh}) _token;
   final String _baseUrl;
   final http.Client _http;
   final SseByteSource _byteSource;
+
+  // Waits out a [capacityRetryBackoff] step. Injected so tests don't sleep.
+  final Future<void> Function(Duration) _delay;
+  final Random _random = Random();
 
   // The durable conversation this transport appends to, minted lazily and reused
   // for its lifetime. Reset on a user change ([resetConversation]) so a signed-in
@@ -155,6 +181,19 @@ class SseTurnTransport implements TurnTransport {
       // latched cancel so its awaiter never strands (adityas/ai/146).
       _resolvePendingCancel(true);
       return;
+    } on _StoppedBeforeAccept {
+      // Stop landed while a 503 re-POST was backing off: no turn was ever
+      // accepted, so the stop is trivially in effect. Close the stream so the
+      // notifier's cancelling turn settles (adityas/ai/215).
+      _resolvePendingCancel(true);
+      return;
+    } catch (_) {
+      // The turn was refused (a REST rejection, a network failure, no token)
+      // before an id existed, so a Stop latched meanwhile has nothing left to
+      // stop — resolve it rather than strand the notifier's awaited cancel()
+      // (adityas/ai/215). The failure itself still reaches the notifier.
+      _resolvePendingCancel(true);
+      rethrow;
     }
     if (_epoch != epoch) {
       _resolvePendingCancel(true);
@@ -316,18 +355,55 @@ class SseTurnTransport implements TurnTransport {
     String? title,
     int epoch,
   ) async {
-    final response = await _postTurn(token, conversationId, message, chart);
-    if (_epoch != epoch) throw const _ConversationSuperseded();
+    final response = await _postTurnRetrying(
+      token,
+      conversationId,
+      message,
+      chart,
+      epoch,
+    );
     if (response.statusCode == 404) {
       if (_adopted) {
         throw _httpError(response);
       }
       _conversationId = null;
       final fresh = await _ensureConversation(token, epoch, title: title);
-      return _turnIdFrom(await _postTurn(token, fresh, message, chart));
+      return _turnIdFrom(
+        await _postTurnRetrying(token, fresh, message, chart, epoch),
+      );
     }
     return _turnIdFrom(response);
   }
+
+  /// [_postTurn], re-POSTed after each [capacityRetryBackoff] step while the
+  /// server answers 503 (global concurrent-generation ceiling — transient by
+  /// nature, adityas/ai/215). Safe to repeat: a 503 is refused before the turn
+  /// row is created, and each attempt carries a fresh idempotency key. Returns
+  /// the last response, which is still a 503 once the budget is spent. A
+  /// rotation or a Stop during a backoff abandons the turn instead of re-POSTing.
+  Future<http.Response> _postTurnRetrying(
+    String token,
+    String conversationId,
+    String message,
+    ChartData? chart,
+    int epoch,
+  ) async {
+    var response = await _postTurn(token, conversationId, message, chart);
+    if (_epoch != epoch) throw const _ConversationSuperseded();
+    for (final backoff in capacityRetryBackoff) {
+      if (response.statusCode != 503) break;
+      await _delay(_jittered(backoff));
+      if (_epoch != epoch) throw const _ConversationSuperseded();
+      if (_pendingCancel) throw const _StoppedBeforeAccept();
+      response = await _postTurn(token, conversationId, message, chart);
+      if (_epoch != epoch) throw const _ConversationSuperseded();
+    }
+    return response;
+  }
+
+  /// [base] scaled into [0.75, 1.25) so simultaneous refusals spread out.
+  Duration _jittered(Duration base) =>
+      base * (0.75 + _random.nextDouble() * 0.5);
 
   Future<http.Response> _postTurn(
     String token,
@@ -413,6 +489,9 @@ TurnEvent decodeTurnFrame(SseFrame frame) {
       return ErrorEvent(_stringField(frame.data, 'message'), id);
     case 'done':
       return DoneEvent(id);
+    case 'waiting':
+      // `{provider}` is dropped: the client only needs "queued" (I19).
+      return WaitingEvent(id);
     case 'tool_start':
       // `{name, args}` — args is the tool's own JSON object (e.g. show_being's
       // `{slug}`), passed through for the notifier's show_being dispatch.

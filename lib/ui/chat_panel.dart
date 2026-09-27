@@ -186,7 +186,8 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
   /// the growing text (or a status note when no text has streamed yet).
   static String? _spokenLabel(ChatTurn turn) => switch (turn) {
     TurnConnecting() => 'Contemplating…',
-    TurnStreaming(:final text) => text.isEmpty ? 'Contemplating…' : text,
+    TurnStreaming(:final text, :final queued) =>
+      text.isNotEmpty ? text : (queued ? _queuedStatus : 'Contemplating…'),
     TurnReconnecting(:final text) =>
       text.isEmpty ? 'Reconnecting…' : '$text. Reconnecting…',
     TurnDone(:final text) => text.isEmpty ? null : text,
@@ -195,7 +196,8 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
     TurnError() ||
     TurnAccessLapsed() ||
     TurnCeiling() ||
-    TurnConsentRequired() => null,
+    TurnConsentRequired() ||
+    TurnBusy() => null,
   };
 
   /// Whether this transition should flush the final text at once rather than
@@ -434,7 +436,8 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
       TurnError() ||
       TurnAccessLapsed() ||
       TurnCeiling() ||
-      TurnConsentRequired() => false,
+      TurnConsentRequired() ||
+      TurnBusy() => false,
     };
     if (streaming) {
       final proceed = await showDialog<bool>(
@@ -531,6 +534,15 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
         status: 'Contemplating…',
         animated: true,
       ),
+      // Queued behind the provider rate gate (adityas/ai/215): a plain status
+      // note in place of the Contemplating animation — the reply hasn't begun.
+      TurnStreaming(:final text, queued: true) => _agentBubble(
+        color,
+        dimColor,
+        fontSize,
+        text: text,
+        status: _queuedStatus,
+      ),
       TurnStreaming(:final text) => _agentBubble(
         color,
         dimColor,
@@ -553,7 +565,17 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
       // Usage ceiling reached (adityas/ai/100): a calm at-ceiling notice, not the
       // red error bubble — new turns wait until the window resets. No dollar or
       // token figure (the no-meter invariant).
-      TurnCeiling() => _ceilingBubble(color, dimColor, fontSize),
+      TurnCeiling() => _noticeBubble(_ceilingNoticeCopy, color, fontSize),
+      // Refused for load (adityas/ai/215): the same calm notice styling — nothing
+      // is broken, and the next send simply tries again.
+      TurnBusy(:final reason) => _noticeBubble(
+        switch (reason) {
+          BusyReason.atCapacity => _atCapacityCopy,
+          BusyReason.tooManyAtOnce => _tooManyAtOnceCopy,
+        },
+        color,
+        fontSize,
+      ),
       // Re-consent required (adityas/ai/98): no in-thread bubble — the gate
       // replaces the composer below, and the rolled-back user message means there
       // is nothing to annotate here.
@@ -764,11 +786,11 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
     );
   }
 
-  /// The at-ceiling notice shown when the window budget is spent ([TurnCeiling],
-  /// adityas/ai/100). A calm, non-error notice — past turns stay readable, new
-  /// turns wait until the window resets. Never shows a dollar or token figure
-  /// (the no-meter invariant): a plain "you've reached your usage limit."
-  Widget _ceilingBubble(Color color, Color dimColor, double fontSize) {
+  /// A calm, gold-bordered in-thread notice for a turn that did not go through
+  /// although nothing is broken: the usage ceiling ([TurnCeiling], ai/100 —
+  /// never a dollar or token figure, the no-meter invariant) or a load refusal
+  /// ([TurnBusy], ai/215).
+  Widget _noticeBubble(String copy, Color color, double fontSize) {
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
@@ -781,7 +803,7 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
           border: Border.all(color: context.tokens.gold.withValues(alpha: 0.4)),
         ),
         child: Text(
-          _ceilingNoticeCopy,
+          copy,
           style: TextStyle(color: color, fontSize: fontSize, height: 1.4),
         ),
       ),
@@ -1328,6 +1350,22 @@ bool nearBottom(double maxScrollExtent, double pixels) =>
 /// but a one-time month simply ends (no renew), so it must not *promise* a reset
 /// the client can't guarantee — the entitlement model carries only `access_until`,
 /// not the plan type, so this copy can't branch on it.
+/// Status under the pending reply while the turn waits at the provider rate
+/// gate (adityas/ai/215).
+const _queuedStatus = 'A busy moment. Your question is waiting its turn…';
+
+/// Notice when the server stays at capacity through the automatic retries
+/// (503, adityas/ai/215).
+const _atCapacityCopy =
+    "We're at capacity right now and couldn't take your message. "
+    'Give it a minute, then send it again.';
+
+/// Notice for too many turns in flight at once, or too many sends too fast
+/// (429, adityas/ai/215).
+const _tooManyAtOnceCopy =
+    'Too many messages at once. Let a reply finish, or close another chat '
+    'tab, then send again.';
+
 const _ceilingNoticeCopy =
     "You've reached your usage limit for this period, so new messages are "
     'paused. Your past conversation stays here to read. If your access '
