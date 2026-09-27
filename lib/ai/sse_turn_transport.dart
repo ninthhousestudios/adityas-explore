@@ -196,6 +196,9 @@ class SseTurnTransport implements TurnTransport {
       rethrow;
     }
     if (_epoch != epoch) {
+      // Rotated after the server accepted the turn: stop it rather than leave a
+      // generation running with no listener (adityas/ai/219).
+      unawaited(_postCancel(turnId, token: token));
       _resolvePendingCancel(true);
       return;
     }
@@ -268,13 +271,17 @@ class SseTurnTransport implements TurnTransport {
   // be generating over the open stream, so report false rather than silently
   // claiming success. The caller keeps that live stream visible instead of
   // asserting a cancellation that never happened (adityas/ai/141).
-  Future<bool> _postCancel(String turnId) async {
+  //
+  // [token] pins the authorization to the one that opened the turn — needed when
+  // stopping a turn orphaned by a rotation, since after a user change the
+  // current token belongs to someone who doesn't own it (adityas/ai/219).
+  Future<bool> _postCancel(String turnId, {String? token}) async {
     try {
-      final token = await _token();
-      if (token == null) return false; // signed out — could not authorize
+      final bearer = token ?? await _token();
+      if (bearer == null) return false; // signed out — could not authorize
       final response = await _http.post(
         Uri.parse('$_baseUrl/v1/ai/turns/$turnId/cancel'),
-        headers: {'authorization': 'Bearer $token'},
+        headers: {'authorization': 'Bearer $bearer'},
       );
       return response.statusCode == 202 || response.statusCode == 404;
     } catch (_) {
@@ -355,11 +362,20 @@ class SseTurnTransport implements TurnTransport {
     String? title,
     int epoch,
   ) async {
+    // One key for the whole logical turn, repeated on every re-POST below. If an
+    // attempt was accepted but its answer lost (a proxy's 503 after the backend
+    // took the turn), the retry re-attaches to that turn via the backend's
+    // idempotency fast path instead of opening a second, separately billed
+    // generation (adityas/ai/219). The key is scoped per conversation
+    // server-side, so the 404 re-mint's POST can reuse it too.
+    final idempotencyKey =
+        'explore-${DateTime.now().microsecondsSinceEpoch}-${_idempotencySeq++}';
     final response = await _postTurnRetrying(
       token,
       conversationId,
       message,
       chart,
+      idempotencyKey,
       epoch,
     );
     if (response.statusCode == 404) {
@@ -369,7 +385,14 @@ class SseTurnTransport implements TurnTransport {
       _conversationId = null;
       final fresh = await _ensureConversation(token, epoch, title: title);
       return _turnIdFrom(
-        await _postTurnRetrying(token, fresh, message, chart, epoch),
+        await _postTurnRetrying(
+          token,
+          fresh,
+          message,
+          chart,
+          idempotencyKey,
+          epoch,
+        ),
       );
     }
     return _turnIdFrom(response);
@@ -377,28 +400,53 @@ class SseTurnTransport implements TurnTransport {
 
   /// [_postTurn], re-POSTed after each [capacityRetryBackoff] step while the
   /// server answers 503 (global concurrent-generation ceiling — transient by
-  /// nature, adityas/ai/215). Safe to repeat: a 503 is refused before the turn
-  /// row is created, and each attempt carries a fresh idempotency key. Returns
-  /// the last response, which is still a 503 once the budget is spent. A
-  /// rotation or a Stop during a backoff abandons the turn instead of re-POSTing.
+  /// nature, adityas/ai/215). Safe to repeat: every attempt carries the same
+  /// [idempotencyKey], so a re-POST of an attempt the server did accept
+  /// re-attaches rather than duplicating. Returns the last response, which is
+  /// still a 503 once the budget is spent. A rotation or a Stop during a backoff
+  /// abandons the turn instead of re-POSTing.
   Future<http.Response> _postTurnRetrying(
     String token,
     String conversationId,
     String message,
     ChartData? chart,
+    String idempotencyKey,
     int epoch,
   ) async {
-    var response = await _postTurn(token, conversationId, message, chart);
-    if (_epoch != epoch) throw const _ConversationSuperseded();
+    Future<http.Response> post() async {
+      final response = await _postTurn(
+        token,
+        conversationId,
+        message,
+        chart,
+        idempotencyKey,
+      );
+      _abandonIfSuperseded(response, token, epoch);
+      return response;
+    }
+
+    var response = await post();
     for (final backoff in capacityRetryBackoff) {
       if (response.statusCode != 503) break;
+      if (_pendingCancel) throw const _StoppedBeforeAccept();
       await _delay(_jittered(backoff));
       if (_epoch != epoch) throw const _ConversationSuperseded();
       if (_pendingCancel) throw const _StoppedBeforeAccept();
-      response = await _postTurn(token, conversationId, message, chart);
-      if (_epoch != epoch) throw const _ConversationSuperseded();
+      response = await post();
     }
     return response;
+  }
+
+  /// Throw [_ConversationSuperseded] if a rotation landed while a turn POST was
+  /// in flight. A POST the server accepted (202) is already generating, so stop
+  /// it first — with the [token] that opened it — rather than orphan a billed
+  /// generation nobody is listening to (adityas/ai/219).
+  void _abandonIfSuperseded(http.Response response, String token, int epoch) {
+    if (_epoch == epoch) return;
+    if (response.statusCode == 202) {
+      unawaited(_postCancel(_turnIdFrom(response), token: token));
+    }
+    throw const _ConversationSuperseded();
   }
 
   /// [base] scaled into [0.75, 1.25) so simultaneous refusals spread out.
@@ -410,6 +458,7 @@ class SseTurnTransport implements TurnTransport {
     String conversationId,
     String message,
     ChartData? chart,
+    String idempotencyKey,
   ) {
     final body = <String, dynamic>{'message': message};
     // The open chart rides along so the backend computes chart_facts (ai/63);
@@ -419,10 +468,9 @@ class SseTurnTransport implements TurnTransport {
       Uri.parse('$_baseUrl/v1/ai/conversations/$conversationId/turns'),
       headers: {
         ..._jsonHeaders(token),
-        // Required by the durable path; a fresh key per turn (the notifier opens
-        // a turn once — reconnects go through resume(), not a re-POST).
-        'idempotency-key':
-            'explore-${DateTime.now().microsecondsSinceEpoch}-${_idempotencySeq++}',
+        // Required by the durable path; one key per logical turn, minted by
+        // [_createTurn] (reconnects go through resume(), not a re-POST).
+        'idempotency-key': idempotencyKey,
       },
       body: jsonEncode(body),
     );

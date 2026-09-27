@@ -273,9 +273,10 @@ void main() {
     await tester.pump();
 
     // The pending tick was cancelled: after the cadence would have elapsed, the
-    // stale partial is NOT announced.
+    // stale partial is NOT announced — the error is (adityas/ai/219).
     await tester.pump(kLiveRegionCadence);
-    expect(_liveLabel(tester), '');
+    expect(_liveLabel(tester), isNot(contains('partial')));
+    expect(_liveLabel(tester), contains('boom'));
   });
 
   testWidgets(
@@ -543,6 +544,10 @@ void main() {
 
         expect(find.textContaining(copy), findsOneWidget);
         expect(find.textContaining('service not configured'), findsNothing);
+        // Announced at once, so a screen-reader user hears why the send didn't
+        // go through (adityas/ai/219).
+        await tester.pump(); // apply the flush setState
+        expect(_liveLabel(tester), contains(copy));
       });
     }
   });

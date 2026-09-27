@@ -936,6 +936,75 @@ void main() {
       },
     );
 
+    test('every 503 re-POST repeats the turn\'s idempotency key; the next '
+        'turn gets a new one (adityas/ai/219)', () async {
+      var turnPosts = 0;
+      final keys = <String?>[];
+      final mock = MockClient((request) async {
+        if (request.url.path.endsWith('/conversations')) {
+          return http.Response(jsonEncode({'conversation_id': 'c1'}), 201);
+        }
+        keys.add(request.headers['idempotency-key']);
+        // First turn: 503, 503, then accepted. Second turn: accepted at once.
+        final status = turnPosts++ < 2 ? 503 : 202;
+        return http.Response(jsonEncode({'turn_id': 't1'}), status);
+      });
+      final transport = SseTurnTransport(
+        tokenProvider: ({forceRefresh = false}) async => 'jwt',
+        baseUrl: 'https://api.test',
+        httpClient: mock,
+        byteSource: _FakeByteSource(_happyStream).call,
+        delay: (_) async {},
+      );
+
+      await transport.start(const TurnRequest(text: 'hi')).toList();
+      await transport.start(const TurnRequest(text: 'again')).toList();
+
+      expect(keys, hasLength(4));
+      expect(keys.first, isNotNull);
+      expect(keys.sublist(0, 3).toSet(), hasLength(1));
+      expect(keys[3], isNot(keys[0]));
+    });
+
+    test('a rotation while a retry POST is in flight cancels the turn that '
+        'POST opened, with the opening token (adityas/ai/219)', () async {
+      var turnPosts = 0;
+      final held = Completer<http.Response>();
+      final cancels = <(String, String?)>[];
+      final mock = MockClient((request) async {
+        final path = request.url.path;
+        if (path.endsWith('/conversations')) {
+          return http.Response(jsonEncode({'conversation_id': 'c1'}), 201);
+        }
+        if (path.endsWith('/cancel')) {
+          cancels.add((path, request.headers['authorization']));
+          return http.Response('', 202);
+        }
+        if (turnPosts++ == 0) {
+          return http.Response(jsonEncode({'error': 'busy'}), 503);
+        }
+        return held.future; // the re-POST, held across the rotation
+      });
+      var token = 'jwt-a';
+      final transport = SseTurnTransport(
+        tokenProvider: ({forceRefresh = false}) async => token,
+        baseUrl: 'https://api.test',
+        httpClient: mock,
+        byteSource: _FakeByteSource(_happyStream).call,
+        delay: (_) async {},
+      );
+
+      final events = transport.start(const TurnRequest(text: 'hi')).toList();
+      await _pumpUntil(() => turnPosts == 2); // re-POST now in flight
+      token = 'jwt-b'; // a user change rotates the conversation
+      transport.resetConversation();
+      held.complete(http.Response(jsonEncode({'turn_id': 't9'}), 202));
+
+      expect(await events, isEmpty); // abandoned, nothing streamed
+      await _pumpUntil(() => cancels.isNotEmpty);
+      expect(cancels, [('/v1/ai/turns/t9/cancel', 'Bearer jwt-a')]);
+    });
+
     test('429 is not retried', () async {
       final (:mock, :turnPosts) = scripted([429]);
       final transport = SseTurnTransport(

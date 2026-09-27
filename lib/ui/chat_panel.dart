@@ -192,19 +192,31 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
       text.isEmpty ? 'Reconnecting…' : '$text. Reconnecting…',
     TurnDone(:final text) => text.isEmpty ? null : text,
     TurnCancelled(:final text) => text.isEmpty ? null : text,
+    // A refused or gated turn speaks the same copy its notice shows, so a
+    // screen-reader user learns why the send didn't go through (adityas/ai/219).
+    TurnError(:final message) => message,
+    TurnAccessLapsed() => chatRenewPromptCopy,
+    TurnCeiling() => _ceilingNoticeCopy,
+    TurnBusy(:final reason) => _busyCopy(reason),
+    TurnConsentRequired() => _consentGateTitle,
+    TurnIdle() => null,
+  };
+
+  /// Whether this transition should flush at once rather than wait for the
+  /// cadence tick (adityas/ai/143). The turn is ending, so the transient bubble
+  /// is about to be replaced — announce now or lose it. Idle is grouped here
+  /// too: it has nothing to say, and the terminal path drops any pending tick.
+  static bool _isAnnounceTerminal(ChatTurn turn) => switch (turn) {
+    TurnConnecting() || TurnStreaming() || TurnReconnecting() => false,
     TurnIdle() ||
+    TurnDone() ||
+    TurnCancelled() ||
     TurnError() ||
     TurnAccessLapsed() ||
     TurnCeiling() ||
     TurnConsentRequired() ||
-    TurnBusy() => null,
+    TurnBusy() => true,
   };
-
-  /// Whether this transition should flush the final text at once rather than
-  /// wait for the cadence tick (adityas/ai/143). The turn is ending, so the
-  /// transient bubble is about to be replaced — announce now or lose it.
-  static bool _isAnnounceTerminal(ChatTurn turn) =>
-      turn is TurnDone || turn is TurnCancelled;
 
   bool _onComposerSubmit(String text) {
     // The notifier is the single gate: it refuses a blank message, a second turn
@@ -569,10 +581,7 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
       // Refused for load (adityas/ai/215): the same calm notice styling — nothing
       // is broken, and the next send simply tries again.
       TurnBusy(:final reason) => _noticeBubble(
-        switch (reason) {
-          BusyReason.atCapacity => _atCapacityCopy,
-          BusyReason.tooManyAtOnce => _tooManyAtOnceCopy,
-        },
+        _busyCopy(reason),
         color,
         fontSize,
       ),
@@ -881,7 +890,7 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            'We’ve updated the Chat terms',
+            _consentGateTitle,
             style: TextStyle(
               color: color,
               fontSize: fontSize * 1.05,
@@ -1341,15 +1350,6 @@ const double kStickToBottomThreshold = 80;
 bool nearBottom(double maxScrollExtent, double pixels) =>
     maxScrollExtent - pixels < kStickToBottomThreshold;
 
-/// The at-ceiling notice for a spent usage window ([TurnCeiling], adityas/ai/100).
-/// Mirrors the 402 body's human message; deliberately carries no dollar or token
-/// figure (the no-meter invariant) — a coarse "usage limit for this period."
-///
-/// The limit is per 30-day period of access. The reset line is phrased
-/// conditionally on purpose: a subscription rolls into a fresh period each month,
-/// but a one-time month simply ends (no renew), so it must not *promise* a reset
-/// the client can't guarantee — the entitlement model carries only `access_until`,
-/// not the plan type, so this copy can't branch on it.
 /// Status under the pending reply while the turn waits at the provider rate
 /// gate (adityas/ai/215).
 const _queuedStatus = 'A busy moment. Your question is waiting its turn…';
@@ -1366,6 +1366,26 @@ const _tooManyAtOnceCopy =
     'Too many messages at once. Let a reply finish, or close another chat '
     'tab, then send again.';
 
+/// Notice copy for a load refusal, by [BusyReason] — shared by the in-thread
+/// bubble and the live-region announcement.
+String _busyCopy(BusyReason reason) => switch (reason) {
+  BusyReason.atCapacity => _atCapacityCopy,
+  BusyReason.tooManyAtOnce => _tooManyAtOnceCopy,
+};
+
+/// Heading of the re-consent gate ([TurnConsentRequired], adityas/ai/98), also
+/// its live-region announcement.
+const _consentGateTitle = 'We’ve updated the Chat terms';
+
+/// The at-ceiling notice for a spent usage window ([TurnCeiling], adityas/ai/100).
+/// Mirrors the 402 body's human message; deliberately carries no dollar or token
+/// figure (the no-meter invariant) — a coarse "usage limit for this period."
+///
+/// The limit is per 30-day period of access. The reset line is phrased
+/// conditionally on purpose: a subscription rolls into a fresh period each month,
+/// but a one-time month simply ends (no renew), so it must not *promise* a reset
+/// the client can't guarantee — the entitlement model carries only `access_until`,
+/// not the plan type, so this copy can't branch on it.
 const _ceilingNoticeCopy =
     "You've reached your usage limit for this period, so new messages are "
     'paused. Your past conversation stays here to read. If your access '
