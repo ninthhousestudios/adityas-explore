@@ -202,6 +202,10 @@ class _ExploreAppState extends ConsumerState<ExploreApp> {
       if (chartParam != null && auth.currentUser != null) {
         unawaited(_loadSavedChart(chartParam));
       }
+      // ?birth={OACF TOML}: hand-off from the site's shop birth form. No auth
+      // needed — the chart travels in the link, not from the backend.
+      final birthParam = takeQueryParam('birth');
+      if (birthParam != null) unawaited(_loadBirthParam(birthParam));
     } catch (e, s) {
       dev.log('Boot failed: $e\n$s', name: 'APP');
       await Sentry.captureException(e, stackTrace: s);
@@ -292,12 +296,7 @@ class _ExploreAppState extends ConsumerState<ExploreApp> {
   Future<void> _loadSavedChart(String chartId) async {
     try {
       final toml = await _chartService.fetchToml(chartId);
-      final chartData = TomlChartFormat.parseString(toml);
-      final timeUncertainty = roddenToUncertainty(
-        chartData.roddenRating,
-        chartData.dateTime.hour,
-      );
-      await _submitChart(chartData, timeUncertainty);
+      await _submitLoadedChart(TomlChartFormat.parseString(toml));
     } on ChartApiException catch (e) {
       if (mounted) {
         _showSnackBar(
@@ -310,6 +309,21 @@ class _ExploreAppState extends ConsumerState<ExploreApp> {
       if (mounted) _showSnackBar('Error loading chart: $e');
     }
   }
+
+  Future<void> _loadBirthParam(String toml) async {
+    try {
+      await _submitLoadedChart(TomlChartFormat.parseString(toml));
+    } catch (e) {
+      if (mounted) _showSnackBar('Could not open that chart: $e');
+    }
+  }
+
+  /// Submit a chart read from a file, saved chart, or hand-off link, deriving
+  /// time uncertainty from its Rodden rating.
+  Future<void> _submitLoadedChart(ChartData chartData) => _submitChart(
+    chartData,
+    roddenToUncertainty(chartData.roddenRating, chartData.dateTime.hour),
+  );
 
   Future<void> _saveChart() async {
     final chartData = ref.read(chartControllerProvider).chartData;
@@ -369,17 +383,12 @@ class _ExploreAppState extends ConsumerState<ExploreApp> {
       debugPrint('  Location: ${chartData.birthLocation}');
       debugPrint('  UTC offset: ${chartData.utcOffsetHours}h');
 
-      final timeUncertainty = roddenToUncertainty(
-        chartData.roddenRating,
-        chartData.dateTime.hour,
-      );
-
       // Hand off to the shared calc pipeline (ChartController.submit via
       // _submitChart) — it owns the state transitions and the last-write-wins
       // token guard, so the open path can't land a stale chart over a newer
       // submit/open. This try only covers file-pick and parse; calc errors are
       // handled inside _submitChart.
-      await _submitChart(chartData, timeUncertainty);
+      await _submitLoadedChart(chartData);
     } catch (e, s) {
       debugPrint('Error opening chart: $e\n$s');
       if (mounted) _showSnackBar('Error: $e');
