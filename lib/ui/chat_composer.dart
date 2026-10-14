@@ -9,6 +9,81 @@ import '../state/chat_turn.dart';
 /// One string source so the two never drift.
 const chatComposerHint = 'Hold something up to the Prism…';
 
+/// Max turn message length, in Unicode scalar values (runes). Mirrors backend
+/// `MAX_MESSAGE_CHARS` in `backend/server/src/routes/chat.rs`, which counts with
+/// Rust `str::chars().count()` — scalars, not grapheme clusters — so change the
+/// two together. The server cap is the enforcement; this is UX only
+/// (adityas/ai/221).
+const maxChatMessageRunes = 8000;
+
+/// The counter appears only once the input reaches this many runes (90% of
+/// the cap) — no always-on "0/8000".
+const _counterThresholdRunes = maxChatMessageRunes * 9 ~/ 10;
+
+/// Caps the field at [maxRunes] Unicode scalar values.
+///
+/// Flutter's [LengthLimitingTextInputFormatter] counts grapheme clusters, so a
+/// ZWJ emoji (one grapheme, several scalars) would let through text the server
+/// rejects. This counts runes instead, and clips only the *inserted* span — a
+/// paste in the middle of existing text keeps the text after the caret intact.
+class RuneLimitingTextInputFormatter extends TextInputFormatter {
+  final int maxRunes;
+
+  const RuneLimitingTextInputFormatter(this.maxRunes);
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    // Mid-IME-composition text is provisional; clip once it commits (the commit
+    // arrives as a further update with the composing range cleared).
+    if (newValue.composing.isValid && !newValue.composing.isCollapsed) {
+      return newValue;
+    }
+    final next = newValue.text;
+    if (next.runes.length <= maxRunes) return newValue;
+
+    final prev = oldValue.text;
+    // The edit is next = prefix + inserted + suffix, where prefix/suffix are
+    // the longest spans shared with prev. Never split a surrogate pair.
+    final shared = prev.length < next.length ? prev.length : next.length;
+    var prefix = 0;
+    while (prefix < shared &&
+        prev.codeUnitAt(prefix) == next.codeUnitAt(prefix)) {
+      prefix++;
+    }
+    if (prefix > 0 && _isLeadSurrogate(next.codeUnitAt(prefix - 1))) prefix--;
+    var suffix = 0;
+    while (suffix < shared - prefix &&
+        prev.codeUnitAt(prev.length - 1 - suffix) ==
+            next.codeUnitAt(next.length - 1 - suffix)) {
+      suffix++;
+    }
+    if (suffix > 0 &&
+        _isTrailSurrogate(next.codeUnitAt(next.length - suffix))) {
+      suffix--;
+    }
+
+    final head = next.substring(0, prefix);
+    final tail = next.substring(next.length - suffix);
+    final room = maxRunes - head.runes.length - tail.runes.length;
+    // Already at/over the cap without the insertion: refuse the edit outright.
+    if (room <= 0) return oldValue;
+    final inserted = String.fromCharCodes(
+      next.substring(prefix, next.length - suffix).runes.take(room),
+    );
+    final text = '$head$inserted$tail';
+    return TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: head.length + inserted.length),
+    );
+  }
+
+  static bool _isLeadSurrogate(int unit) => unit >= 0xD800 && unit <= 0xDBFF;
+  static bool _isTrailSurrogate(int unit) => unit >= 0xDC00 && unit <= 0xDFFF;
+}
+
 /// The chat input field + send button, extracted so the docked panel and the
 /// explore-mode pill share one input implementation (adityas/ai/81).
 ///
@@ -144,29 +219,48 @@ class _ChatComposerState extends ConsumerState<ChatComposer> {
           child: Focus(
             skipTraversal: true,
             onKeyEvent: _onKeyEvent,
-            child: TextField(
-              controller: _input,
-              minLines: 1,
-              maxLines: 4,
-              keyboardType: TextInputType.multiline,
-              textInputAction: TextInputAction.newline,
-              style: TextStyle(color: color, fontSize: fontSize),
-              cursorColor: color,
-              decoration: InputDecoration(
-                isDense: true,
-                hintText: chatComposerHint,
-                hintStyle: TextStyle(color: dimColor, fontSize: fontSize),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 10,
-                ),
-                border: border,
-                enabledBorder: border,
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: color.withValues(alpha: 0.5)),
-                ),
-              ),
+            // Rebuilds per edit only to show/update the near-cap counter.
+            child: ValueListenableBuilder<TextEditingValue>(
+              valueListenable: _input,
+              builder: (context, value, _) {
+                final runes = value.text.runes.length;
+                return TextField(
+                  controller: _input,
+                  minLines: 1,
+                  maxLines: 4,
+                  keyboardType: TextInputType.multiline,
+                  textInputAction: TextInputAction.newline,
+                  inputFormatters: const [
+                    RuneLimitingTextInputFormatter(maxChatMessageRunes),
+                  ],
+                  style: TextStyle(color: color, fontSize: fontSize),
+                  cursorColor: color,
+                  decoration: InputDecoration(
+                    counterText: runes >= _counterThresholdRunes
+                        ? '$runes / $maxChatMessageRunes'
+                        : null,
+                    counterStyle: TextStyle(
+                      color: dimColor,
+                      fontSize: fontSize * 0.8,
+                    ),
+                    isDense: true,
+                    hintText: chatComposerHint,
+                    hintStyle: TextStyle(color: dimColor, fontSize: fontSize),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    border: border,
+                    enabledBorder: border,
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(
+                        color: color.withValues(alpha: 0.5),
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
           ),
         ),
