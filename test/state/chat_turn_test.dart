@@ -760,30 +760,183 @@ void main() {
     expect(errored.cursor, 'e1'); // carried for a retry
   });
 
-  test('reconnect: transient drop resumes from the cursor', () async {
-    final transport = _FakeTransport();
-    final container = _container(transport);
+  test('reconnect: transient drop resumes from the cursor', () {
+    fakeAsync((async) {
+      final transport = _FakeTransport();
+      final container = _container(transport);
 
-    container.read(chatTurnProvider.notifier).send('hi');
-    transport.emit(const DeltaEvent('one ', 'e1'));
-    await _pump();
+      container.read(chatTurnProvider.notifier).send('hi');
+      transport.emit(const DeltaEvent('one ', 'e1'));
+      async.flushMicrotasks();
 
-    transport.dropStream(Exception('connection reset'));
-    await _pump();
-    expect(container.read(chatTurnProvider), isA<TurnReconnecting>());
-    expect(transport.resumes, 1);
-    expect(transport.lastResumeCursor, 'e1');
+      transport.dropStream(Exception('connection reset'));
+      async
+        ..flushMicrotasks()
+        ..elapse(retryBackoff.first * 1.25);
+      expect(container.read(chatTurnProvider), isA<TurnReconnecting>());
+      expect(transport.resumes, 1);
+      expect(transport.lastResumeCursor, 'e1');
 
-    // The resumed stream yields the rest; the buffer is preserved across the gap.
-    transport
-      ..emit(const DeltaEvent('two', 'e2'))
-      ..emit(const UsageEvent(TurnUsage(inputTokens: 2, outputTokens: 2), 'e3'))
-      ..emit(const DoneEvent('e4'));
-    await _pump();
+      // The resumed stream yields the rest; the buffer is preserved across the
+      // gap.
+      transport
+        ..emit(const DeltaEvent('two', 'e2'))
+        ..emit(
+          const UsageEvent(TurnUsage(inputTokens: 2, outputTokens: 2), 'e3'),
+        )
+        ..emit(const DoneEvent('e4'));
+      async.flushMicrotasks();
 
-    final done = container.read(chatTurnProvider);
-    expect(done, isA<TurnDone>());
-    expect((done as TurnDone).text, 'one two');
+      final done = container.read(chatTurnProvider);
+      expect(done, isA<TurnDone>());
+      expect((done as TurnDone).text, 'one two');
+    });
+  });
+
+  group('reconnect backoff (adityas/explore/62)', () {
+    /// Drop the current stream and let the notifier react, without letting any
+    /// backoff elapse.
+    void drop(FakeAsync async, _FakeTransport transport) {
+      transport.dropStream(Exception('Failed to fetch'));
+      async.flushMicrotasks();
+    }
+
+    test('each reconnect waits out its jittered retryBackoff step', () {
+      fakeAsync((async) {
+        final transport = _FakeTransport();
+        final container = _container(transport);
+        container.read(chatTurnProvider.notifier).send('hi');
+        transport.emit(const DeltaEvent('one ', 'e1'));
+        async.flushMicrotasks();
+
+        for (var i = 0; i < retryBackoff.length; i++) {
+          drop(async, transport);
+          final reconnecting = container.read(chatTurnProvider);
+          expect(reconnecting, isA<TurnReconnecting>());
+          expect((reconnecting as TurnReconnecting).attempt, i + 1);
+
+          // Not before the jitter floor…
+          async.elapse(
+            retryBackoff[i] * 0.75 - const Duration(milliseconds: 1),
+          );
+          expect(transport.resumes, i);
+          // …and by the jitter ceiling.
+          async.elapse(retryBackoff[i] * 0.5 + const Duration(milliseconds: 1));
+          expect(transport.resumes, i + 1);
+          expect(transport.lastResumeCursor, 'e1');
+        }
+
+        // Budget spent: the next drop fails at once, with no further resume.
+        drop(async, transport);
+        expect(container.read(chatTurnProvider), isA<TurnError>());
+        async.elapse(const Duration(seconds: 10));
+        expect(transport.resumes, retryBackoff.length);
+      });
+    });
+
+    test('a delivered event resets the budget, so the next drop waits the '
+        'first step again', () {
+      fakeAsync((async) {
+        final transport = _FakeTransport();
+        final container = _container(transport);
+        container.read(chatTurnProvider.notifier).send('hi');
+
+        drop(async, transport);
+        async.elapse(retryBackoff.first * 1.25);
+        drop(async, transport);
+        async.elapse(retryBackoff[1] * 1.25);
+        expect(transport.resumes, 2);
+
+        transport.emit(const DeltaEvent('back', 'e1'));
+        async.flushMicrotasks();
+        drop(async, transport);
+        final reconnecting = container.read(chatTurnProvider);
+        expect((reconnecting as TurnReconnecting).attempt, 1);
+        async.elapse(retryBackoff.first * 1.25);
+        expect(transport.resumes, 3);
+      });
+    });
+
+    test('Stop during the wait still resumes, so the trailing usage settles '
+        'the cancelled turn', () {
+      fakeAsync((async) {
+        final transport = _FakeTransport();
+        final container = _container(transport);
+        final notifier = container.read(chatTurnProvider.notifier)..send('hi');
+        transport.emit(const DeltaEvent('partial', 'e1'));
+        async.flushMicrotasks();
+
+        drop(async, transport);
+        unawaited(notifier.cancel());
+        async.flushMicrotasks();
+        expect(container.read(chatTurnProvider), isA<TurnCancelled>());
+        expect(notifier.isSettling, isTrue);
+        expect(transport.resumes, 0);
+
+        async.elapse(retryBackoff.first * 1.25);
+        expect(transport.resumes, 1);
+        transport
+          ..emit(const ErrorEvent('generation was cancelled', 'e2'))
+          ..emit(
+            const UsageEvent(TurnUsage(inputTokens: 3, outputTokens: 1), 'e3'),
+          )
+          ..emit(const DoneEvent('e4'));
+        async.flushMicrotasks();
+
+        final cancelled = container.read(chatTurnProvider);
+        expect(cancelled, isA<TurnCancelled>());
+        expect((cancelled as TurnCancelled).usage?.outputTokens, 1);
+        expect(notifier.isSettling, isFalse);
+      });
+    });
+
+    test('a Stop the server refuses during the wait reverts to reconnecting, '
+        'not to a live stream', () {
+      fakeAsync((async) {
+        final transport = _FakeTransport()..cancelSucceeds = false;
+        final container = _container(transport);
+        final notifier = container.read(chatTurnProvider.notifier)..send('hi');
+        transport.emit(const DeltaEvent('partial', 'e1'));
+        async.flushMicrotasks();
+
+        drop(async, transport);
+        unawaited(notifier.cancel());
+        async.flushMicrotasks();
+        expect(container.read(chatTurnProvider), isA<TurnReconnecting>());
+
+        async.elapse(retryBackoff.first * 1.25);
+        expect(transport.resumes, 1);
+      });
+    });
+
+    test('rotating the conversation during the wait drops the reconnect', () {
+      fakeAsync((async) {
+        final transport = _FakeTransport();
+        final container = _container(transport);
+        final notifier = container.read(chatTurnProvider.notifier)..send('hi');
+
+        drop(async, transport);
+        notifier.startNewConversation();
+        async.elapse(const Duration(seconds: 10));
+
+        expect(container.read(chatTurnProvider), isA<TurnIdle>());
+        expect(transport.resumes, 0);
+      });
+    });
+
+    test('disposing during the wait drops the reconnect', () {
+      fakeAsync((async) {
+        final transport = _FakeTransport();
+        final container = _container(transport);
+        container.read(chatTurnProvider.notifier).send('hi');
+
+        drop(async, transport);
+        container.dispose();
+        async.elapse(const Duration(seconds: 10));
+
+        expect(transport.resumes, 0);
+      });
+    });
   });
 
   test(

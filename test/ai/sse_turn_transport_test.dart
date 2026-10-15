@@ -903,7 +903,7 @@ void main() {
       expect(delays, hasLength(2));
       // Jittered within ±25% of the first two backoff steps.
       for (var i = 0; i < delays.length; i++) {
-        final base = capacityRetryBackoff[i].inMicroseconds;
+        final base = retryBackoff[i].inMicroseconds;
         expect(delays[i].inMicroseconds, greaterThanOrEqualTo(base * 0.75));
         expect(delays[i].inMicroseconds, lessThan(base * 1.25));
       }
@@ -932,7 +932,7 @@ void main() {
             ),
           ),
         );
-        expect(turnPosts(), 1 + capacityRetryBackoff.length);
+        expect(turnPosts(), 1 + retryBackoff.length);
       },
     );
 
@@ -976,7 +976,7 @@ void main() {
             ),
           ),
         );
-        expect(turnPosts(), 1 + capacityRetryBackoff.length);
+        expect(turnPosts(), 1 + retryBackoff.length);
       });
     }
 
@@ -1235,7 +1235,7 @@ void main() {
               .having((e) => e.statusCode, 'statusCode', isNull),
         ),
       );
-      expect(keys, hasLength(1 + capacityRetryBackoff.length));
+      expect(keys, hasLength(1 + retryBackoff.length));
     });
 
     test('a conversation POST with no answer is unreachable, and not '

@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:charts_dart/charts_dart.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -150,6 +152,24 @@ class UnknownEvent extends TurnEvent {
 /// wire re-POSTs a turn refused with one of these; once its retries run out the
 /// notifier shows the at-capacity notice rather than an error.
 const Set<int> transientUnavailableStatuses = {502, 503, 504};
+
+/// Backoff before each automatic retry of a transient failure, ~7s in total.
+/// Shared by the wire's re-POST of a turn refused with a
+/// [transientUnavailableStatuses] status or never answered (adityas/ai/215,
+/// adityas/explore/60–61) and the notifier's stream reconnects
+/// (adityas/explore/62). Sized to outlast the measured ~2s deploy restart gap
+/// (adityas/backend/77) and a typical network blip. Bounded: after the last
+/// step the failure surfaces. Apply each step through [jittered].
+const List<Duration> retryBackoff = [
+  Duration(seconds: 1),
+  Duration(seconds: 2),
+  Duration(seconds: 4),
+];
+
+/// [base] scaled into [0.75, 1.25) so a crowd of clients that failed in the
+/// same instant does not re-arrive in lockstep.
+Duration jittered(Duration base, Random random) =>
+    base * (0.75 + random.nextDouble() * 0.5);
 
 /// Raised when the transport rejects a request (a non-2xx REST response, a
 /// pre-flight failure like a missing token, or a turn POST that never got an

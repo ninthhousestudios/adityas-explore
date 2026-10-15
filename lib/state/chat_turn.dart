@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -241,6 +242,14 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
 
   StreamSubscription<TurnEvent>? _sub;
   int _reconnects = 0;
+
+  // The pending resume between a stream drop and its [retryBackoff] step
+  // (adityas/explore/62). Back-to-back resumes fail in milliseconds while the
+  // network or backend is down, spending the budget before either can return.
+  // Owned like [_sub]: [_closeSub] cancels it, so every terminal transition,
+  // rotation and dispose also drops a reconnect that hasn't fired.
+  Timer? _reconnectTimer;
+  final Random _random = Random();
 
   // The turn is held behind the provider rate gate: the last event was a
   // [WaitingEvent] (adityas/ai/215). Published as [TurnStreaming.queued].
@@ -569,6 +578,16 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     }
     _partialCommitted = false;
     _cancelling = false;
+    // Stopped during a reconnect's backoff: the stream isn't open yet, so revert
+    // to the reconnect still pending, not to a live stream (adityas/explore/62).
+    if (_reconnectTimer != null) {
+      state = TurnReconnecting(
+        text: _buffer.toString(),
+        cursor: _cursor,
+        attempt: _reconnects,
+      );
+      return;
+    }
     state = _buffer.isEmpty
         ? const TurnConnecting()
         : TurnStreaming(
@@ -800,6 +819,17 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
       cursor: _cursor,
       attempt: _reconnects,
     );
+    _reconnectTimer = Timer(
+      jittered(retryBackoff[_reconnects - 1], _random),
+      _resume,
+    );
+  }
+
+  /// Re-attach to the turn's stream from the cursor after a [retryBackoff] step.
+  /// Runs even if a Stop landed during the wait: the stopped turn's trailing
+  /// usage/done arrive over this stream, as they would have over the old one.
+  void _resume() {
+    _reconnectTimer = null;
     // As with start(), resume() can throw synchronously; fail terminally rather
     // than strand the turn in TurnReconnecting with no subscription.
     final Stream<TurnEvent> events;
@@ -1124,6 +1154,8 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
   bool get isSettling => _cancelling;
 
   void _closeSub() {
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
     final sub = _sub;
     _sub = null;
     if (sub != null) unawaited(sub.cancel());

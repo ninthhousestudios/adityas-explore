@@ -37,17 +37,6 @@ class _StoppedBeforeAccept implements Exception {
   const _StoppedBeforeAccept();
 }
 
-/// Backoff before each automatic re-POST of a turn the server refused with 503
-/// (global concurrent-generation ceiling, adityas/ai/215). Bounded: after the
-/// last one the 503 surfaces to the notifier as the at-capacity notice. Each
-/// delay is jittered ([_jittered]) so a crowd of clients refused in the same
-/// instant does not re-arrive in lockstep.
-const List<Duration> capacityRetryBackoff = [
-  Duration(seconds: 1),
-  Duration(seconds: 2),
-  Duration(seconds: 4),
-];
-
 /// The real [TurnTransport]: the durable `/v1/ai` chat wire (adityas/ai/11).
 ///
 /// Drives the canonical three-call contract:
@@ -85,7 +74,7 @@ class SseTurnTransport implements TurnTransport {
   final http.Client _http;
   final SseByteSource _byteSource;
 
-  // Waits out a [capacityRetryBackoff] step. Injected so tests don't sleep.
+  // Waits out a [retryBackoff] step. Injected so tests don't sleep.
   final Future<void> Function(Duration) _delay;
   final Random _random = Random();
 
@@ -419,7 +408,7 @@ class SseTurnTransport implements TurnTransport {
     return _turnIdFrom(response);
   }
 
-  /// [_postTurn], re-POSTed after each [capacityRetryBackoff] step while the
+  /// [_postTurn], re-POSTed after each [retryBackoff] step while the
   /// server answers one of [transientUnavailableStatuses] (503 at capacity or
   /// draining, adityas/ai/215; 502/504 in a deploy's restart gap,
   /// adityas/explore/60) or never answers at all (network down, or a proxy
@@ -463,13 +452,13 @@ class SseTurnTransport implements TurnTransport {
     }
 
     var response = await post();
-    for (final backoff in capacityRetryBackoff) {
+    for (final backoff in retryBackoff) {
       if (response != null &&
           !transientUnavailableStatuses.contains(response.statusCode)) {
         break;
       }
       if (_pendingCancel) throw const _StoppedBeforeAccept();
-      await _delay(_jittered(backoff));
+      await _delay(jittered(backoff, _random));
       if (_epoch != epoch) throw const _ConversationSuperseded();
       if (_pendingCancel) throw const _StoppedBeforeAccept();
       response = await post();
@@ -488,10 +477,6 @@ class SseTurnTransport implements TurnTransport {
     }
     throw const _ConversationSuperseded();
   }
-
-  /// [base] scaled into [0.75, 1.25) so simultaneous refusals spread out.
-  Duration _jittered(Duration base) =>
-      base * (0.75 + _random.nextDouble() * 0.5);
 
   Future<http.Response> _postTurn(
     String token,
