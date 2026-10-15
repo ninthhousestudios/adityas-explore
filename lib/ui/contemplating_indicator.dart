@@ -3,7 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 /// The in-flight "Contemplating…" status for the chat bubble: a small sun
-/// throwing out rays, followed by the [label] with a rippling ellipsis.
+/// throwing out rays, followed by the [label] with a rippling ellipsis and a
+/// sun-gold band sweeping across it.
 ///
 /// One repeating controller drives both the rays and the dots. Under the
 /// platform's reduce-motion setting ([MediaQuery.disableAnimationsOf]) the
@@ -66,6 +67,7 @@ class _ContemplatingIndicatorState extends State<ContemplatingIndicator>
       fontStyle: FontStyle.italic,
     );
     final sunSize = widget.fontSize * 1.5;
+    final still = MediaQuery.disableAnimationsOf(context);
     return AnimatedBuilder(
       animation: _ctrl,
       builder: (context, _) {
@@ -78,28 +80,60 @@ class _ContemplatingIndicatorState extends State<ContemplatingIndicator>
               painter: _SunPainter(t: t, color: widget.sunColor),
             ),
             SizedBox(width: widget.fontSize * 0.4),
-            Text.rich(
-              TextSpan(
-                style: style,
-                children: [
-                  TextSpan(text: base),
-                  // All three dots always occupy their width (only alpha moves),
-                  // so the label never jitters.
-                  for (var i = 0; i < 3; i++)
-                    TextSpan(
-                      text: '.',
-                      style: TextStyle(
-                        color: widget.textColor.withValues(
-                          alpha: widget.textColor.a * _dotAlpha(t, i),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
+            Stack(
+              children: [
+                _label(base, style, widget.textColor, t),
+                // A sun-gold band sweeps left to right across the label: a gold
+                // copy of the text, masked to a moving window.
+                if (!still)
+                  ShaderMask(
+                    blendMode: BlendMode.dstIn,
+                    shaderCallback: (bounds) =>
+                        _bandMask(t).createShader(bounds),
+                    child: _label(base, style, widget.sunColor, t),
+                  ),
+              ],
             ),
           ],
         );
       },
+    );
+  }
+
+  static Widget _label(String base, TextStyle style, Color color, double t) =>
+      Text.rich(
+        TextSpan(
+          style: style.copyWith(color: color),
+          children: [
+            TextSpan(text: base),
+            // All three dots always occupy their width (only alpha moves),
+            // so the label never jitters.
+            for (var i = 0; i < 3; i++)
+              TextSpan(
+                text: '.',
+                style: TextStyle(
+                  color: color.withValues(alpha: color.a * _dotAlpha(t, i)),
+                ),
+              ),
+          ],
+        ),
+      );
+
+  /// Half-width of the band, as a fraction of the label width.
+  static const _bandHalf = 0.18;
+
+  /// Fraction of each cycle spent sweeping; the rest is a pause off-label.
+  static const _sweep = 0.7;
+
+  /// Alpha mask for the band: opaque at its centre, fading to clear at its
+  /// edges, travelling from fully left of the label to fully right of it.
+  static LinearGradient _bandMask(double t) {
+    final p = (t / _sweep).clamp(0.0, 1.0);
+    final centre = -_bandHalf + (1 + 2 * _bandHalf) * p;
+    double stop(double x) => x.clamp(0.0, 1.0);
+    return LinearGradient(
+      colors: const [Color(0x00FFFFFF), Color(0xFFFFFFFF), Color(0x00FFFFFF)],
+      stops: [stop(centre - _bandHalf), stop(centre), stop(centre + _bandHalf)],
     );
   }
 

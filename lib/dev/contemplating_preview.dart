@@ -1,5 +1,5 @@
 // Standalone preview of the chat "Contemplating…" indicator — no backend, no
-// turn. Run: flutter run -d chrome -t tool/preview_contemplating.dart
+// turn. Run: flutter run -d chrome -t lib/dev/contemplating_preview.dart
 import 'package:explore/ui/contemplating_indicator.dart';
 import 'package:explore/ui/tokens.dart';
 import 'package:flutter/material.dart';
