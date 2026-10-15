@@ -181,8 +181,10 @@ class TurnConsentRequired extends ChatTurn {
 
 /// Why the server turned a message away for load, not policy ([TurnBusy]).
 enum BusyReason {
-  /// 503 — the server-wide concurrent-generation ceiling is hit, and the wire's
-  /// automatic re-POSTs ([TurnTransport.start]) did not get through. Transient.
+  /// 503 — the server-wide concurrent-generation ceiling is hit or the backend
+  /// is draining (or 502/504 while a deploy restarts it — see
+  /// [transientUnavailableStatuses]), and the wire's automatic re-POSTs
+  /// ([TurnTransport.start]) did not get through. Transient.
   atCapacity,
 
   /// 429 — this user has too many turns in flight (the per-user stream cap, e.g.
@@ -766,7 +768,7 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     // (observed, adityas/ai/215).
     if (error is TurnTransportException && error.statusCode != null) {
       switch (error.statusCode) {
-        case 503:
+        case final status? when transientUnavailableStatuses.contains(status):
           _busy(BusyReason.atCapacity);
         case 429:
           _busy(BusyReason.tooManyAtOnce);

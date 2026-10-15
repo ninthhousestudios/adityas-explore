@@ -154,9 +154,19 @@ class UnknownEvent extends TurnEvent {
 /// server *gate* apart from a transient transport drop: **403** = access lapsed
 /// (adityas/ai/99 → renew prompt, no retry), **402** = usage ceiling (ai/100),
 /// **428** = consent stale (ai/98), **503** = server at capacity (the wire
-/// already retried it — adityas/ai/215), **429** = too many turns/requests at
+/// already retried it — adityas/ai/215; **502**/**504**, the proxy's answer
+/// while a deploy restarts the backend, are treated the same — see
+/// [transientUnavailableStatuses]), **429** = too many turns/requests at
 /// once for this user (ai/215). Any other status is a generic terminal error;
 /// null (a pre-flight failure) is handled after the reconnect budget.
+/// REST statuses meaning "the server can't take this right now, try again":
+/// **503** (concurrent-generation ceiling, adityas/ai/215, or a graceful drain,
+/// adityas/backend/75) and **502**/**504** (the proxy's answer in the restart
+/// gap after a drain, before the new backend is up — adityas/explore/60). The
+/// wire re-POSTs a turn refused with one of these; once its retries run out the
+/// notifier shows the at-capacity notice rather than an error.
+const Set<int> transientUnavailableStatuses = {502, 503, 504};
+
 class TurnTransportException implements Exception {
   final String message;
   final int? statusCode;

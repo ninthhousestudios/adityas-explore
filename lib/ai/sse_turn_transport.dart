@@ -399,12 +399,13 @@ class SseTurnTransport implements TurnTransport {
   }
 
   /// [_postTurn], re-POSTed after each [capacityRetryBackoff] step while the
-  /// server answers 503 (global concurrent-generation ceiling — transient by
-  /// nature, adityas/ai/215). Safe to repeat: every attempt carries the same
+  /// server answers one of [transientUnavailableStatuses] (503 at capacity or
+  /// draining, adityas/ai/215; 502/504 in a deploy's restart gap,
+  /// adityas/explore/60). Safe to repeat: every attempt carries the same
   /// [idempotencyKey], so a re-POST of an attempt the server did accept
   /// re-attaches rather than duplicating. Returns the last response, which is
-  /// still a 503 once the budget is spent. A rotation or a Stop during a backoff
-  /// abandons the turn instead of re-POSTing.
+  /// still such a status once the budget is spent. A rotation or a Stop during
+  /// a backoff abandons the turn instead of re-POSTing.
   Future<http.Response> _postTurnRetrying(
     String token,
     String conversationId,
@@ -427,7 +428,7 @@ class SseTurnTransport implements TurnTransport {
 
     var response = await post();
     for (final backoff in capacityRetryBackoff) {
-      if (response.statusCode != 503) break;
+      if (!transientUnavailableStatuses.contains(response.statusCode)) break;
       if (_pendingCancel) throw const _StoppedBeforeAccept();
       await _delay(_jittered(backoff));
       if (_epoch != epoch) throw const _ConversationSuperseded();

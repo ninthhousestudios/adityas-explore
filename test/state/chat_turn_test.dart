@@ -1585,6 +1585,8 @@ void main() {
 
     for (final (status, reason) in [
       (503, BusyReason.atCapacity),
+      (502, BusyReason.atCapacity),
+      (504, BusyReason.atCapacity),
       (429, BusyReason.tooManyAtOnce),
     ]) {
       test(
@@ -1683,6 +1685,29 @@ void main() {
         expect(busy, isA<TurnBusy>());
         expect((busy as TurnBusy).reason, BusyReason.atCapacity);
       });
+
+      for (final status in [502, 504]) {
+        test('$status → retry → success streams the reply', () async {
+          final container = _container(wire([status, status]));
+          container.read(chatTurnProvider.notifier).send('hello');
+          await _pump(60);
+          final done = container.read(chatTurnProvider);
+          expect(done, isA<TurnDone>());
+          expect((done as TurnDone).text, 'Hi');
+        });
+
+        test(
+          '$status → retries exhausted → at-capacity notice, not an error',
+          () async {
+            final container = _container(wire(List.filled(10, status)));
+            container.read(chatTurnProvider.notifier).send('hello');
+            await _pump(60);
+            final busy = container.read(chatTurnProvider);
+            expect(busy, isA<TurnBusy>());
+            expect((busy as TurnBusy).reason, BusyReason.atCapacity);
+          },
+        );
+      }
 
       test('429 → too-many-at-once notice', () async {
         final container = _container(wire([429]));

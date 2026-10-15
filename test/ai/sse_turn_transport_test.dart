@@ -936,6 +936,104 @@ void main() {
       },
     );
 
+    for (final status in [502, 504]) {
+      test('$status (deploy restart gap) is retried like 503, then the turn '
+          'streams (adityas/explore/60)', () async {
+        final (:mock, :turnPosts) = scripted([status, status]);
+        final transport = SseTurnTransport(
+          tokenProvider: ({forceRefresh = false}) async => 'jwt',
+          baseUrl: 'https://api.test',
+          httpClient: mock,
+          byteSource: _FakeByteSource(_happyStream).call,
+          delay: (_) async {},
+        );
+
+        final events = await transport
+            .start(const TurnRequest(text: 'hi'))
+            .toList();
+
+        expect(turnPosts(), 3);
+        expect(events.last, isA<DoneEvent>());
+      });
+
+      test('$status past the retry budget surfaces with its status', () async {
+        final (:mock, :turnPosts) = scripted(List.filled(10, status));
+        final transport = SseTurnTransport(
+          tokenProvider: ({forceRefresh = false}) async => 'jwt',
+          baseUrl: 'https://api.test',
+          httpClient: mock,
+          byteSource: _FakeByteSource(_happyStream).call,
+          delay: (_) async {},
+        );
+
+        await expectLater(
+          transport.start(const TurnRequest(text: 'hi')).toList(),
+          throwsA(
+            isA<TurnTransportException>().having(
+              (e) => e.statusCode,
+              'statusCode',
+              status,
+            ),
+          ),
+        );
+        expect(turnPosts(), 1 + capacityRetryBackoff.length);
+      });
+    }
+
+    test(
+      'a 502 then a 503 re-POST share the turn\'s idempotency key',
+      () async {
+        final keys = <String?>[];
+        var turnPosts = 0;
+        final mock = MockClient((request) async {
+          if (request.url.path.endsWith('/conversations')) {
+            return http.Response(jsonEncode({'conversation_id': 'c1'}), 201);
+          }
+          keys.add(request.headers['idempotency-key']);
+          final status = switch (turnPosts++) {
+            0 => 502,
+            1 => 503,
+            _ => 202,
+          };
+          return http.Response(jsonEncode({'turn_id': 't1'}), status);
+        });
+        final transport = SseTurnTransport(
+          tokenProvider: ({forceRefresh = false}) async => 'jwt',
+          baseUrl: 'https://api.test',
+          httpClient: mock,
+          byteSource: _FakeByteSource(_happyStream).call,
+          delay: (_) async {},
+        );
+
+        await transport.start(const TurnRequest(text: 'hi')).toList();
+
+        expect(keys, hasLength(3));
+        expect(keys.first, isNotNull);
+        expect(keys.toSet(), hasLength(1));
+      },
+    );
+
+    for (final status in [400, 402, 403, 404, 428, 429, 500]) {
+      test('$status is not retried as unavailable', () async {
+        // 404 re-mints the conversation once and re-POSTs; everything else
+        // surfaces at once. Neither backs off.
+        final (:mock, :turnPosts) = scripted(List.filled(10, status));
+        final transport = SseTurnTransport(
+          tokenProvider: ({forceRefresh = false}) async => 'jwt',
+          baseUrl: 'https://api.test',
+          httpClient: mock,
+          byteSource: _FakeByteSource(_happyStream).call,
+          delay: (_) async => fail('$status must not back off'),
+        );
+
+        await expectLater(
+          transport.start(const TurnRequest(text: 'hi')).toList(),
+          throwsA(isA<TurnTransportException>()),
+        );
+        expect(turnPosts(), status == 404 ? 2 : 1);
+      });
+    }
+
     test('every 503 re-POST repeats the turn\'s idempotency key; the next '
         'turn gets a new one (adityas/ai/219)', () async {
       var turnPosts = 0;
