@@ -1641,10 +1641,43 @@ void main() {
       expect(transport.resumes, 0);
     });
 
+    test('an unreachable turn POST → TurnBusy(unreachable), never resume() '
+        '(adityas/explore/61)', () async {
+      final transport = _FakeTransport();
+      final container = _container(transport);
+
+      container.read(chatTurnProvider.notifier).send('hello');
+      transport.dropStream(
+        const TurnTransportException('Failed to fetch', unreachable: true),
+      );
+      await _pump();
+
+      final busy = container.read(chatTurnProvider);
+      expect(busy, isA<TurnBusy>());
+      expect((busy as TurnBusy).reason, BusyReason.unreachable);
+      expect(transport.resumes, 0);
+    });
+
+    test('a status-less transport rejection (e.g. signed out) fails at once '
+        'with its own message, not via resume()', () async {
+      final transport = _FakeTransport();
+      final container = _container(transport);
+
+      container.read(chatTurnProvider.notifier).send('hello');
+      transport.dropStream(const TurnTransportException('Not signed in'));
+      await _pump();
+
+      final error = container.read(chatTurnProvider);
+      expect(error, isA<TurnError>());
+      expect((error as TurnError).message, 'Not signed in');
+      expect(transport.resumes, 0);
+    });
+
     group('through the real SSE wire', () {
       /// The real transport over a mock whose turn POST answers [turnStatuses]
-      /// in order, then 202 with a one-delta stream.
-      SseTurnTransport wire(List<int> turnStatuses) {
+      /// in order — null is no answer at all (a network failure) — then 202
+      /// with a one-delta stream.
+      SseTurnTransport wire(List<int?> turnStatuses) {
         var turnPosts = 0;
         return SseTurnTransport(
           tokenProvider: ({forceRefresh = false}) async => 'jwt',
@@ -1655,7 +1688,11 @@ void main() {
             }
             final i = turnPosts++;
             if (i < turnStatuses.length) {
-              return http.Response('{"error":"x"}', turnStatuses[i]);
+              final status = turnStatuses[i];
+              if (status == null) {
+                throw http.ClientException('Failed to fetch', request.url);
+              }
+              return http.Response('{"error":"x"}', status);
             }
             return http.Response('{"turn_id":"t1"}', 202);
           }),
@@ -1708,6 +1745,28 @@ void main() {
           },
         );
       }
+
+      test('no answer → retry → success streams the reply', () async {
+        final container = _container(wire([null, null]));
+        container.read(chatTurnProvider.notifier).send('hello');
+        await _pump(60);
+        final done = container.read(chatTurnProvider);
+        expect(done, isA<TurnDone>());
+        expect((done as TurnDone).text, 'Hi');
+      });
+
+      test(
+        'no answer → retries exhausted → the calm unreachable notice, not '
+        '"resume() before a turn was started" (adityas/explore/61)',
+        () async {
+          final container = _container(wire(List.filled(10, null)));
+          container.read(chatTurnProvider.notifier).send('hello');
+          await _pump(60);
+          final busy = container.read(chatTurnProvider);
+          expect(busy, isA<TurnBusy>());
+          expect((busy as TurnBusy).reason, BusyReason.unreachable);
+        },
+      );
 
       test('429 → too-many-at-once notice', () async {
         final container = _container(wire([429]));

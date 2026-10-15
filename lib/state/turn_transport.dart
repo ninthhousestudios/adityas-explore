@@ -143,22 +143,6 @@ class UnknownEvent extends TurnEvent {
   const UnknownEvent(this.type, super.eventId);
 }
 
-/// Raised when the transport rejects a request (a non-2xx REST response, or a
-/// pre-flight failure like a missing token). Part of the transport *contract* —
-/// it lives here, not in the concrete wire, so the notifier can catch it without
-/// importing lib/ai (the `state-no-sse-wire` guard). Surfaces as a stream error
-/// the notifier turns into a terminal state.
-///
-/// [statusCode] carries the REST status when the rejection was an HTTP response
-/// (null for a pre-flight failure), so the notifier can branch a deliberate
-/// server *gate* apart from a transient transport drop: **403** = access lapsed
-/// (adityas/ai/99 → renew prompt, no retry), **402** = usage ceiling (ai/100),
-/// **428** = consent stale (ai/98), **503** = server at capacity (the wire
-/// already retried it — adityas/ai/215; **502**/**504**, the proxy's answer
-/// while a deploy restarts the backend, are treated the same — see
-/// [transientUnavailableStatuses]), **429** = too many turns/requests at
-/// once for this user (ai/215). Any other status is a generic terminal error;
-/// null (a pre-flight failure) is handled after the reconnect budget.
 /// REST statuses meaning "the server can't take this right now, try again":
 /// **503** (concurrent-generation ceiling, adityas/ai/215, or a graceful drain,
 /// adityas/backend/75) and **502**/**504** (the proxy's answer in the restart
@@ -167,10 +151,42 @@ class UnknownEvent extends TurnEvent {
 /// notifier shows the at-capacity notice rather than an error.
 const Set<int> transientUnavailableStatuses = {502, 503, 504};
 
+/// Raised when the transport rejects a request (a non-2xx REST response, a
+/// pre-flight failure like a missing token, or a turn POST that never got an
+/// answer). Part of the transport *contract* — it lives here, not in the
+/// concrete wire, so the notifier can catch it without importing lib/ai (the
+/// `state-no-sse-wire` guard). Surfaces as a stream error the notifier turns
+/// into a terminal state.
+///
+/// **Every failure before the server accepts a turn surfaces as this type**;
+/// a dropped turn *stream* never does. That is how the notifier tells the two
+/// apart: there is no turn id to resume after a refused opening POST, so this
+/// exception never enters the reconnect path (adityas/explore/61).
+///
+/// [statusCode] carries the REST status when the rejection was an HTTP response
+/// (null otherwise), so the notifier can branch a deliberate server *gate* apart
+/// from a generic failure: **403** = access lapsed (adityas/ai/99 → renew
+/// prompt, no retry), **402** = usage ceiling (ai/100), **428** = consent stale
+/// (ai/98), **503** = server at capacity (the wire already retried it —
+/// adityas/ai/215; **502**/**504**, the proxy's answer while a deploy restarts
+/// the backend, are treated the same — see [transientUnavailableStatuses]),
+/// **429** = too many turns/requests at once for this user (ai/215). Any other
+/// status, or none, is a generic terminal error.
+///
+/// [unreachable] marks a turn that could not be opened because the server never
+/// answered (network down, or a proxy error without CORS headers that the
+/// browser reports as a bare fetch failure). The wire has already re-POSTed it
+/// on [transientUnavailableStatuses]' backoff; the notifier shows the calm
+/// can't-reach notice rather than an error.
 class TurnTransportException implements Exception {
   final String message;
   final int? statusCode;
-  const TurnTransportException(this.message, {this.statusCode});
+  final bool unreachable;
+  const TurnTransportException(
+    this.message, {
+    this.statusCode,
+    this.unreachable = false,
+  });
   @override
   String toString() => message;
 }

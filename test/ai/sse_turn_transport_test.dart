@@ -1173,4 +1173,128 @@ void main() {
       expect(await stopped, isTrue);
     });
   });
+
+  group('SseTurnTransport opening POST with no answer (adityas/explore/61)', () {
+    /// A mock whose turn POST throws a network failure [failures] times (what
+    /// the browser reports for a proxy 502 without CORS headers), then accepts.
+    /// Records each turn POST's idempotency key.
+    ({MockClient mock, List<String?> keys}) flaky(int failures) {
+      final keys = <String?>[];
+      final mock = MockClient((request) async {
+        if (request.url.path.endsWith('/conversations')) {
+          return http.Response(jsonEncode({'conversation_id': 'c1'}), 201);
+        }
+        keys.add(request.headers['idempotency-key']);
+        if (keys.length <= failures) {
+          throw http.ClientException('Failed to fetch', request.url);
+        }
+        return http.Response(jsonEncode({'turn_id': 't1'}), 202);
+      });
+      return (mock: mock, keys: keys);
+    }
+
+    test('is re-POSTed on the backoff with the same idempotency key, then '
+        'the turn streams', () async {
+      final (:mock, :keys) = flaky(2);
+      final delays = <Duration>[];
+      final transport = SseTurnTransport(
+        tokenProvider: ({forceRefresh = false}) async => 'jwt',
+        baseUrl: 'https://api.test',
+        httpClient: mock,
+        byteSource: _FakeByteSource(_happyStream).call,
+        delay: (d) async => delays.add(d),
+      );
+
+      final events = await transport
+          .start(const TurnRequest(text: 'hi'))
+          .toList();
+
+      expect(keys, hasLength(3));
+      expect(keys.first, isNotNull);
+      expect(keys.toSet(), hasLength(1));
+      expect(delays, hasLength(2));
+      expect(events.last, isA<DoneEvent>());
+    });
+
+    test('past the retry budget surfaces as an unreachable '
+        'TurnTransportException, so a resume() never follows', () async {
+      final (:mock, :keys) = flaky(100);
+      final transport = SseTurnTransport(
+        tokenProvider: ({forceRefresh = false}) async => 'jwt',
+        baseUrl: 'https://api.test',
+        httpClient: mock,
+        byteSource: _FakeByteSource(_happyStream).call,
+        delay: (_) async {},
+      );
+
+      await expectLater(
+        transport.start(const TurnRequest(text: 'hi')).toList(),
+        throwsA(
+          isA<TurnTransportException>()
+              .having((e) => e.unreachable, 'unreachable', isTrue)
+              .having((e) => e.statusCode, 'statusCode', isNull),
+        ),
+      );
+      expect(keys, hasLength(1 + capacityRetryBackoff.length));
+    });
+
+    test('a conversation POST with no answer is unreachable, and not '
+        're-POSTed (no idempotency key — a lost answer would mint a '
+        'duplicate)', () async {
+      var conversationPosts = 0;
+      final mock = MockClient((request) async {
+        if (request.url.path.endsWith('/conversations')) {
+          conversationPosts++;
+          throw http.ClientException('Failed to fetch', request.url);
+        }
+        fail('no turn POST without a conversation');
+      });
+      final transport = SseTurnTransport(
+        tokenProvider: ({forceRefresh = false}) async => 'jwt',
+        baseUrl: 'https://api.test',
+        httpClient: mock,
+        byteSource: _FakeByteSource(_happyStream).call,
+        delay: (_) async => fail('must not back off'),
+      );
+
+      await expectLater(
+        transport.start(const TurnRequest(text: 'hi')).toList(),
+        throwsA(
+          isA<TurnTransportException>().having(
+            (e) => e.unreachable,
+            'unreachable',
+            isTrue,
+          ),
+        ),
+      );
+      expect(conversationPosts, 1);
+    });
+
+    test('any other opening failure still surfaces as a '
+        'TurnTransportException (not unreachable)', () async {
+      final mock = MockClient((request) async {
+        if (request.url.path.endsWith('/conversations')) {
+          return http.Response(jsonEncode({'conversation_id': 'c1'}), 201);
+        }
+        return http.Response('not json', 202);
+      });
+      final transport = SseTurnTransport(
+        tokenProvider: ({forceRefresh = false}) async => 'jwt',
+        baseUrl: 'https://api.test',
+        httpClient: mock,
+        byteSource: _FakeByteSource(_happyStream).call,
+      );
+
+      await expectLater(
+        transport.start(const TurnRequest(text: 'hi')).toList(),
+        throwsA(
+          isA<TurnTransportException>().having(
+            (e) => e.unreachable,
+            'unreachable',
+            isFalse,
+          ),
+        ),
+      );
+    });
+  });
 }

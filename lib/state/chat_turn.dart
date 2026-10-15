@@ -179,7 +179,8 @@ class TurnConsentRequired extends ChatTurn {
   const TurnConsentRequired({required this.text, required this.usage});
 }
 
-/// Why the server turned a message away for load, not policy ([TurnBusy]).
+/// Why a message couldn't be taken right now — load or reachability, not policy
+/// ([TurnBusy]).
 enum BusyReason {
   /// 503 — the server-wide concurrent-generation ceiling is hit or the backend
   /// is draining (or 502/504 while a deploy restarts it — see
@@ -191,9 +192,16 @@ enum BusyReason {
   /// several open tabs) or sent too many requests too fast. The backend uses one
   /// status for both, so the notice covers both.
   tooManyAtOnce,
+
+  /// The turn POST never got an answer, through the wire's automatic re-POSTs
+  /// (adityas/explore/61): the network is down, or the server is restarting
+  /// behind a proxy whose error the browser reports as a bare fetch failure.
+  /// The two look identical from here, so the notice covers both.
+  unreachable,
 }
 
-/// The server refused the turn for load (adityas/ai/215).
+/// The server refused the turn for load (adityas/ai/215), or never answered the
+/// turn POST at all (adityas/explore/61).
 ///
 /// Terminal and distinct from [TurnError]: nothing is broken, so the UI shows a
 /// calm notice rather than the red error bubble, and — unlike the 402/403/428
@@ -761,16 +769,20 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
       return;
     }
     if (_isTerminal(state)) return;
-    // Any other status-carrying rejection is a REST refusal of the opening
-    // POSTs, not a dropped stream (the stream GET fails with a different
-    // error): no turn exists to resume, so reconnecting would only spend the
-    // budget on `resume()` failures and surface *that* message instead
-    // (observed, adityas/ai/215).
-    if (error is TurnTransportException && error.statusCode != null) {
-      switch (error.statusCode) {
-        case final status? when transientUnavailableStatuses.contains(status):
+    // Any other [TurnTransportException] is a refusal of the opening POSTs (or a
+    // pre-flight failure), not a dropped stream — the stream GET fails with a
+    // different error. No turn exists to resume, so reconnecting would only
+    // spend the budget on `resume()` failures and surface *that* message instead
+    // (observed with a status, adityas/ai/215; with a bare fetch failure,
+    // adityas/explore/61).
+    if (error is TurnTransportException) {
+      switch (error) {
+        case TurnTransportException(unreachable: true):
+          _busy(BusyReason.unreachable);
+        case TurnTransportException(:final statusCode?)
+            when transientUnavailableStatuses.contains(statusCode):
           _busy(BusyReason.atCapacity);
-        case 429:
+        case TurnTransportException(statusCode: 429):
           _busy(BusyReason.tooManyAtOnce);
         default:
           _fail(error.message);
@@ -913,7 +925,8 @@ class ChatTurnNotifier extends Notifier<ChatTurn> {
     state = TurnError(message: message, cursor: _cursor, usage: _usage);
   }
 
-  /// Terminal load refusal → the calm busy notice ([TurnBusy], adityas/ai/215).
+  /// Terminal load refusal or unreachable server → the calm busy notice
+  /// ([TurnBusy], adityas/ai/215, adityas/explore/61).
   /// Pre-accept, so there is no partial to commit and no server turn to stop.
   /// The optimistic user message stays in history, exactly as for [_fail].
   void _busy(BusyReason reason) {

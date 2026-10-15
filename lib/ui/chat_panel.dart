@@ -1395,11 +1395,18 @@ const _tooManyAtOnceCopy =
     'Too many messages at once. Let a reply finish, or close another chat '
     'tab, then send again.';
 
+/// Notice when the turn POST never got an answer through the automatic retries
+/// — offline, or the server restarting (adityas/explore/61).
+const _unreachableCopy =
+    "We couldn't reach the server, so your message wasn't sent. Check your "
+    'connection, or give it a minute, then send it again.';
+
 /// Notice copy for a load refusal, by [BusyReason] — shared by the in-thread
 /// bubble and the live-region announcement.
 String _busyCopy(BusyReason reason) => switch (reason) {
   BusyReason.atCapacity => _atCapacityCopy,
   BusyReason.tooManyAtOnce => _tooManyAtOnceCopy,
+  BusyReason.unreachable => _unreachableCopy,
 };
 
 /// Heading of the re-consent gate ([TurnConsentRequired], adityas/ai/98), also

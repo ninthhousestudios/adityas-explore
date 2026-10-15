@@ -187,13 +187,16 @@ class SseTurnTransport implements TurnTransport {
       // notifier's cancelling turn settles (adityas/ai/215).
       _resolvePendingCancel(true);
       return;
-    } catch (_) {
+    } catch (error) {
       // The turn was refused (a REST rejection, a network failure, no token)
       // before an id existed, so a Stop latched meanwhile has nothing left to
       // stop — resolve it rather than strand the notifier's awaited cancel()
-      // (adityas/ai/215). The failure itself still reaches the notifier.
+      // (adityas/ai/215). The failure itself still reaches the notifier, always
+      // as a [TurnTransportException]: that is what keeps a refused opening out
+      // of the notifier's reconnect path, where resume() has no turn to target
+      // (adityas/explore/61).
       _resolvePendingCancel(true);
-      rethrow;
+      throw _openingFailure(error);
     }
     if (_epoch != epoch) {
       // Rotated after the server accepted the turn: stop it rather than leave a
@@ -318,6 +321,24 @@ class SseTurnTransport implements TurnTransport {
     return token;
   }
 
+  /// [error], thrown while opening a turn, as the [TurnTransportException] the
+  /// contract promises for every pre-accept failure. A network throw here can
+  /// only be the conversation POST's — the turn POST's are retried and wrapped
+  /// in [_postTurnRetrying]. The conversation POST is not retried: it carries no
+  /// idempotency key, so re-POSTing one whose answer was lost would mint a
+  /// second, empty conversation.
+  TurnTransportException _openingFailure(Object error) => switch (error) {
+    TurnTransportException() => error,
+    http.ClientException() => _unreachable(error),
+    _ => TurnTransportException('Failed to start the turn: $error'),
+  };
+
+  TurnTransportException _unreachable(http.ClientException? cause) =>
+      TurnTransportException(
+        'Could not reach the server: ${cause?.message}',
+        unreachable: true,
+      );
+
   /// The durable conversation, minted on first use and cached thereafter. When
   /// this call mints it, [title] (the client-composed `{chart · date}` label)
   /// rides in the create body; the backend accepts an optional title there. A
@@ -401,11 +422,14 @@ class SseTurnTransport implements TurnTransport {
   /// [_postTurn], re-POSTed after each [capacityRetryBackoff] step while the
   /// server answers one of [transientUnavailableStatuses] (503 at capacity or
   /// draining, adityas/ai/215; 502/504 in a deploy's restart gap,
-  /// adityas/explore/60). Safe to repeat: every attempt carries the same
-  /// [idempotencyKey], so a re-POST of an attempt the server did accept
+  /// adityas/explore/60) or never answers at all (network down, or a proxy
+  /// error the browser reports as a bare fetch failure because it carries no
+  /// CORS headers — adityas/explore/61). Safe to repeat: every attempt carries
+  /// the same [idempotencyKey], so a re-POST of an attempt the server did accept
   /// re-attaches rather than duplicating. Returns the last response, which is
-  /// still such a status once the budget is spent. A rotation or a Stop during
-  /// a backoff abandons the turn instead of re-POSTing.
+  /// still such a status once the budget is spent; throws an unreachable
+  /// [TurnTransportException] if the last attempt got no answer. A rotation or a
+  /// Stop during a backoff abandons the turn instead of re-POSTing.
   Future<http.Response> _postTurnRetrying(
     String token,
     String conversationId,
@@ -414,28 +438,43 @@ class SseTurnTransport implements TurnTransport {
     String idempotencyKey,
     int epoch,
   ) async {
-    Future<http.Response> post() async {
-      final response = await _postTurn(
-        token,
-        conversationId,
-        message,
-        chart,
-        idempotencyKey,
-      );
+    // The network failure of the latest attempt, if it got no answer.
+    http.ClientException? unanswered;
+
+    // One attempt: the server's answer, or null when it never came.
+    Future<http.Response?> post() async {
+      unanswered = null;
+      final http.Response response;
+      try {
+        response = await _postTurn(
+          token,
+          conversationId,
+          message,
+          chart,
+          idempotencyKey,
+        );
+      } on http.ClientException catch (error) {
+        if (_epoch != epoch) throw const _ConversationSuperseded();
+        unanswered = error;
+        return null;
+      }
       _abandonIfSuperseded(response, token, epoch);
       return response;
     }
 
     var response = await post();
     for (final backoff in capacityRetryBackoff) {
-      if (!transientUnavailableStatuses.contains(response.statusCode)) break;
+      if (response != null &&
+          !transientUnavailableStatuses.contains(response.statusCode)) {
+        break;
+      }
       if (_pendingCancel) throw const _StoppedBeforeAccept();
       await _delay(_jittered(backoff));
       if (_epoch != epoch) throw const _ConversationSuperseded();
       if (_pendingCancel) throw const _StoppedBeforeAccept();
       response = await post();
     }
-    return response;
+    return response ?? (throw _unreachable(unanswered));
   }
 
   /// Throw [_ConversationSuperseded] if a rotation landed while a turn POST was

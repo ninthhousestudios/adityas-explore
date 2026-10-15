@@ -198,11 +198,14 @@ matched.
   (`SseTurnTransport`) re-POSTs it after 1s/2s/4s (jittered ±25%) before giving
   up, and a Stop during a backoff abandons the turn. A **429** is the per-user
   stream cap or the per-user write rate limit — one status for both, so one
-  notice covers both; never retried. Either lands on `busy` with a
-  `BusyReason`, rendered as a calm notice. Nothing is latched: the next send
-  just tries again. More generally, any status-carrying rejection is a refused
-  opening POST, not a dropped stream, so it never enters the reconnect path —
-  there is no turn id to resume.
+  notice covers both; never retried. A turn POST that gets **no answer** (network
+  down, or a 502 without CORS headers that the browser reports as a bare
+  `Failed to fetch`) is re-POSTed on the same backoff with the same
+  Idempotency-Key, then lands on `busy` as `unreachable` (adityas/explore/61).
+  Each lands on `busy` with a `BusyReason`, rendered as a calm notice. Nothing
+  is latched: the next send just tries again. More generally, the wire surfaces
+  *every* pre-accept failure as a `TurnTransportException`, and the notifier
+  never sends one into the reconnect path: there is no turn id to resume.
 - **Queued behind the provider gate.** A `waiting` SSE event (backend I14: the
   org-wide provider token bucket is empty) sets `streaming.queued`; the panel
   shows a queued status in place of *Contemplating…* until the next event.
