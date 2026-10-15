@@ -7,12 +7,16 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../navigate.dart' if (dart.library.js_interop) '../navigate_web.dart';
+import '../state/active_chart.dart';
 import '../state/auth.dart';
 import '../state/chat_turn.dart';
 import '../state/consent.dart';
 import '../state/conversation.dart';
 import '../state/entitlement.dart';
+import '../state/overlay.dart';
 import '../state/usage.dart';
+import 'being_names.dart';
+import 'being_slug.dart';
 import 'chat_coming_soon.dart';
 import 'chat_composer.dart';
 import 'contemplating_indicator.dart';
@@ -624,6 +628,19 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
     );
   }
 
+  /// A tapped being-name link in a reply opens the same card `show_being`
+  /// would (adityas/ai/223); an unresolvable slug is a no-op.
+  void _openBeingLink(String slug) {
+    final chart = ref.read(chartControllerProvider).chart;
+    final being = resolveBeingLink(
+      slug,
+      (b) =>
+          chart != null && planetActivatingBeing(chart, b.sign, b.type) != null,
+    );
+    if (being == null) return;
+    ref.read(overlayControllerProvider.notifier).openBeing(being, chart);
+  }
+
   Widget _messageBubble(ChatMessage m, Color color, double fontSize) {
     final fromUser = m.role == MessageRole.user;
     final bubble = Container(
@@ -646,6 +663,7 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
               style: TextStyle(color: color, fontSize: fontSize),
               linkColor: context.tokens.gold,
               isStreaming: false,
+              onBeingTap: _openBeingLink,
             ),
     );
     return _CopyableBubble(

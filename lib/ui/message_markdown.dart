@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:gpt_markdown/gpt_markdown.dart';
 
+import 'being_names.dart';
+
 /// Renders an assistant message body — the single markdown-renderer swap seam.
 ///
 /// Every chat message routes its text through this widget, so switching the
@@ -18,6 +20,7 @@ class MessageMarkdown extends StatelessWidget {
     required this.style,
     required this.linkColor,
     this.isStreaming = false,
+    this.onBeingTap,
     super.key,
   });
 
@@ -33,18 +36,31 @@ class MessageMarkdown extends StatelessWidget {
   /// True while the turn is still streaming — render plain, defer the parse.
   final bool isStreaming;
 
+  /// When set, every being name in the completed text becomes a `being:{slug}`
+  /// link and a tap on one calls this with the slug (adityas/ai/223). Other
+  /// links keep their existing behaviour (no tap action).
+  final void Function(String slug)? onBeingTap;
+
   @override
   Widget build(BuildContext context) {
     if (isStreaming) {
       return Text(text, style: style);
     }
+    final onBeingTap = this.onBeingTap;
     return GptMarkdown(
-      text,
+      onBeingTap == null ? text : linkBeingNames(text),
       style: style,
       // We already hold the complete text; skip gpt_markdown's own reveal
       // animation so a finished message doesn't re-type itself.
       isStreaming: false,
       styleSheet: GptMarkdownStyleSheet(link: LinkStyle(color: linkColor)),
+      onLinkTap: onBeingTap == null
+          ? null
+          : (url, _) {
+              if (url.startsWith(beingLinkScheme)) {
+                onBeingTap(url.substring(beingLinkScheme.length));
+              }
+            },
     );
   }
 }

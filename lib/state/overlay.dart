@@ -1,8 +1,10 @@
 import 'dart:math';
 import 'dart:ui' show Offset, Rect;
 
+import 'package:arrow_core/arrow_core.dart' as arrow;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../ui/being_slug.dart';
 import '../ui/chart_wheel_layout.dart';
 import '../ui/popup_state.dart';
 
@@ -97,6 +99,22 @@ class OverlayController extends Notifier<OverlayLayer> {
   /// to tapping the planet's glyph. [showBeing] is the placement-free fallback
   /// for a being with no placement in this chart.
   void showPlanetBeing(PlacedPlanet planet) => open(BeingFromPlanet(planet));
+
+  /// Open [being]'s card the way `show_being` and a being-name link both do:
+  /// prefer the chart-placed planet card (Position/Soul Stance/planet glyph)
+  /// when a displayed planet in [chart] activates this being, so it matches one
+  /// opened by tapping the glyph (adityas/ai/84); otherwise the placement-free
+  /// being card.
+  void openBeing(BeingRef being, arrow.Chart? chart) {
+    final placed = chart == null
+        ? null
+        : planetActivatingBeing(chart, being.sign, being.type);
+    if (placed != null) {
+      showPlanetBeing(placed);
+    } else {
+      showBeing(being);
+    }
+  }
 
   /// Move the floating window by [delta], clamped to the [areaW]×[areaH] area.
   void drag(Offset delta, double areaW, double areaH) {
