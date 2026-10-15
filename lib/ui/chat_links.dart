@@ -2,12 +2,53 @@ import 'aditya_data.dart';
 import 'being_slug.dart';
 import 'popup_state.dart';
 
-/// Link scheme for a being-name link in an assistant reply: `being:{slug}`.
+/// Link schemes for a linked name in an assistant reply (adityas/ai/223).
 const beingLinkScheme = 'being:';
+const beingTypeLinkScheme = 'being-type:';
+const planetLinkScheme = 'planet:';
 
 /// Ambiguous-name marker slug for Vishvavasu when the reply alone doesn't say
 /// which one it means; [resolveBeingLink] settles it at tap time.
 const vishvavasuMarker = 'vishvavasu';
+
+/// A tapped name link, decoded from its URL by [parseChatLink].
+sealed class ChatLink {
+  const ChatLink();
+}
+
+/// One of the 84 beings, by catalog slug (or [vishvavasuMarker]).
+class BeingLink extends ChatLink {
+  const BeingLink(this.slug);
+  final String slug;
+}
+
+/// One of the seven being types (`aditya`, `rishi`, …) — the type card.
+class BeingTypeLink extends ChatLink {
+  const BeingTypeLink(this.type);
+  final String type;
+}
+
+/// One of the nine displayed planets (`sun` … `ketu`) — the planet card.
+class PlanetLink extends ChatLink {
+  const PlanetLink(this.body);
+  final String body;
+}
+
+/// Decode a link URL emitted by [linkChatNames]; null for any other URL.
+ChatLink? parseChatLink(String url) {
+  if (url.startsWith(beingTypeLinkScheme)) {
+    final type = url.substring(beingTypeLinkScheme.length);
+    return _columnTypes.contains(type) ? BeingTypeLink(type) : null;
+  }
+  if (url.startsWith(beingLinkScheme)) {
+    return BeingLink(url.substring(beingLinkScheme.length));
+  }
+  if (url.startsWith(planetLinkScheme)) {
+    final body = url.substring(planetLinkScheme.length);
+    return defaultGrahas.contains(body) ? PlanetLink(body) : null;
+  }
+  return null;
+}
 
 /// The 84-being table from the backend system prompt, one row per sign
 /// (row index + 1 = sign, same order as [adityaSigns]). The model is told these
@@ -101,7 +142,7 @@ const _beingTable = <List<String>>[
   ],
 ];
 
-/// Column order of [_beingTable].
+/// Column order of [_beingTable] — also the seven being-type keys.
 const _columnTypes = [
   'aditya',
   'rishi',
@@ -112,18 +153,41 @@ const _columnTypes = [
   'naga',
 ];
 
-/// Name → catalog slug (`{aditya}-{type}`). Vishvavasu, the one name in two
-/// cells (sign 5 and sign 12 gandharva), maps to [vishvavasuMarker].
-final Map<String, String> _slugForName = () {
+/// Planet names as the model's system prompt writes them, in [defaultGrahas]
+/// order.
+const _planetNames = [
+  'Sun',
+  'Moon',
+  'Mars',
+  'Mercury',
+  'Jupiter',
+  'Venus',
+  'Saturn',
+  'Rahu',
+  'Ketu',
+];
+
+/// Name → link URL. Beings → `being:{aditya}-{type}`, except Vishvavasu, the
+/// one name in two cells (sign 5 and sign 12 gandharva), which gets
+/// [vishvavasuMarker]. Being types, singular and plural (the model writes
+/// both) → `being-type:{type}`. Planets → `planet:{body}`.
+final Map<String, String> _urlForName = () {
   final map = <String, String>{};
   for (var row = 0; row < _beingTable.length; row++) {
     final aditya = _beingTable[row][0].toLowerCase();
     for (var col = 0; col < _columnTypes.length; col++) {
       final name = _beingTable[row][col];
       map[name] = map.containsKey(name)
-          ? vishvavasuMarker
-          : '$aditya-${_columnTypes[col]}';
+          ? '$beingLinkScheme$vishvavasuMarker'
+          : '$beingLinkScheme$aditya-${_columnTypes[col]}';
     }
+  }
+  for (final type in _columnTypes) {
+    final name = '${type[0].toUpperCase()}${type.substring(1)}';
+    map[name] = map['${name}s'] = '$beingTypeLinkScheme$type';
+  }
+  for (var i = 0; i < _planetNames.length; i++) {
+    map[_planetNames[i]] = '$planetLinkScheme${defaultGrahas[i]}';
   }
   return map;
 }();
@@ -131,7 +195,7 @@ final Map<String, String> _slugForName = () {
 /// Whole-word, case-sensitive alternation of every name, longest first so a
 /// name that prefixes another can't shadow it.
 final RegExp _namePattern = () {
-  final names = _slugForName.keys.toList()
+  final names = _urlForName.keys.toList()
     ..sort((a, b) => b.length.compareTo(a.length));
   return RegExp('(?<![A-Za-z0-9_])(?:${names.join('|')})(?![A-Za-z0-9_])');
 }();
@@ -150,27 +214,32 @@ final RegExp _protected = RegExp(
 final RegExp _indra = RegExp(r'(?<![A-Za-z0-9_])Indra(?![A-Za-z0-9_])');
 final RegExp _parjanya = RegExp(r'(?<![A-Za-z0-9_])Parjanya(?![A-Za-z0-9_])');
 
-/// Rewrite every capitalised whole-word being name in [markdown] to a
-/// `[Name](being:{slug})` link, outside code and existing links.
+/// Rewrite every capitalised whole-word being, being-type or planet name in
+/// [markdown] to a `[Name](scheme:target)` link, outside code and existing
+/// links; [parseChatLink] decodes the URL on tap.
 ///
 /// Vishvavasu gets a concrete slug when the reply names exactly one of its two
 /// Adityas (Indra / Parjanya) — the model's own text settles it; otherwise it
 /// gets [vishvavasuMarker] for [resolveBeingLink] to settle against the chart.
-String linkBeingNames(String markdown) {
+String linkChatNames(String markdown) {
   final hasIndra = _indra.hasMatch(markdown);
   final hasParjanya = _parjanya.hasMatch(markdown);
-  final vishvavasuSlug = hasIndra == hasParjanya
-      ? vishvavasuMarker
-      : hasIndra
-      ? 'indra-gandharva'
-      : 'parjanya-gandharva';
+  final vishvavasuUrl =
+      beingLinkScheme +
+      (hasIndra == hasParjanya
+          ? vishvavasuMarker
+          : hasIndra
+          ? 'indra-gandharva'
+          : 'parjanya-gandharva');
 
   String linkSegment(String text) => text.replaceAllMapped(_namePattern, (m) {
     final name = m[0] ?? '';
-    final slug = _slugForName[name];
-    if (slug == null) return name;
-    final target = slug == vishvavasuMarker ? vishvavasuSlug : slug;
-    return '[$name]($beingLinkScheme$target)';
+    final url = _urlForName[name];
+    if (url == null) return name;
+    final target = url == '$beingLinkScheme$vishvavasuMarker'
+        ? vishvavasuUrl
+        : url;
+    return '[$name]($target)';
   });
 
   final out = StringBuffer();

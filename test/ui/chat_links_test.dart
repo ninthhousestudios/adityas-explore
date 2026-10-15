@@ -2,21 +2,42 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gpt_markdown/gpt_markdown.dart';
 
-import 'package:explore/ui/being_names.dart';
+import 'package:explore/ui/chat_links.dart';
 import 'package:explore/ui/message_markdown.dart';
 
 void main() {
-  group('linkBeingNames', () {
+  group('linkChatNames', () {
+    test('links being types, singular and plural', () {
+      expect(
+        linkChatNames('An Aditya leads the Rishis and Nagas.'),
+        'An [Aditya](being-type:aditya) leads the '
+        '[Rishis](being-type:rishi) and [Nagas](being-type:naga).',
+      );
+    });
+
+    test('links planets', () {
+      expect(
+        linkChatNames('Sun, Moon and Ketu; Rahu\'s pull.'),
+        '[Sun](planet:sun), [Moon](planet:moon) and [Ketu](planet:ketu); '
+        "[Rahu](planet:rahu)'s pull.",
+      );
+    });
+
+    test('lowercase type and planet words stay plain', () {
+      const text = 'the sun, a rishi, two nagas, mercury.';
+      expect(linkChatNames(text), text);
+    });
+
     test('links a plain mention', () {
       expect(
-        linkBeingNames('Meet Takshaka today.'),
+        linkChatNames('Meet Takshaka today.'),
         'Meet [Takshaka](being:mitra-naga) today.',
       );
     });
 
     test('links every mention, Aditya and companion alike', () {
       expect(
-        linkBeingNames('Varuna and Huhu; Huhu again.'),
+        linkChatNames('Varuna and Huhu; Huhu again.'),
         '[Varuna](being:varuna-aditya) and [Huhu](being:varuna-gandharva); '
         '[Huhu](being:varuna-gandharva) again.',
       );
@@ -24,27 +45,27 @@ void main() {
 
     test('links through punctuation and possessives', () {
       expect(
-        linkBeingNames("Takshaka's gift, (Menaka)."),
+        linkChatNames("Takshaka's gift, (Menaka)."),
         "[Takshaka](being:mitra-naga)'s gift, ([Menaka](being:mitra-apsara)).",
       );
     });
 
     test('ignores lowercase and in-word occurrences', () {
       const text = 'haha, vata dosha, Vatas, Indrani, Mitras.';
-      expect(linkBeingNames(text), text);
+      expect(linkChatNames(text), text);
     });
 
     test('longest name wins over a shorter name inside it', () {
       // "Vishvamitra" contains "Mitra"; it must link as one name.
       expect(
-        linkBeingNames('Vishvamitra.'),
+        linkChatNames('Vishvamitra.'),
         '[Vishvamitra](being:vishnu-rishi).',
       );
     });
 
     test('links inside bold and headings', () {
       expect(
-        linkBeingNames('# Indra\n**Rambha**'),
+        linkChatNames('# Indra\n**Rambha**'),
         '# [Indra](being:indra-aditya)\n**[Rambha](being:vishnu-apsara)**',
       );
     });
@@ -54,25 +75,25 @@ void main() {
           'See [Indra here](https://x.test/Indra) and `Indra` and '
           '<https://x.test/Bhaga> and https://x.test/Mitra\n'
           '```\nIndra\n```\n';
-      expect(linkBeingNames(text), text);
+      expect(linkChatNames(text), text);
     });
 
     test('still links text around a protected region', () {
       expect(
-        linkBeingNames('`code` Bhaga `more`'),
+        linkChatNames('`code` Bhaga `more`'),
         '`code` [Bhaga](being:bhaga-aditya) `more`',
       );
     });
 
     test('an unterminated fence protects to the end', () {
       const text = 'Bhaga\n```\nIndra';
-      expect(linkBeingNames(text), '[Bhaga](being:bhaga-aditya)\n```\nIndra');
+      expect(linkChatNames(text), '[Bhaga](being:bhaga-aditya)\n```\nIndra');
     });
 
     group('Vishvavasu co-mention', () {
       test('only Indra mentioned → sign 5', () {
         expect(
-          linkBeingNames('Vishvavasu serves Indra.'),
+          linkChatNames('Vishvavasu serves Indra.'),
           '[Vishvavasu](being:indra-gandharva) serves '
           '[Indra](being:indra-aditya).',
         );
@@ -80,24 +101,44 @@ void main() {
 
       test('only Parjanya mentioned → sign 12', () {
         expect(
-          linkBeingNames('Parjanya brings Vishvavasu.'),
+          linkChatNames('Parjanya brings Vishvavasu.'),
           contains('[Vishvavasu](being:parjanya-gandharva)'),
         );
       });
 
       test('both mentioned → ambiguous marker', () {
         expect(
-          linkBeingNames('Vishvavasu, Indra, Parjanya.'),
+          linkChatNames('Vishvavasu, Indra, Parjanya.'),
           contains('[Vishvavasu](being:vishvavasu)'),
         );
       });
 
       test('neither mentioned → ambiguous marker', () {
         expect(
-          linkBeingNames('Vishvavasu sings.'),
+          linkChatNames('Vishvavasu sings.'),
           '[Vishvavasu](being:vishvavasu) sings.',
         );
       });
+    });
+  });
+
+  group('parseChatLink', () {
+    test('decodes each scheme', () {
+      expect(
+        (parseChatLink('being:mitra-naga') as BeingLink?)?.slug,
+        'mitra-naga',
+      );
+      expect(
+        (parseChatLink('being-type:rishi') as BeingTypeLink?)?.type,
+        'rishi',
+      );
+      expect((parseChatLink('planet:venus') as PlanetLink?)?.body, 'venus');
+    });
+
+    test('rejects unknown types, bodies and other URLs', () {
+      expect(parseChatLink('being-type:deva'), isNull);
+      expect(parseChatLink('planet:pluto'), isNull);
+      expect(parseChatLink('https://84beings.com'), isNull);
     });
   });
 
@@ -141,14 +182,14 @@ void main() {
     const style = TextStyle(fontSize: 14, color: Colors.white);
 
     testWidgets('tapping a linked name reports its slug', (tester) async {
-      final tapped = <String>[];
+      final tapped = <ChatLink>[];
       await tester.pumpWidget(
         host(
           MessageMarkdown(
             'Ask Takshaka.',
             style: style,
             linkColor: Colors.amber,
-            onBeingTap: tapped.add,
+            onChatLinkTap: tapped.add,
           ),
         ),
       );
@@ -156,7 +197,7 @@ void main() {
       await tester.tap(
         find.textContaining('Takshaka', findRichText: true).last,
       );
-      expect(tapped, ['mitra-naga']);
+      expect((tapped.single as BeingLink).slug, 'mitra-naga');
     });
   });
 }

@@ -15,12 +15,13 @@ import '../state/conversation.dart';
 import '../state/entitlement.dart';
 import '../state/overlay.dart';
 import '../state/usage.dart';
-import 'being_names.dart';
 import 'being_slug.dart';
+import 'chat_links.dart';
 import 'chat_coming_soon.dart';
 import 'chat_composer.dart';
 import 'contemplating_indicator.dart';
 import 'message_markdown.dart';
+import 'popup_state.dart';
 import 'tokens.dart';
 
 /// Chat panel for the `conversation` layout mode.
@@ -628,17 +629,27 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
     );
   }
 
-  /// A tapped being-name link in a reply opens the same card `show_being`
-  /// would (adityas/ai/223); an unresolvable slug is a no-op.
-  void _openBeingLink(String slug) {
-    final chart = ref.read(chartControllerProvider).chart;
-    final being = resolveBeingLink(
-      slug,
-      (b) =>
-          chart != null && planetActivatingBeing(chart, b.sign, b.type) != null,
-    );
-    if (being == null) return;
-    ref.read(overlayControllerProvider.notifier).openBeing(being, chart);
+  /// A tapped name link in a reply (adityas/ai/223). A being opens the same
+  /// card `show_being` would; a being type or planet opens its card, as tapping
+  /// it in the Beings / Soul Stances panels does. An unresolvable being is a
+  /// no-op.
+  void _openChatLink(ChatLink link) {
+    final overlay = ref.read(overlayControllerProvider.notifier);
+    switch (link) {
+      case BeingLink(:final slug):
+        final chart = ref.read(chartControllerProvider).chart;
+        final being = resolveBeingLink(
+          slug,
+          (b) =>
+              chart != null &&
+              planetActivatingBeing(chart, b.sign, b.type) != null,
+        );
+        if (being != null) overlay.openBeing(being, chart);
+      case BeingTypeLink(:final type):
+        overlay.open(BeingTypePopup(type));
+      case PlanetLink(:final body):
+        overlay.open(PlanetPopup(body));
+    }
   }
 
   Widget _messageBubble(ChatMessage m, Color color, double fontSize) {
@@ -663,7 +674,7 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
               style: TextStyle(color: color, fontSize: fontSize),
               linkColor: context.tokens.gold,
               isStreaming: false,
-              onBeingTap: _openBeingLink,
+              onChatLinkTap: _openChatLink,
             ),
     );
     return _CopyableBubble(

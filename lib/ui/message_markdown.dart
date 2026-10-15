@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:gpt_markdown/gpt_markdown.dart';
 
-import 'being_names.dart';
+import 'chat_links.dart';
 
 /// Renders an assistant message body — the single markdown-renderer swap seam.
 ///
@@ -20,7 +20,7 @@ class MessageMarkdown extends StatelessWidget {
     required this.style,
     required this.linkColor,
     this.isStreaming = false,
-    this.onBeingTap,
+    this.onChatLinkTap,
     super.key,
   });
 
@@ -36,30 +36,29 @@ class MessageMarkdown extends StatelessWidget {
   /// True while the turn is still streaming — render plain, defer the parse.
   final bool isStreaming;
 
-  /// When set, every being name in the completed text becomes a `being:{slug}`
-  /// link and a tap on one calls this with the slug (adityas/ai/223). Other
-  /// links keep their existing behaviour (no tap action).
-  final void Function(String slug)? onBeingTap;
+  /// When set, every being, being-type and planet name in the completed text
+  /// becomes a link and a tap on one calls this (adityas/ai/223). Other links
+  /// keep their existing behaviour (no tap action).
+  final void Function(ChatLink link)? onChatLinkTap;
 
   @override
   Widget build(BuildContext context) {
     if (isStreaming) {
       return Text(text, style: style);
     }
-    final onBeingTap = this.onBeingTap;
+    final onChatLinkTap = this.onChatLinkTap;
     return GptMarkdown(
-      onBeingTap == null ? text : linkBeingNames(text),
+      onChatLinkTap == null ? text : linkChatNames(text),
       style: style,
       // We already hold the complete text; skip gpt_markdown's own reveal
       // animation so a finished message doesn't re-type itself.
       isStreaming: false,
       styleSheet: GptMarkdownStyleSheet(link: LinkStyle(color: linkColor)),
-      onLinkTap: onBeingTap == null
+      onLinkTap: onChatLinkTap == null
           ? null
           : (url, _) {
-              if (url.startsWith(beingLinkScheme)) {
-                onBeingTap(url.substring(beingLinkScheme.length));
-              }
+              final link = parseChatLink(url);
+              if (link != null) onChatLinkTap(link);
             },
     );
   }
